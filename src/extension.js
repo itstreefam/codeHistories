@@ -1,6 +1,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 const vscode = require('vscode');
+const activitiesTracker = require('./activities-tracker');
 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
@@ -34,13 +35,13 @@ function activate(context) {
 
 	// make a function that checks for content changes
 	// and then calls the function to get the diagnostics
-	const checkForChanges = vscode.workspace.onDidChangeTextDocument(event => {
-		console.log(event.contentChanges);
-		const doc = event.document;
-		const diagnostics = getDiagnostics(doc);
-		// console.log(diagnostics);
-		vscode.languages.setDiagnostics(doc.uri, diagnostics);
-	});
+	// const checkForChanges = vscode.workspace.onDidChangeTextDocument(event => {
+	// 	console.log(event.contentChanges);
+	// 	const doc = event.document;
+	// 	const diagnostics = getDiagnostics(doc);
+	// 	// console.log(diagnostics);
+	// 	vscode.languages.setDiagnostics(doc.uri, diagnostics);
+	// });
 
 
 	const handler = async (doc) => {
@@ -58,7 +59,7 @@ function activate(context) {
 	if (vscode.window.activeTextEditor && vscode.window.activeTextEditor.document) {
 		// get the file name
 		const doc = vscode.window.activeTextEditor.document;
-		handler(doc);
+		// handler(doc);
 	}
 
 	// check if active editor has changed
@@ -70,14 +71,9 @@ function activate(context) {
 		}
 	});
 
-	// check if an event is triggered
-	vscode.workspace.onDidChangeTextDocument(event => {
-		// get the file name
-		const fileName = event.document.fileName;
-		console.log(fileName);
-	});
+	const capture = new activitiesTracker().captureTextChange();
 
-	const didOpen = vscode.workspace.onDidOpenTextDocument(doc => handler(doc));
+	// const didOpen = vscode.workspace.onDidOpenTextDocument(doc => handler(doc));
 	// const didChange = vscode.workspace.onDidChangeTextDocument(e => handler(e.document));
 
 	// The command has been defined in the package.json file
@@ -87,7 +83,7 @@ function activate(context) {
 		// The code you place here will be executed every time your command is executed
 
 		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from code-histories!');
+		vscode.window.showInformationMessage('Code histories activated!');
 	});
 
 	context.subscriptions.push(disposable);
