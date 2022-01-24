@@ -3,27 +3,6 @@
 const vscode = require('vscode');
 const activitiesTracker = require('./activities-tracker');
 
-// this method is called when your extension is activated
-// your extension is activated the very first time the command is executed
-
-
-// async function getDiagnostics(doc){
-// 	const text = doc.getText();
-
-// 	console.log(text);
-
-// 	const diagnostics = new Array();
-
-// 	let packageJson;
-// 	try {
-// 		packageJson = JSON.parse(text);
-// 	} catch(e) {
-// 		return diagnostics;
-// 	}
-// 	return diagnostics;
-// }
-
-
 /**
  * @param {vscode.ExtensionContext} context
  */
@@ -33,48 +12,48 @@ function activate(context) {
 	// This line of code will only be executed once when your extension is activated
 	console.log('Congratulations, your extension "codeHistories" is now active!');
 
-	// make a function that checks for content changes
-	// and then calls the function to get the diagnostics
-	// const checkForChanges = vscode.workspace.onDidChangeTextDocument(event => {
-	// 	console.log(event.contentChanges);
-	// 	const doc = event.document;
-	// 	const diagnostics = getDiagnostics(doc);
-	// 	// console.log(diagnostics);
-	// 	vscode.languages.setDiagnostics(doc.uri, diagnostics);
-	// });
+	var workspaceDocs = vscode.workspace.textDocuments;
 
+	// make a dictionary of all the documents in the workspace
+	var workspaceDocsDict = {};
 
-	const handler = async (doc) => {
-		// if(!doc.fileName.endsWith('package.json')) {
-		// 	return;
-		// }
-	
-		// const diagnostics = await getDiagnostics(doc);
-		// console.log(diagnostics);
-		const text = doc.getText();
-		console.log(text);
-	};
-
-	// check if the active editor has a document
-	if (vscode.window.activeTextEditor && vscode.window.activeTextEditor.document) {
-		// get the file name
-		const doc = vscode.window.activeTextEditor.document;
-		// handler(doc);
+	try{
+		for(var i = 0; i < workspaceDocs.length; i++){
+			var doc = workspaceDocs[i];
+			// var tracker = new activitiesTracker(doc);
+			// tracker.startTracking();
+			// workspaceDocsDict[doc.uri.path] = tracker;
+		}
+	}
+	catch(e){
+		console.log('No document are currently in the workspace.');
+		// console.error(e);
 	}
 
 	// check if active editor has changed
+	// also covering the case where the active editor is a new open document
 	vscode.window.onDidChangeActiveTextEditor(editor => {
 		if (editor) {
-			// get the file name
-			const fileName = editor.document.fileName;
-			console.log(fileName);
+			// get the document
+			var doc = editor.document;
+			console.log('active editor changed to: ' + doc.uri.path);
+			// check if the document is in the workspace
+			if(workspaceDocsDict[doc.uri.path]){
+				// get the tracker
+				// var tracker = workspaceDocsDict[doc.uri.path];
+				// continue tracking
+			}
+			else{
+				// create a new tracker
+				// var tracker = new activitiesTracker(doc);
+				// tracker.startTracking();
+				// add the tracker to the workspace dictionary
+				// workspaceDocsDict[doc.uri.path] = tracker;
+			}
 		}
 	});
 
 	const capture = new activitiesTracker().captureTextChange();
-
-	// const didOpen = vscode.workspace.onDidOpenTextDocument(doc => handler(doc));
-	// const didChange = vscode.workspace.onDidChangeTextDocument(e => handler(e.document));
 
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with  registerCommand
@@ -90,7 +69,9 @@ function activate(context) {
 }
 
 // this method is called when your extension is deactivated
-function deactivate() {}
+function deactivate() {
+	// similar to closing vs code => can be used to export tracking data
+}
 
 module.exports = {
 	activate,
