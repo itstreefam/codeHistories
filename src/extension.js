@@ -20,9 +20,9 @@ function activate(context) {
 	try{
 		for(var i = 0; i < workspaceDocs.length; i++){
 			var doc = workspaceDocs[i];
-			// var tracker = new activitiesTracker(doc);
-			// tracker.startTracking();
-			// workspaceDocsDict[doc.uri.path] = tracker;
+			var tracker = new activitiesTracker(doc);
+			tracker.startTracking();
+			workspaceDocsDict[doc.uri.path] = tracker;
 		}
 	}
 	catch(e){
@@ -36,24 +36,24 @@ function activate(context) {
 		if (editor) {
 			// get the document
 			var doc = editor.document;
-			console.log('active editor changed to: ' + doc.uri.path);
+			console.log(`Active editor changed: ${doc.uri.path}`);
 			// check if the document is in the workspace
 			if(workspaceDocsDict[doc.uri.path]){
 				// get the tracker
-				// var tracker = workspaceDocsDict[doc.uri.path];
+				var tracker = workspaceDocsDict[doc.uri.path];
+				// get current stat
+				tracker.getCurrentStage();
 				// continue tracking
 			}
 			else{
 				// create a new tracker
-				// var tracker = new activitiesTracker(doc);
-				// tracker.startTracking();
+				var tracker = new activitiesTracker(doc);
+				tracker.startTracking();
 				// add the tracker to the workspace dictionary
-				// workspaceDocsDict[doc.uri.path] = tracker;
+				workspaceDocsDict[doc.uri.path] = tracker;
 			}
 		}
 	});
-
-	const capture = new activitiesTracker().captureTextChange();
 
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with  registerCommand
