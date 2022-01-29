@@ -2,6 +2,9 @@
 // Import the module and reference it with the alias vscode in your code below
 const vscode = require('vscode');
 const activitiesTracker = require('./activities-tracker');
+const simpleGit = require('simple-git');
+const path = require('path');
+const gitTracker = require('./git-tracker');
 
 /**
  * @param {vscode.ExtensionContext} context
@@ -11,6 +14,41 @@ function activate(context) {
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code will only be executed once when your extension is activated
 	console.log('Congratulations, your extension "codeHistories" is now active!');
+
+	simpleGit().clean(simpleGit.CleanOptions.FORCE);
+
+	var currentDir;
+
+	if(!vscode.workspace.workspaceFolders){
+		message = "Working folder not found, please open a folder first." ;
+		vscode.window.showErrorMessage(message);
+
+		// wait until a folder is selected
+		vscode.window.showOpenDialog({
+			canSelectFiles: false,
+			canSelectFolders: true,
+			canSelectMany: false,
+		}).then(folder => {
+			if(folder){
+				currentDir = folder[0].fsPath;
+				vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(currentDir));
+				return currentDir;
+			}
+		}).then(currentDir => {
+			var tracker = new gitTracker(currentDir);
+			tracker.isGitInitialized();
+			tracker.getStatus();
+		}).catch((err) => console.error('failed: ', err));
+	}
+
+	else{
+		currentDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
+		message = `Current working folder: ${currentDir}` ;
+		vscode.window.showInformationMessage(message);
+		var tracker = new gitTracker(currentDir);
+		tracker.isGitInitialized();
+		tracker.getStatus();
+	}
 
 	var workspaceDocs = vscode.workspace.textDocuments;
 
