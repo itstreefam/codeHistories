@@ -37,7 +37,7 @@ function activate(context) {
 		}).then(currentDir => {
 			var tracker = new gitTracker(currentDir);
 			tracker.isGitInitialized();
-			tracker.getStatus();
+			tracker.startTracking();
 		}).catch((err) => console.error('failed: ', err));
 	}
 
@@ -47,51 +47,74 @@ function activate(context) {
 		vscode.window.showInformationMessage(message);
 		var tracker = new gitTracker(currentDir);
 		tracker.isGitInitialized();
-		tracker.getStatus();
-	}
+		tracker.startTracking();
 
-	var workspaceDocs = vscode.workspace.textDocuments;
-
-	// make a dictionary of all the documents in the workspace
-	var workspaceDocsDict = {};
-
-	try{
-		for(var i = 0; i < workspaceDocs.length; i++){
-			var doc = workspaceDocs[i];
-			var tracker = new activitiesTracker(doc);
-			tracker.startTracking();
-			workspaceDocsDict[doc.uri.path] = tracker;
-		}
-	}
-	catch(e){
-		console.log('No document are currently in the workspace.');
-		// console.error(e);
-	}
-
-	// check if active editor has changed
-	// also covering the case where the active editor is a new open document
-	vscode.window.onDidChangeActiveTextEditor(editor => {
-		if (editor) {
-			// get the document
-			var doc = editor.document;
-			console.log(`Active editor changed: ${doc.uri.path}`);
-			// check if the document is in the workspace
-			if(workspaceDocsDict[doc.uri.path]){
-				// get the tracker
-				var tracker = workspaceDocsDict[doc.uri.path];
-				// get current stat
-				tracker.getCurrentStage();
-				// continue tracking
+		vscode.workspace.onDidChangeTextDocument(function(e) {
+			console.log('Changed.');
+			if (!tracker.isDirty.includes(e.document.uri.path)) {
+				tracker.isDirty.push(e.document.uri.path);
 			}
-			else{
-				// create a new tracker
-				var tracker = new activitiesTracker(doc);
-				tracker.startTracking();
-				// add the tracker to the workspace dictionary
-				workspaceDocsDict[doc.uri.path] = tracker;
+			console.log(tracker.isDirty);
+		});
+		
+		vscode.workspace.onDidSaveTextDocument(function(e) {
+			console.log('Saved!');
+			const index = tracker.isDirty.indexOf(e.uri.path);
+			if (index > -1) {
+				tracker.isDirty.splice(index, 1);
 			}
-		}
-	});
+		});
+
+		// on did change terminal's state
+        vscode.window.onDidChangeTerminalState((terminal) => {
+            if(tracker.isDirty.length === 0){
+				tracker.commit();
+			}
+        });
+	}
+
+	// var workspaceDocs = vscode.workspace.textDocuments;
+
+	// // make a dictionary of all the documents in the workspace
+	// var workspaceDocsDict = {};
+
+	// try{
+	// 	for(var i = 0; i < workspaceDocs.length; i++){
+	// 		var doc = workspaceDocs[i];
+	// 		var tracker = new activitiesTracker(doc);
+	// 		tracker.startTracking();
+	// 		workspaceDocsDict[doc.uri.path] = tracker;
+	// 	}
+	// }
+	// catch(e){
+	// 	console.log('No document are currently in the workspace.');
+	// 	// console.error(e);
+	// }
+
+	// // check if active editor has changed
+	// // also covering the case where the active editor is a new open document
+	// vscode.window.onDidChangeActiveTextEditor(editor => {
+	// 	if (editor) {
+	// 		// get the document
+	// 		var doc = editor.document;
+	// 		console.log(`Active editor changed: ${doc.uri.path}`);
+	// 		// check if the document is in the workspace
+	// 		if(workspaceDocsDict[doc.uri.path]){
+	// 			// get the tracker
+	// 			var tracker = workspaceDocsDict[doc.uri.path];
+	// 			// get current stat
+	// 			tracker.getCurrentStage();
+	// 			// continue tracking
+	// 		}
+	// 		else{
+	// 			// create a new tracker
+	// 			var tracker = new activitiesTracker(doc);
+	// 			tracker.startTracking();
+	// 			// add the tracker to the workspace dictionary
+	// 			workspaceDocsDict[doc.uri.path] = tracker;
+	// 		}
+	// 	}
+	// });
 
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with  registerCommand

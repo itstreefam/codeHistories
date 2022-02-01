@@ -1,8 +1,10 @@
 const simpleGit = require('simple-git');
+const vscode = require('vscode');
 
 module.exports = class gitTracker {
     constructor(currentDir) {
         this._currentDir = currentDir;
+        this.isDirty = [];
     }
 
     timestamp() {
@@ -22,6 +24,24 @@ module.exports = class gitTracker {
         return this.git.checkIsRepo()
             .then(isRepo => !isRepo && this.initializeGit(this.git))
             .then(() => this.git.fetch());
+    }
+
+    startTracking() {
+        // check if terminal is open
+        var terminal = vscode.window.activeTerminal;
+        if (!terminal) {
+            vscode.window.showInformationMessage('No terminal is open. Please open a terminal and try again.');
+            return;
+        }
+    }
+
+    // commit function
+    commit() {
+        // commit with time stamp
+        var timeStamp = this.timestamp();
+        var commitMessage = `[Commit at ${timeStamp}]`;
+        this.git.add('./*')
+            .then(() => this.git.commit(commitMessage))       
     }
 
     // get status of the current directory
