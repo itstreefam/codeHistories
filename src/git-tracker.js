@@ -5,6 +5,7 @@ module.exports = class gitTracker {
     constructor(currentDir) {
         this._currentDir = currentDir;
         this.isDirty = [];
+        this.allFilesSavedTime = [];
     }
 
     timestamp() {
@@ -41,7 +42,7 @@ module.exports = class gitTracker {
         var timeStamp = this.timestamp();
         var commitMessage = `[Commit at ${timeStamp}]`;
         this.git.add('./*')
-            .then(() => this.git.commit(commitMessage))       
+            .then(() => this.git.commit(commitMessage)) 
     }
 
     // get status of the current directory

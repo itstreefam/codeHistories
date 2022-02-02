@@ -55,6 +55,11 @@ function activate(context) {
 				tracker.isDirty.push(e.document.uri.path);
 			}
 			console.log(tracker.isDirty);
+			//get current terminal
+			var terminal = vscode.window.activeTerminal;
+			if (terminal) {
+				terminal.state.isInteractedWith = false;
+			}
 		});
 		
 		vscode.workspace.onDidSaveTextDocument(function(e) {
@@ -63,12 +68,25 @@ function activate(context) {
 			if (index > -1) {
 				tracker.isDirty.splice(index, 1);
 			}
+			if (tracker.isDirty.length == 0) {
+				tracker.allFilesSavedTime.push(tracker.timestamp());
+			}
 		});
 
 		// on did change terminal's state
         vscode.window.onDidChangeTerminalState((terminal) => {
-            if(tracker.isDirty.length === 0){
-				tracker.commit();
+			terminal.state.isInteractedWith = false;
+            if(tracker.isDirty.length == 0 && tracker.allFilesSavedTime.length > 0){
+				var terminalInteractTime = tracker.timestamp();
+				// get the difference between saved and terminal interact
+				var timeDiff = Math.abs(terminalInteractTime - tracker.allFilesSavedTime[tracker.allFilesSavedTime.length - 1]);
+				console.log(timeDiff);
+				var minute = 1000 * 60;
+				if (timeDiff < minute) {
+					// tracker.commit();
+					console.log('Commit!');
+					terminal.state.isInteractedWith = true;
+				}			
 			}
         });
 	}
