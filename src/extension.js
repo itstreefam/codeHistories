@@ -3,7 +3,6 @@
 const vscode = require('vscode');
 const activitiesTracker = require('./activities-tracker');
 const simpleGit = require('simple-git');
-const path = require('path');
 const gitTracker = require('./git-tracker');
 
 /**
@@ -38,32 +37,75 @@ function activate(context) {
 			var tracker = new gitTracker(currentDir);
 			tracker.isGitInitialized();
 			tracker.startTracking();
+
+			vscode.workspace.onDidChangeTextDocument(function(e) {
+				// if the file being changed is not in the tracked files
+				if (!tracker.isDirty.includes(e.document.uri.path)) {
+					tracker.isDirty.push(e.document.uri.path);
+				}
+				// console.log(tracker.isDirty);
+				var terminals = vscode.window.terminals;
+				if (terminals) {
+					terminals.forEach(terminal => {
+						terminal.state.isInteractedWith = false;
+					});
+				}
+			});
+			
+			vscode.workspace.onDidSaveTextDocument(function(e) {
+				// find the file in the tracked files and remove it
+				const index = tracker.isDirty.indexOf(e.uri.path);
+				if (index > -1) {
+					tracker.isDirty.splice(index, 1);
+				}
+				if (tracker.isDirty.length == 0) {
+					tracker.allFilesSavedTime.push(tracker.timestamp());
+				}
+			});
+	
+			// on did change terminal's state
+			vscode.window.onDidChangeTerminalState((terminal) => {
+				terminal.state.isInteractedWith = false;
+				if(tracker.isDirty.length == 0 && tracker.allFilesSavedTime.length > 0){
+					var terminalInteractTime = tracker.timestamp();
+					// get the difference between saved and terminal interact
+					var timeDiff = Math.abs(terminalInteractTime - tracker.allFilesSavedTime[tracker.allFilesSavedTime.length - 1]);
+					console.log(timeDiff);
+					var minute = 1000 * 60;
+					if (timeDiff < minute) {
+						// tracker.commit();
+						console.log('Commit!');
+						terminal.state.isInteractedWith = true;
+					}			
+				}
+			});
 		}).catch((err) => console.error('failed: ', err));
 	}
 
 	else{
 		currentDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
-		message = `Current working folder: ${currentDir}` ;
-		vscode.window.showInformationMessage(message);
+		// message = `Current working folder: ${currentDir}`;
+		// vscode.window.showInformationMessage(message);
 		var tracker = new gitTracker(currentDir);
 		tracker.isGitInitialized();
 		tracker.startTracking();
 
 		vscode.workspace.onDidChangeTextDocument(function(e) {
-			console.log('Changed.');
+			// if the file being changed is not in the tracked files
 			if (!tracker.isDirty.includes(e.document.uri.path)) {
 				tracker.isDirty.push(e.document.uri.path);
 			}
-			console.log(tracker.isDirty);
-			//get current terminal
-			var terminal = vscode.window.activeTerminal;
-			if (terminal) {
-				terminal.state.isInteractedWith = false;
+			// console.log(tracker.isDirty);
+			var terminals = vscode.window.terminals;
+			if (terminals) {
+				terminals.forEach(terminal => {
+					terminal.state.isInteractedWith = false;
+				});
 			}
 		});
 		
 		vscode.workspace.onDidSaveTextDocument(function(e) {
-			console.log('Saved!');
+			// find the file in the tracked files and remove it
 			const index = tracker.isDirty.indexOf(e.uri.path);
 			if (index > -1) {
 				tracker.isDirty.splice(index, 1);
@@ -90,49 +132,6 @@ function activate(context) {
 			}
         });
 	}
-
-	// var workspaceDocs = vscode.workspace.textDocuments;
-
-	// // make a dictionary of all the documents in the workspace
-	// var workspaceDocsDict = {};
-
-	// try{
-	// 	for(var i = 0; i < workspaceDocs.length; i++){
-	// 		var doc = workspaceDocs[i];
-	// 		var tracker = new activitiesTracker(doc);
-	// 		tracker.startTracking();
-	// 		workspaceDocsDict[doc.uri.path] = tracker;
-	// 	}
-	// }
-	// catch(e){
-	// 	console.log('No document are currently in the workspace.');
-	// 	// console.error(e);
-	// }
-
-	// // check if active editor has changed
-	// // also covering the case where the active editor is a new open document
-	// vscode.window.onDidChangeActiveTextEditor(editor => {
-	// 	if (editor) {
-	// 		// get the document
-	// 		var doc = editor.document;
-	// 		console.log(`Active editor changed: ${doc.uri.path}`);
-	// 		// check if the document is in the workspace
-	// 		if(workspaceDocsDict[doc.uri.path]){
-	// 			// get the tracker
-	// 			var tracker = workspaceDocsDict[doc.uri.path];
-	// 			// get current stat
-	// 			tracker.getCurrentStage();
-	// 			// continue tracking
-	// 		}
-	// 		else{
-	// 			// create a new tracker
-	// 			var tracker = new activitiesTracker(doc);
-	// 			tracker.startTracking();
-	// 			// add the tracker to the workspace dictionary
-	// 			workspaceDocsDict[doc.uri.path] = tracker;
-	// 		}
-	// 	}
-	// });
 
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with  registerCommand

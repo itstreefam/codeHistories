@@ -36,11 +36,11 @@ module.exports = class gitTracker {
         }
     }
 
-    // commit function
     commit() {
         // commit with time stamp
         var timeStamp = this.timestamp();
-        var commitMessage = `[Commit at ${timeStamp}]`;
+        var conversion = new Date(timeStamp).toLocaleString('en-US');
+        var commitMessage = `[Commit time: ${conversion}]`;
         this.git.add('./*')
             .then(() => this.git.commit(commitMessage)) 
     }

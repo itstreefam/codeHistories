@@ -1,3 +1,50 @@
+// Initial prototype idea
+// Use the commented code below in extension.js
+/*
+    // var workspaceDocs = vscode.workspace.textDocuments;
+
+	// // make a dictionary of all the documents in the workspace
+	// var workspaceDocsDict = {};
+
+	// try{
+	// 	for(var i = 0; i < workspaceDocs.length; i++){
+	// 		var doc = workspaceDocs[i];
+	// 		var tracker = new activitiesTracker(doc);
+	// 		tracker.startTracking();
+	// 		workspaceDocsDict[doc.uri.path] = tracker;
+	// 	}
+	// }
+	// catch(e){
+	// 	console.log('No document are currently in the workspace.');
+	// 	// console.error(e);
+	// }
+
+	// // check if active editor has changed
+	// // also covering the case where the active editor is a new open document
+	// vscode.window.onDidChangeActiveTextEditor(editor => {
+	// 	if (editor) {
+	// 		// get the document
+	// 		var doc = editor.document;
+	// 		console.log(`Active editor changed: ${doc.uri.path}`);
+	// 		// check if the document is in the workspace
+	// 		if(workspaceDocsDict[doc.uri.path]){
+	// 			// get the tracker
+	// 			var tracker = workspaceDocsDict[doc.uri.path];
+	// 			// get current stat
+	// 			tracker.getCurrentStage();
+	// 			// continue tracking
+	// 		}
+	// 		else{
+	// 			// create a new tracker
+	// 			var tracker = new activitiesTracker(doc);
+	// 			tracker.startTracking();
+	// 			// add the tracker to the workspace dictionary
+	// 			workspaceDocsDict[doc.uri.path] = tracker;
+	// 		}
+	// 	}
+	// });
+*/
+
 const vscode = require('vscode');
 
 module.exports = class activitiesTracker {
