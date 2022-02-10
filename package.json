@@ -1,4 +1,5 @@
 {
+  "enabledApiProposals": ["terminalDataWriteEvent"],
   "name": "codeHistories",
   "displayName": "code-histories",
   "description": "Tracking user's activity on VSCode",

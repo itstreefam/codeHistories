@@ -6,6 +6,7 @@ module.exports = class gitTracker {
         this._currentDir = currentDir;
         this.isDirty = [];
         this.allFilesSavedTime = [];
+        this.terminalData = {};
     }
 
     timestamp() {
@@ -34,6 +35,12 @@ module.exports = class gitTracker {
             vscode.window.showInformationMessage('No terminal is open. Please open a terminal and try again.');
             return;
         }
+        vscode.window.terminals.forEach(terminal => {
+            terminal.processId.then(terminalId => {
+                this.terminalData[terminalId] = [];
+            });
+        });
+        console.log(this.terminalData)
     }
 
     commit() {
