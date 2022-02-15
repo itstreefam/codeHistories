@@ -123,101 +123,53 @@ function activate(context) {
 			}
 		});
 
-		// // on did change terminal's state
-        // vscode.window.onDidChangeTerminalState((terminal) => {
-		// 	terminal.state.isInteractedWith = false;
-		// 	console.log(contentArr)
-        //     if(tracker.isDirty.length == 0 && tracker.allFilesSavedTime.length > 0){
-		// 		var terminalInteractTime = tracker.timestamp();
-		// 		// get the difference between saved and terminal interact
-		// 		var timeDiff = Math.abs(terminalInteractTime - tracker.allFilesSavedTime[tracker.allFilesSavedTime.length - 1]);
-		// 		console.log(timeDiff);
-		// 		var minute = 1000 * 60;
-		// 		if (timeDiff < minute) {
-		// 			// tracker.commit();
-		// 			console.log('Commit!');
-		// 			terminal.state.isInteractedWith = true;
-		// 		}			
-		// 	}
-        // });
+		// on did open terminal
+		vscode.window.onDidOpenTerminal(terminal => {
+			// check if terminal is already in terminalData
+			terminal.processId.then(terminalId => {
+				if (!tracker.terminalData[terminalId]) {
+					tracker.terminalData[terminalId] = [{"name": terminal.name, "output": "starting terminal tracking...", "time": new Date(tracker.timestamp()).toLocaleString('en-US')}];
+				}
+			});
+		});
 
-		var filteredOutput = []
-
-		// vscode.window.onDidChangeActiveTerminal(terminal => {
-		// 	terminal.processId.then(pid => {
-		// 		// on did write to terminal
-		// 		vscode.window.onDidWriteTerminalData(event => {
-		// 			if(vscode.window.activeTerminal == event.terminal){
-		// 				if(tracker.isDirty.length == 0 && tracker.allFilesSavedTime.length > 0){
-		// 					console.log(event.data.trim());
-		// 					contentArr.push(event.data);
-		// 					// console.log(contentArr[contentArr.length-1].match(regex_dir))
-
-		// 					// this supposedly means that sth is executed and the current directory is shown in terminal again
-		// 					if(contentArr[contentArr.length-1].includes(curDir) && contentArr[contentArr.length-1].trim().match(regex_dir)){
-		// 						// console.log(contentArr[contentArr.length-2])
-		// 						// console.log(contentArr[contentArr.length-2].length)
-		// 						for(var i=0; i<contentArr.length; i++){
-		// 							if(contentArr[i].charAt(0) == "\r" && contentArr[i].charAt(1) == "\n"){
-		// 								var outputString = ""
-		// 								for(var j=i; j<contentArr.length; j++){
-		// 									// if(!contentArr[j].includes(curDir)){
-		// 									outputString = outputString + contentArr[j].trim()
-		// 									// }
-		// 								}
-		// 								outputString = outputString.replace(contentArr[contentArr.length - 1].trim(), '')
-		// 								tracker.terminalData[pid].push(outputString)
-		// 								contentArr.splice(0,contentArr.length)
-		// 								break
-		// 							}
-		// 						}
-		// 					}
-		// 				}
-		// 			}
-		// 		});
-		// 	});
-		// });
+		//close terminal
+		vscode.window.onDidCloseTerminal(event => {
+			// console.log(filteredOutput);
+			console.log(tracker.terminalData);
+		});
 
 		// on did write to terminal
 		vscode.window.onDidWriteTerminalData(event => {
-			if(vscode.window.activeTerminal == event.terminal){
-				if(tracker.isDirty.length == 0 && tracker.allFilesSavedTime.length > 0){
-					console.log(event.data.trim());
-					contentArr.push(event.data);
-					// console.log(contentArr[contentArr.length-1].match(regex_dir))
+			if(tracker.isDirty.length == 0 && tracker.allFilesSavedTime.length > 0){
+				// console.log(event.data.trim());
+				contentArr.push(event.data);
+				// console.log(regex_dir.test(contentArr[contentArr.length-1].trim()))
 
-					// this supposedly means that sth is executed and the current directory is shown in terminal again
-					if(contentArr[contentArr.length-1].includes(curDir) && contentArr[contentArr.length-1].trim().match(regex_dir)){
-						// console.log(contentArr[contentArr.length-2])
-						// console.log(contentArr[contentArr.length-2].length)
-						for(var i=0; i<contentArr.length; i++){
-							if(contentArr[i].charAt(0) == "\r" && contentArr[i].charAt(1) == "\n"){
-								var outputString = ""
-								for(var j=i; j<contentArr.length; j++){
-									// if(!contentArr[j].includes(curDir)){
-									outputString = outputString + contentArr[j].trim()
-									// }
-								}
-								outputString = outputString.replace(contentArr[contentArr.length - 1].trim(), '')
-								filteredOutput.push(outputString)
-								contentArr.splice(0,contentArr.length)
-								break
+				// this supposedly means that sth is executed and the current directory is shown in terminal again
+				// will be different for different kind of terminal
+				if(contentArr[contentArr.length-1].includes(curDir + ">")){
+					// console.log(contentArr[contentArr.length-2].length)
+					// console.log(contentArr)
+					for(var i=0; i<contentArr.length; i++){
+						if(contentArr[i].charAt(0) == "\r" && contentArr[i].charAt(1) == "\n"){
+							// get timestamp
+							var terminalInteractTime = tracker.timestamp();
+							var outputString = "";
+							for(var j=i; j<contentArr.length; j++){
+								outputString = outputString + contentArr[j].trim();
 							}
+							outputString = outputString.replace(curDir + ">", '');
+							contentArr.splice(0,contentArr.length);
+							vscode.window.activeTerminal.processId.then(pid => {
+								tracker.terminalData[pid].push({"name": event.terminal.name, "output": outputString, "time": terminalInteractTime});
+							});
+							break;
 						}
 					}
 				}
 			}
 		});
-
-		// on did change terminal's state
-        vscode.window.onDidChangeTerminalState((terminal) => {
-			terminal.state.isInteractedWith = false;
-            if(tracker.isDirty.length == 0 && tracker.allFilesSavedTime.length > 0){
-				console.log(filteredOutput);
-				// console.log(tracker.terminalData);
-			}
-
-        });
 	}
 
 	// The command has been defined in the package.json file

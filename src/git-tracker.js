@@ -29,18 +29,11 @@ module.exports = class gitTracker {
     }
 
     startTracking() {
-        // check if terminal is open
-        var terminal = vscode.window.activeTerminal;
-        if (!terminal) {
-            vscode.window.showInformationMessage('No terminal is open. Please open a terminal and try again.');
-            return;
-        }
         vscode.window.terminals.forEach(terminal => {
             terminal.processId.then(terminalId => {
-                this.terminalData[terminalId] = [];
+                this.terminalData[terminalId] = [{"name": terminal.name, "output": "starting terminal tracking...", "time": new Date(this.timestamp()).toLocaleString('en-US')}];
             });
         });
-        console.log(this.terminalData)
     }
 
     commit() {
