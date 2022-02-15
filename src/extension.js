@@ -16,7 +16,10 @@ function activate(context) {
 
 	var contentArr = [];
 
-	var regex_dir = /^[a-z]:((\\|\/)[a-z0-9\s_@\-^!#$%&+={}\[\]]+)+>$/i;
+	// regex to match windows dir
+	var regex_dir = /^[a-z]:((\\|\/)[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+>+.*$/i;
+	// /^[a-zA-Z]:\\[\\\S|*\S]?.*$/g
+	
 
 	var curDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
 	// capitalize the first letter of the directory
@@ -148,18 +151,16 @@ function activate(context) {
 
 				// this supposedly means that sth is executed and the current directory is shown in terminal again
 				// will be different for different kind of terminal
-				if(contentArr[contentArr.length-1].includes(curDir + ">")){
-					// console.log(contentArr[contentArr.length-2].length)
-					// console.log(contentArr)
+				curDir = contentArr[contentArr.length-1].trim().match(regex_dir)[0];
+				if(contentArr[contentArr.length-1].includes(curDir)){
 					for(var i=0; i<contentArr.length; i++){
 						if(contentArr[i].charAt(0) == "\r" && contentArr[i].charAt(1) == "\n"){
-							// get timestamp
 							var terminalInteractTime = tracker.timestamp();
 							var outputString = "";
 							for(var j=i; j<contentArr.length; j++){
 								outputString = outputString + contentArr[j].trim();
 							}
-							outputString = outputString.replace(curDir + ">", '');
+							outputString = outputString.replace(curDir, '');
 							contentArr.splice(0,contentArr.length);
 							vscode.window.activeTerminal.processId.then(pid => {
 								tracker.terminalData[pid].push({"name": event.terminal.name, "output": outputString, "time": terminalInteractTime});
