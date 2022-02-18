@@ -77,13 +77,21 @@ module.exports = class gitTracker {
         
         // if file already exists, append to it
         if (fs.existsSync(this._currentDir + '/terminalData.json')) {
-            // remove last character "]" of the file
-            fs.truncateSync(this._currentDir + '/terminalData.json', fs.statSync(this._currentDir + '/terminalData.json').size - 1);
-            fs.appendFileSync(this._currentDir + '/terminalData.json', ",\r\n" + terminalDataString + "]", function (err) {
-                if (err) return console.error(err);
-            });
+            // if file is empty, add "[data]" to it
+            if (fs.statSync(this._currentDir + '/terminalData.json').size == 0) {
+                fs.appendFileSync(this._currentDir + '/terminalData.json', "[" + terminalDataString + "]", function (err) {
+                    if (err) return console.error(err);
+                });
+            }
+            else{
+                // remove last character "]" of the file and add ", data]" to it
+                fs.truncateSync(this._currentDir + '/terminalData.json', fs.statSync(this._currentDir + '/terminalData.json').size - 1); 
+                fs.appendFileSync(this._currentDir + '/terminalData.json', ",\r\n" + terminalDataString + "]", function (err) {
+                    if (err) return console.error(err);
+                });
+            }
         }
-        // if file does not exist, create it
+        // if file does not exist, create and write "[data]" to it
         else {
             fs.writeFileSync(this._currentDir + '/terminalData.json', "[" + terminalDataString + "]", function (err) {
                 if (err) return console.error(err);

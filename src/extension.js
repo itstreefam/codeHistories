@@ -98,13 +98,12 @@ function activate(context) {
 			
 			if(curDir.search(">")){
 				// get the string betwween ":" and ">"
-				curDir = curDir.substring(curDir.indexOf(":\\")-1, curDir.search(">")+1);
-				// console.log(curDir);
+				curDir = curDir.substring(curDir.indexOf(":\\")-1, curDir.indexOf(">")+1);
 			}
 
 			if(contentArr[contentArr.length-1].includes(curDir)){
 				for(var i=0; i<contentArr.length; i++){
-					if(contentArr[i].charAt(0) == "\r" && contentArr[i].charAt(1) == "\n"){
+					// if(contentArr[i].charAt(0) == "\r" && contentArr[i].charAt(1) == "\n"){
 						var terminalInteractTime = tracker.timestamp();
 						var outputString = "";
 						for(var j=i; j<contentArr.length; j++){
@@ -112,7 +111,7 @@ function activate(context) {
 						}
 						outputString = outputString.replace(curDir, '');
 						contentArr.splice(0,contentArr.length);
-
+						// console.log(outputString)
 						// get the difference between saved and terminal interact
 						var timeDiff = Math.abs(terminalInteractTime - tracker.allFilesSavedTime[tracker.allFilesSavedTime.length - 1]);
 						var minute = 1000 * 60 * 5;
@@ -124,7 +123,7 @@ function activate(context) {
 							});
 						}	
 						break;
-					}
+					// }
 				}
 			}
 		}
