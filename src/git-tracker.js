@@ -1,5 +1,6 @@
 const simpleGit = require('simple-git');
 const vscode = require('vscode');
+const fs = require('fs');
 
 module.exports = class gitTracker {
     constructor(currentDir) {
@@ -31,7 +32,18 @@ module.exports = class gitTracker {
     startTracking() {
         vscode.window.terminals.forEach(terminal => {
             terminal.processId.then(terminalId => {
-                this.terminalData[terminalId] = [{"name": terminal.name, "output": "starting terminal tracking...", "time": new Date(this.timestamp()).toLocaleString('en-US')}];
+                this.terminalData[terminalId] = [{"output": "start " + terminal.name + " terminal tracking...", "time": new Date(this.timestamp()).toLocaleString('en-US')}];
+            });
+        });
+    }
+
+    stopTracking() {
+        vscode.window.terminals.forEach(terminal => {
+            terminal.processId.then(terminalId => {
+                // check if output already does not contain "stop"
+                if (this.terminalData[terminalId][this.terminalData[terminalId].length - 1].output.indexOf("stop") == -1) {
+                    this.terminalData[terminalId].push({"output": "stop " + terminal.name + " terminal tracking...", "time": new Date(this.timestamp()).toLocaleString('en-US')});
+                }
             });
         });
     }
@@ -56,5 +68,26 @@ module.exports = class gitTracker {
             console.log(e);
         }
         return statusSummary;
+    }
+
+    // store terminal data into a new file
+    storeTerminalData() {
+        var terminalData = this.terminalData;
+        var terminalDataString = JSON.stringify(terminalData);
+        
+        // if file already exists, append to it
+        if (fs.existsSync(this._currentDir + '/terminalData.json')) {
+            // remove last character "]" of the file
+            fs.truncateSync(this._currentDir + '/terminalData.json', fs.statSync(this._currentDir + '/terminalData.json').size - 1);
+            fs.appendFileSync(this._currentDir + '/terminalData.json', ",\r\n" + terminalDataString + "]", function (err) {
+                if (err) return console.error(err);
+            });
+        }
+        // if file does not exist, create it
+        else {
+            fs.writeFileSync(this._currentDir + '/terminalData.json', "[" + terminalDataString + "]", function (err) {
+                if (err) return console.error(err);
+            });
+        }
     }
 }
