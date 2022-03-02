@@ -5,6 +5,9 @@ const activitiesTracker = require('./activities-tracker');
 const simpleGit = require('simple-git');
 const gitTracker = require('./git-tracker');
 var tracker = null;
+var iter = 0;
+var contentArr = [];
+var eventData = new Object();
 
 /**
  * @param {vscode.ExtensionContext} context
@@ -14,8 +17,6 @@ function activate(context) {
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code will only be executed once when your extension is activated
 	console.log('Congratulations, your extension "codeHistories" is now active!');
-
-	var contentArr = [];
 
 	// regex to match windows dir
 	var regex_dir = /^[\s\S]*:((\\|\/)[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+>+.*$/i;
@@ -87,43 +88,92 @@ function activate(context) {
 
 	// on did write to terminal
 	vscode.window.onDidWriteTerminalData(event => {
-		if(tracker.isDirty.length == 0 && tracker.allFilesSavedTime.length > 0){
-			// console.log(event.data.trim());
-			contentArr.push(event.data);
-			// console.log(regex_dir.test(contentArr[contentArr.length-1].trim()))
+		activeTerminal = vscode.window.activeTerminal;
+		if (activeTerminal == event.terminal) {
+			if(event.terminal.name == "Python"){
+				iter += 1;
+				eventData[iter] = event.data;
+				console.log(eventData)
 
-			// this supposedly means that sth is executed and the current directory is shown in terminal again
-			// will be different for different kind of terminal
-			curDir = contentArr[contentArr.length-1].trim().match(regex_dir)[0];
-			
-			if(curDir.search(">")){
-				// get the string betwween ":" and ">"
-				curDir = curDir.substring(curDir.indexOf(":\\")-1, curDir.indexOf(">")+1);
+				curDir = eventData[Object.keys(eventData).length].trim().match(regex_dir)[0];
+					
+				if(curDir.search(">")){
+					// get the string betwween ":" and ">"
+					// console.log(curDir)
+					curDir = curDir.substring(curDir.indexOf(":\\")-1, curDir.indexOf(">")+1);
+				}
+
+				if(!eventData[Object.keys(eventData).length-1].includes(curDir) && Object.keys(eventData).length>=10){
+					// When keystroke occurs, the trigger event might affect eventData[Object.keys(eventData).length-1] 
+					// by making it including previous redundant terminal's output => needs to perform curDir search again in here and grab the latest two occurrences of curDir
+					var outputString = String(eventData[Object.keys(eventData).length-1]);
+					
+					var	secondToLastIndexOfCurDir = outputString.lastIndexOf(":\\", outputString.lastIndexOf(":\\")-1);
+					var	lastIndexOfCurDir = outputString.lastIndexOf(":\\");
+
+					if(secondToLastIndexOfCurDir > 0 && lastIndexOfCurDir > 0){
+						// grab the output after second to last occurrence of curDir
+						outputString = outputString.substring(secondToLastIndexOfCurDir-1) + eventData[Object.keys(eventData).length];
+					}
+					else{
+						// When user click button as usual, this should grab the most up-to-date output
+						outputString = outputString + eventData[Object.keys(eventData).length].substring(0, eventData[Object.keys(eventData).length].lastIndexOf("\r\n"));
+					}
+					// console.log(outputString);
+					tracker.updateOutput(outputString);
+				} 
+				else if(eventData[Object.keys(eventData).length-1].includes(curDir) && Object.keys(eventData).length>=10){
+					var outputString = String(eventData[Object.keys(eventData).length-1]);
+					var	lastIndexOfCurDir = outputString.lastIndexOf(":\\");
+					outputString = outputString.substring(lastIndexOfCurDir-1);
+					tracker.updateOutput(outputString);
+				}
 			}
 
-			if(contentArr[contentArr.length-1].includes(curDir)){
-				for(var i=0; i<contentArr.length; i++){
-					// if(contentArr[i].charAt(0) == "\r" && contentArr[i].charAt(1) == "\n"){
-						var terminalInteractTime = tracker.timestamp();
-						var outputString = "";
-						for(var j=i; j<contentArr.length; j++){
-							outputString = outputString + contentArr[j].trim();
+			if(event.terminal.name == "cmd"){
+				if(tracker.isDirty.length == 0 && tracker.allFilesSavedTime.length > 0){
+					// console.log(event.data);
+					contentArr.push(event.data);
+					// console.log(contentArr[contentArr.length-1])
+
+					// console.log(regex_dir.test(contentArr[contentArr.length-1].trim()))
+					// console.log(contentArr)
+
+					// this supposedly means that sth is executed and the current directory is shown in terminal again
+					// will be different for different kind of terminal
+					curDir = contentArr[contentArr.length-1].trim().match(regex_dir)[0];
+					
+					if(curDir.search(">")){
+						// get the string betwween ":" and ">"
+						// console.log(curDir)
+						curDir = curDir.substring(curDir.indexOf(":\\")-1, curDir.indexOf(">")+1);
+					}
+
+					if(contentArr[contentArr.length-1].includes(curDir)){
+						for(var i=0; i<contentArr.length; i++){
+							if(contentArr[i].charAt(0) == "\r" && contentArr[i].charAt(1) == "\n"){
+								var terminalInteractTime = tracker.timestamp();
+								var outputString = "";
+								for(var j=i; j<contentArr.length; j++){
+									outputString = outputString + contentArr[j].trim();
+								}
+								outputString = outputString.replace(curDir, '');
+								contentArr.splice(0,contentArr.length);
+								// get the difference between saved and terminal interact
+								var timeDiff = Math.abs(terminalInteractTime - tracker.allFilesSavedTime[tracker.allFilesSavedTime.length - 1]);
+								var minute = 1000 * 60 * 5;
+								if (timeDiff < minute) {
+									// tracker.commit();
+									console.log('Commit!');
+									tracker.updateOutput(outputString);
+									vscode.window.activeTerminal.processId.then(pid => {
+										tracker.terminalData[pid].push({"output": outputString, "time": new Date(terminalInteractTime).toLocaleString('en-US')});
+									});
+								}	
+								break;
+							}
 						}
-						outputString = outputString.replace(curDir, '');
-						contentArr.splice(0,contentArr.length);
-						// console.log(outputString)
-						// get the difference between saved and terminal interact
-						var timeDiff = Math.abs(terminalInteractTime - tracker.allFilesSavedTime[tracker.allFilesSavedTime.length - 1]);
-						var minute = 1000 * 60 * 5;
-						if (timeDiff < minute) {
-							// tracker.commit();
-							console.log('Commit!');
-							vscode.window.activeTerminal.processId.then(pid => {
-								tracker.terminalData[pid].push({"output": outputString, "time": new Date(terminalInteractTime).toLocaleString('en-US')});
-							});
-						}	
-						break;
-					// }
+					}
 				}
 			}
 		}

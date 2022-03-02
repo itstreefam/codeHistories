@@ -98,4 +98,30 @@ module.exports = class gitTracker {
             });
         }
     }
+
+    updateOutput(output){
+        // store output of current terminal to a new file
+        // if file already exists, append to it
+        if (fs.existsSync(this._currentDir + '/output.txt')) {
+            // if file is empty
+            if (fs.statSync(this._currentDir + '/output.txt').size == 0) {
+                fs.appendFileSync(this._currentDir + '/output.txt', output, function (err) {
+                    if (err) return console.error(err);
+                });
+            }
+            else{
+                // delete everything in the file
+                fs.truncateSync(this._currentDir + '/output.txt', 0);
+                fs.appendFileSync(this._currentDir + '/output.txt', output, function (err) {
+                    if (err) return console.error(err);
+                });
+            }
+        }
+        // if file does not exist, create and write output to it
+        else {
+            fs.writeFileSync(this._currentDir + '/output.txt', output, function (err) {
+                if (err) return console.error(err);
+            });
+        }
+    }
 }
