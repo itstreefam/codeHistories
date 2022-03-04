@@ -105,12 +105,26 @@ function activate(context) {
 				
 				// go backward to the most recent occured curDir
 				for(var i = Object.keys(eventData).length-1; i >= 0; i--){
-					if(eventData[i].includes(curDir) && eventData[i+1] === "[?25l"){
+					if(eventData[i-1].includes(curDir) && eventData[i] === "[?25l" && (Object.keys(eventData).length-1)-i > 0){
 						// grab every output from i to back to the end
 						var output = "";
-						for(var j = i+1; j <= Object.keys(eventData).length-1; j++){
-							output += eventData[j];
+
+						for(var j = Object.keys(eventData).length; j > i; j--){
+							var temp = eventData[j];
+							console.log(temp)
+							var	secondToLastIndexOfCurDir = temp.lastIndexOf(":\\", temp.lastIndexOf(":\\")-1);
+							var	lastIndexOfCurDir = temp.lastIndexOf(":\\");
+							if((secondToLastIndexOfCurDir > 0 || lastIndexOfCurDir > 0) && j < Object.keys(eventData).length){
+								break;
+							}
+							if(j == Object.keys(eventData).length){
+								// grab from the last index of curDir to beginning
+								temp = temp.substring(0, temp.lastIndexOf("\r\n"));
+							}
+
+							output = temp + output;
 						}
+
 						tracker.updateOutput(output);
 						iter = 1;
 						eventData = {"1": eventData[Object.keys(eventData).length]};
