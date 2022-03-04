@@ -102,32 +102,46 @@ function activate(context) {
 					// console.log(curDir)
 					curDir = curDir.substring(curDir.indexOf(":\\")-1, curDir.indexOf(">")+1);
 				}
-
-				if(!eventData[Object.keys(eventData).length-1].includes(curDir) && Object.keys(eventData).length>=10){
-					// When keystroke occurs, the trigger event might affect eventData[Object.keys(eventData).length-1] 
-					// by making it including previous redundant terminal's output => needs to perform curDir search again in here and grab the latest two occurrences of curDir
-					var outputString = String(eventData[Object.keys(eventData).length-1]);
-					
-					var	secondToLastIndexOfCurDir = outputString.lastIndexOf(":\\", outputString.lastIndexOf(":\\")-1);
-					var	lastIndexOfCurDir = outputString.lastIndexOf(":\\");
-
-					if(secondToLastIndexOfCurDir > 0 && lastIndexOfCurDir > 0){
-						// grab the output after second to last occurrence of curDir
-						outputString = outputString.substring(secondToLastIndexOfCurDir-1) + eventData[Object.keys(eventData).length];
+				
+				// go backward to the most recent occured curDir
+				for(var i = Object.keys(eventData).length-1; i >= 0; i--){
+					if(eventData[i].includes(curDir) && eventData[i+1] === "[?25l"){
+						// grab every output from i to back to the end
+						var output = "";
+						for(var j = i+1; j <= Object.keys(eventData).length-1; j++){
+							output += eventData[j];
+						}
+						tracker.updateOutput(output);
+						iter = 1;
+						eventData = {"1": eventData[Object.keys(eventData).length]};
 					}
-					else{
-						// When user click button as usual, this should grab the most up-to-date output
-						outputString = outputString + eventData[Object.keys(eventData).length].substring(0, eventData[Object.keys(eventData).length].lastIndexOf("\r\n"));
-					}
-					// console.log(outputString);
-					tracker.updateOutput(outputString);
-				} 
-				else if(eventData[Object.keys(eventData).length-1].includes(curDir) && Object.keys(eventData).length>=10){
-					var outputString = String(eventData[Object.keys(eventData).length-1]);
-					var	lastIndexOfCurDir = outputString.lastIndexOf(":\\");
-					outputString = outputString.substring(lastIndexOfCurDir-1);
-					tracker.updateOutput(outputString);
 				}
+
+				// if(!eventData[Object.keys(eventData).length-1].includes(curDir) && Object.keys(eventData).length>=10){
+				// 	// When keystroke occurs, the trigger event might affect eventData[Object.keys(eventData).length-1] 
+				// 	// by making it including previous redundant terminal's output => needs to perform curDir search again in here and grab the latest two occurrences of curDir
+				// 	var outputString = String(eventData[Object.keys(eventData).length-1]);
+					
+				// 	var	secondToLastIndexOfCurDir = outputString.lastIndexOf(":\\", outputString.lastIndexOf(":\\")-1);
+				// 	var	lastIndexOfCurDir = outputString.lastIndexOf(":\\");
+
+				// 	if(secondToLastIndexOfCurDir > 0 && lastIndexOfCurDir > 0){
+				// 		// grab the output after second to last occurrence of curDir
+				// 		outputString = outputString.substring(secondToLastIndexOfCurDir-1) + eventData[Object.keys(eventData).length];
+				// 	}
+				// 	else{
+				// 		// When user click button as usual, this should grab the most up-to-date output
+				// 		outputString = outputString + eventData[Object.keys(eventData).length].substring(0, eventData[Object.keys(eventData).length].lastIndexOf("\r\n"));
+				// 	}
+				// 	// console.log(outputString);
+				// 	tracker.updateOutput(outputString);
+				// } 
+				// else if(eventData[Object.keys(eventData).length-1].includes(curDir) && Object.keys(eventData).length>=10){
+				// 	var outputString = String(eventData[Object.keys(eventData).length-1]);
+				// 	var	lastIndexOfCurDir = outputString.lastIndexOf(":\\");
+				// 	outputString = outputString.substring(lastIndexOfCurDir-1);
+				// 	tracker.updateOutput(outputString);
+				// }
 			}
 
 			if(event.terminal.name == "cmd"){
