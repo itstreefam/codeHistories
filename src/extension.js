@@ -111,7 +111,7 @@ function activate(context) {
 
 						for(var j = Object.keys(eventData).length; j > i; j--){
 							var temp = eventData[j];
-							console.log(temp)
+							// console.log(temp)
 							var	secondToLastIndexOfCurDir = temp.lastIndexOf(":\\", temp.lastIndexOf(":\\")-1);
 							var	lastIndexOfCurDir = temp.lastIndexOf(":\\");
 							if((secondToLastIndexOfCurDir > 0 || lastIndexOfCurDir > 0) && j < Object.keys(eventData).length){
@@ -119,10 +119,15 @@ function activate(context) {
 							}
 							if(j == Object.keys(eventData).length){
 								// grab from the last index of curDir to beginning
-								temp = temp.substring(0, temp.lastIndexOf("\r\n"));
+								temp = temp.substring(0, temp.lastIndexOf("\n"));
 							}
 
 							output = temp + output;
+						}
+						
+						var	lastIndexOfEscM = output.lastIndexOf("[m");
+						if(lastIndexOfEscM > 0){
+							output = output.substring(lastIndexOfEscM+3, output.length-1);
 						}
 
 						tracker.updateOutput(output);
