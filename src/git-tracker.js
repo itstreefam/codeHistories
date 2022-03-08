@@ -53,8 +53,7 @@ module.exports = class gitTracker {
         var timeStamp = this.timestamp();
         var conversion = new Date(timeStamp).toLocaleString('en-US');
         var commitMessage = `[Commit time: ${conversion}]`;
-        this.git.add('./*')
-            .then(() => this.git.commit(commitMessage)) 
+        this.git.add('./*').commit(commitMessage);
     }
 
     // get status of the current directory
@@ -106,22 +105,32 @@ module.exports = class gitTracker {
             // if file is empty
             if (fs.statSync(this._currentDir + '/output.txt').size == 0) {
                 fs.appendFileSync(this._currentDir + '/output.txt', output, function (err) {
-                    if (err) return console.error(err);
+                    if (err) {
+                        console.log(err);
+                        return false;
+                    }
                 });
             }
             else{
                 // delete everything in the file
                 fs.truncateSync(this._currentDir + '/output.txt', 0);
                 fs.appendFileSync(this._currentDir + '/output.txt', output, function (err) {
-                    if (err) return console.error(err);
+                    if (err) {
+                        console.log(err);
+                        return false;
+                    }
                 });
             }
         }
         // if file does not exist, create and write output to it
         else {
             fs.writeFileSync(this._currentDir + '/output.txt', output, function (err) {
-                if (err) return console.error(err);
-            });
+                if (err) {
+                    console.log(err);
+                    return false;
+                }
+            });   
         }
+        return(true);
     }
 }

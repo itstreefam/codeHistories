@@ -108,7 +108,8 @@ function activate(context) {
 					// ansi code 
 					// hide_cursor() "[?25l"
 					// show_cursor() "[?25h"
-					if(eventData[i-1].includes(curDir) && eventData[i] === "[?25l" && (Object.keys(eventData).length-1)-i > 0){
+					if(eventData[i-1].includes(curDir) && eventData[i] === "[?25l" && (Object.keys(eventData).length-1)-i > 1){
+						console.log(i)
 						// grab every output from i to back to the end
 						var output = "";
 
@@ -126,13 +127,17 @@ function activate(context) {
 
 							output = temp + output;
 						}
-						
+
 						var	lastIndexOfShowCursor = output.lastIndexOf("[?25h");
 						if(lastIndexOfShowCursor > 0){
 							output = output.substring(lastIndexOfShowCursor+6, output.length-1);
 						}
 
-						tracker.updateOutput(output);
+						var updated = tracker.updateOutput(output);
+						if(updated){
+							tracker.commit();
+						}
+
 						iter = 1;
 						eventData = {"1": eventData[Object.keys(eventData).length]};
 					}
