@@ -2,8 +2,8 @@
   "enabledApiProposals": ["terminalDataWriteEvent"],
   "name": "codeHistories",
   "displayName": "code-histories",
-  "description": "Tracking user's activity on VSCode",
-  "version": "0.0.1",
+  "description": "Tracking user's Python code state and output on VSCode",
+  "version": "1.0.0",
   "engines": {
     "vscode": "^1.63.0"
   },
