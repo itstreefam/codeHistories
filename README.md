@@ -1,46 +1,65 @@
-# codeHistories
+# codeHistories README
 
-A VS Code extension that aims to capture the information needed to generate usable code histories (capturing code state and output). This work remains a prototype for research purposes.
+This is the README for your extension "codeHistories". After writing up a brief description, we recommend including the following sections.
 
-## Demo
+## Features
 
-\!\[V1\]\(demo/V1.mkv\)
+Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+
+For example if there is an image subfolder under your extension project workspace:
+
+\!\[feature X\]\(images/feature-x.png\)
+
+> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
 
 ## Requirements
 
-* VS Code Insiders version (https://code.visualstudio.com/insiders/) to use their proposed API
-* simple-git (https://github.com/steveukx/git-js) to incorporate git in the output tracking process
-* Default Python extension for VS Code to use the top-right corner "run" button
+If you have any requirements or dependencies, add a section describing those and how to install and configure them.
 
 ## Extension Settings
 
-Once you start running debugging (or F5), make sure to add "settings.json" inside the folder ".vscode" that contains the following information on the debugging VS Code window.
+Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
 
-```
-{
-    "terminal.integrated.profiles.windows": {
-        "PowerShell": {
-            "source": "PowerShell",
-            "args": [
-                "-ExecutionPolicy",
-                "Bypass"
-            ]
-        }
-    },
-    "terminal.integrated.defaultProfile.windows": "PowerShell",
-}
-```
+For example:
 
-In this new window, the user can start working on their project after initializing codeHistories (through Command Palette or Ctrl+Shift+P) and the intial VS Code will run in the background to capture the code state and output. Make sure to also install the default Python extension for VS Code for the debugging window.
+This extension contributes the following settings:
+
+* `myExtension.enable`: enable/disable this extension
+* `myExtension.thing`: set to `blah` to do something
+
+## Known Issues
+
+Calling out known issues can help limit users opening duplicate issues against your extension.
 
 ## Release Notes
 
-### V1
+Users appreciate release notes as you update your extension.
 
-Initial release of codeHistories. Basic output capture of installed Python extension when the user uses "run" button option. Can utilize "gitk" to view the code state and output.
+### 1.0.0
 
-## Contact
+Initial release of ...
 
-p.tri@wustl.edu
+### 1.0.1
 
-**Thank you and enjoy!**
+Fixed issue #.
+
+### 1.1.0
+
+Added features X, Y, and Z.
+
+-----------------------------------------------------------------------------------------------------------
+
+## Working with Markdown
+
+**Note:** You can author your README using Visual Studio Code.  Here are some useful editor keyboard shortcuts:
+
+* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux)
+* Toggle preview (`Shift+CMD+V` on macOS or `Shift+Ctrl+V` on Windows and Linux)
+* Press `Ctrl+Space` (Windows, Linux) or `Cmd+Space` (macOS) to see a list of Markdown snippets
+
+### For more information
+
+* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
+* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
+
+**Enjoy!**
