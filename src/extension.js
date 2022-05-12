@@ -80,9 +80,11 @@ function activate(context) {
 							output = output.substring(lastIndexOfShowCursor+6, output.length-1);
 						}
 
-						var updated = tracker.updateOutput(output);
+						// removing remaining ansi escape code
+						var updated = tracker.updateOutput(output.replace(
+							/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, ''));
 						if(updated){
-							tracker.commit();
+							// tracker.commit();
 						}
 
 						iter = 1;
