@@ -39,6 +39,10 @@ In this new window, the user can start working on their project after initializi
 
 Initial release of codeHistories. Basic output capture of installed Python extension when the user uses "run" button option. Can utilize "gitk" to view the code state and output.
 
+### V1.x
+
+Added Mac support and revamped Windows support. It is recommended that user avoid directly interacting with VS Code terminal as some cases might lead to incorrect git commit. Output captured might contain a few additional/unnecessary path strings due to the proposed API's instability.
+
 ## Contact
 
 p.tri@wustl.edu

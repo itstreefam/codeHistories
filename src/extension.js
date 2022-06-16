@@ -16,84 +16,135 @@ function activate(context) {
 	// This line of code will only be executed once when your extension is activated
 	console.log('Congratulations, your extension "codeHistories" is now active!');
 
-	// regex to match windows dir
-	var regex_dir = /^[\s\S]*:((\\|\/)[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+>+.*$/i;
-	// /^[a-zA-Z]:\\[\\\S|*\S]?.*$/g
+	if(process.platform === 'win32'){
+		// regex to match windows dir
+		var regex_dir = /^[\s\S]*:((\\|\/)[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+>+.*$/i;
+		// /^[a-zA-Z]:\\[\\\S|*\S]?.*$/g
 
-	var curDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
-	// capitalize the first letter of the directory
-	curDir = curDir.charAt(0).toUpperCase() + curDir.slice(1);
+		var curDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
+		// capitalize the first letter of the directory
+		curDir = curDir.charAt(0).toUpperCase() + curDir.slice(1);
 
-	simpleGit().clean(simpleGit.CleanOptions.FORCE);
+		simpleGit().clean(simpleGit.CleanOptions.FORCE);
 
-	if(!vscode.workspace.workspaceFolders){
-		message = "Working folder not found, please open a folder first." ;
-		vscode.window.showErrorMessage(message);
-		return;
-	}
+		if(!vscode.workspace.workspaceFolders){
+			message = "Working folder not found, please open a folder first." ;
+			vscode.window.showErrorMessage(message);
+			return;
+		}
 
-	var currentDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
-	tracker = new gitTracker(currentDir);
-	tracker.isGitInitialized();
+		var currentDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
+		tracker = new gitTracker(currentDir);
+		tracker.isGitInitialized();
 
-	// on did write to terminal
-	vscode.window.onDidWriteTerminalData(event => {
-		activeTerminal = vscode.window.activeTerminal;
-		if (activeTerminal == event.terminal) {
-			if(event.terminal.name == "Python"){
-				iter += 1;
-				eventData[iter] = event.data;
-				curDir = eventData[Object.keys(eventData).length].trim().match(regex_dir)[0];
-					
-				if(curDir.search(">")){
-					// get the string betwween ":" and ">"
-					// console.log(curDir)
-					curDir = curDir.substring(curDir.indexOf(":\\")-1, curDir.indexOf(">")+1);
-				}
-				
-				// go backward to the most recent occured curDir
-				for(var i = Object.keys(eventData).length-1; i >= 0; i--){
-					// ansi code 
-					// hide_cursor() "[?25l"
-					// show_cursor() "[?25h"
-					if(eventData[i-1].includes(curDir) && eventData[i] === "[?25l" && (Object.keys(eventData).length-1)-i > 1){
-						// grab every output from i to back to the end
-						var output = "";
+		// on did write to terminal
+		vscode.window.onDidWriteTerminalData(event => {
+			activeTerminal = vscode.window.activeTerminal;
+			if (activeTerminal == event.terminal) {
+				if(event.terminal.name == "Python"){
+					let terminalData = event.data.replace(
+						/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+					iter += 1;
+					eventData[iter] = terminalData;
 
-						for(var j = Object.keys(eventData).length; j > i; j--){
-							var temp = eventData[j];
-							var	secondToLastIndexOfCurDir = temp.lastIndexOf(":\\", temp.lastIndexOf(":\\")-1);
-							var	lastIndexOfCurDir = temp.lastIndexOf(":\\");
-							if((secondToLastIndexOfCurDir > 0 || lastIndexOfCurDir > 0) && j < Object.keys(eventData).length){
+					if(regex_dir.test(eventData[iter].trim()) && iter > 1){
+						let output = eventData[iter];
+						
+						for(let i = iter-1; i > 0; i--){
+							let temp = eventData[i];
+							if(temp.match(regex_dir)){
 								break;
 							}
-							if(j == Object.keys(eventData).length){
-								// grab from the last index of curDir to beginning
-								temp = temp.substring(0, temp.lastIndexOf("\n"));
-							}
-
 							output = temp + output;
 						}
 
-						var	lastIndexOfShowCursor = output.lastIndexOf("[?25h");
-						if(lastIndexOfShowCursor > 0){
-							output = output.substring(lastIndexOfShowCursor+6, output.length-1);
+						if(countOccurrences(output, curDir+">") > 1){
+							// grab everything between last and second to last occurence of curDir + ">"
+							let	secondToLastIndexOfCurDir = output.lastIndexOf(curDir+">", output.lastIndexOf(curDir+">")-1);
+							let	lastIndexOfCurDir = output.lastIndexOf(curDir+">");
+							let	finalOutput = output.substring(secondToLastIndexOfCurDir, lastIndexOfCurDir);
+							let updated = tracker.updateOutput(finalOutput);
+							if(updated){
+								tracker.commit();
+								// console.log(finalOutput);
+							}
 						}
 
-						// removing remaining ansi escape code
-						var updated = tracker.updateOutput(output.replace(
-							/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, ''));
-						if(updated){
-							tracker.commit();
-						}
-
-						iter = 1;
-						eventData = {"1": eventData[Object.keys(eventData).length]};
+						iter = 0;
+						eventData = new Object();	
 					}
 				}
 			}
+		});
+	}
+
+	if(process.platform === "darwin"){
+		simpleGit().clean(simpleGit.CleanOptions.FORCE);
+
+		if(!vscode.workspace.workspaceFolders){
+			message = "Working folder not found, please open a folder first." ;
+			vscode.window.showErrorMessage(message);
+			return;
 		}
-	});
+
+		var currentDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
+
+		// split vothientripham from /Users/vothientripham/Desktop/test-web
+		var user = currentDir.split("/")[2];
+
+		// get uname -n to get the hostname
+		var result = require('child_process').execSync('uname -n');
+		var hostname = result.toString().trim();
+
+		// check if mac_regex_dir matches "vothientripham@1350-AL-05044 test-web %"
+		// regex for validating folder name
+		var mac_regex_dir = new RegExp(user + "@" + hostname + '[^\\\\/?%*:|"<>\.]+' + "%.*$");
+
+		tracker = new gitTracker(currentDir);
+		tracker.isGitInitialized();
+
+		// on did write to terminal
+		vscode.window.onDidWriteTerminalData(event => {
+			activeTerminal = vscode.window.activeTerminal;
+			if (activeTerminal == event.terminal) {
+				if(event.terminal.name == "Python"){
+					let terminalData= event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '')
+					// .replace(/(\r\n|\n|\r)/gm, "");
+					
+					iter += 1;
+					eventData[iter] = terminalData;
+
+					if(mac_regex_dir.test(eventData[iter].trim())){
+						// get the string between mac_regex_dir and previous index of mac_regex_dir
+						let output = eventData[iter];
+
+						for(let i = iter-1; i > 0; i--){
+							let temp = eventData[i];
+							let tempRegex = new RegExp(user + "@" + hostname + '[^\\\\/?%*:|"<>\.]+');
+		
+							// check if temp contains "mac_regex_dir"
+							if(temp.match(tempRegex)){
+								break
+							}
+							output = temp + output;
+						}
+
+						// make sure output contains at most 1 occurence of mac_regex_dir
+						if(countOccurrences(output, user + "@" + hostname) <= 1){
+							let updated = tracker.updateOutput(output);	
+							if(updated){
+								tracker.commit();
+								// console.log(output);
+							}
+						}
+
+						iter = 0;
+						eventData = new Object();
+					}
+				}
+			}
+		});
+	}
 
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with  registerCommand
@@ -107,6 +158,10 @@ function activate(context) {
 
 	context.subscriptions.push(disposable);
 }
+
+function countOccurrences(string, word) {
+	return string.split(word).length - 1;
+ }
 
 // this method is called when your extension is deactivated
 function deactivate() {
