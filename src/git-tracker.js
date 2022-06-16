@@ -48,6 +48,15 @@ module.exports = class gitTracker {
             }
         }
 
+        if(process.platform == "darwin"){
+            let edgeCases = ["ggitk", "ccd", "lls"];
+            for(let i=0; i<edgeCases.length; i++){
+                if(output.includes(edgeCases[i])){
+                    return false;
+                }
+            }
+        }
+
         if (fs.existsSync(this._currentDir + '/output.txt')) {
             // if file is empty
             if (fs.statSync(this._currentDir + '/output.txt').size == 0) {
