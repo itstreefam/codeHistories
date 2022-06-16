@@ -14,7 +14,7 @@ https://user-images.githubusercontent.com/44308446/158084110-06305b2c-af13-4664-
 
 ## Extension Settings
 
-Once you start running debugging (or F5), make sure to add "settings.json" inside the folder ".vscode" that contains the following information on the debugging VS Code window.
+Once you start running debugging (or F5), make sure to add "settings.json" inside the folder ".vscode" that contains the following information on the debugging VS Code window (the window where the user will be working on their project and not the codeHistories repossitory).
 
 ```
 {
