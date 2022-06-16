@@ -9,12 +9,12 @@ https://user-images.githubusercontent.com/44308446/158084110-06305b2c-af13-4664-
 ## Requirements
 
 * VS Code Insiders version (https://code.visualstudio.com/insiders/) to use their proposed API
-* simple-git (https://github.com/steveukx/git-js) to incorporate git in the output tracking process
+* Node JS + simple-git (https://github.com/steveukx/git-js) to incorporate git in the output tracking process
 * Default Python extension for VS Code to use the top-right corner "run" button
 
 ## Extension Settings
 
-Once you start running debugging (or F5), make sure to add "settings.json" inside the folder ".vscode" that contains the following information on the debugging VS Code window (the window where the user will be working on their project and not the codeHistories repossitory).
+Clone this reprository and run "npm i" to install all dependencies. Once you start running debugging (or F5), make sure to add "settings.json" inside the folder ".vscode" that contains the following information on the debugging VS Code window (the user's working folder and not the codeHistories repository). This ".vscode/settings.json" is not needed for Mac.
 
 ```
 {
