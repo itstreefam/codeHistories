@@ -41,55 +41,38 @@ function activate(context) {
 		activeTerminal = vscode.window.activeTerminal;
 		if (activeTerminal == event.terminal) {
 			if(event.terminal.name == "Python"){
+				let terminalData = event.data.replace(
+					/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
 				iter += 1;
-				eventData[iter] = event.data;
-				curDir = eventData[Object.keys(eventData).length].trim().match(regex_dir)[0];
+				eventData[iter] = terminalData;
+
+				console.log(iter, eventData);
+
+				if(regex_dir.test(eventData[iter].trim()) && iter > 1){
+					let output = eventData[iter];
 					
-				if(curDir.search(">")){
-					// get the string betwween ":" and ">"
-					// console.log(curDir)
-					curDir = curDir.substring(curDir.indexOf(":\\")-1, curDir.indexOf(">")+1);
-				}
-				
-				// go backward to the most recent occured curDir
-				for(var i = Object.keys(eventData).length-1; i >= 0; i--){
-					// ansi code 
-					// hide_cursor() "[?25l"
-					// show_cursor() "[?25h"
-					if(eventData[i-1].includes(curDir) && eventData[i] === "[?25l" && (Object.keys(eventData).length-1)-i > 1){
-						// grab every output from i to back to the end
-						var output = "";
-
-						for(var j = Object.keys(eventData).length; j > i; j--){
-							var temp = eventData[j];
-							var	secondToLastIndexOfCurDir = temp.lastIndexOf(":\\", temp.lastIndexOf(":\\")-1);
-							var	lastIndexOfCurDir = temp.lastIndexOf(":\\");
-							if((secondToLastIndexOfCurDir > 0 || lastIndexOfCurDir > 0) && j < Object.keys(eventData).length){
-								break;
-							}
-							if(j == Object.keys(eventData).length){
-								// grab from the last index of curDir to beginning
-								temp = temp.substring(0, temp.lastIndexOf("\n"));
-							}
-
-							output = temp + output;
+					for(let i = iter-1; i > 0; i--){
+						let temp = eventData[i];
+						if(temp.match(regex_dir)){
+							break;
 						}
-
-						var	lastIndexOfShowCursor = output.lastIndexOf("[?25h");
-						if(lastIndexOfShowCursor > 0){
-							output = output.substring(lastIndexOfShowCursor+6, output.length-1);
-						}
-
-						// removing remaining ansi escape code
-						var updated = tracker.updateOutput(output.replace(
-							/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, ''));
-						if(updated){
-							tracker.commit();
-						}
-
-						iter = 1;
-						eventData = {"1": eventData[Object.keys(eventData).length]};
+						output = temp + output;
 					}
+
+					if(countOccurrences(output, curDir+">") > 1){
+						// grab everything between last and second to last occurence of curDir + ">"
+						let	secondToLastIndexOfCurDir = output.lastIndexOf(curDir+">", output.lastIndexOf(curDir+">")-1);
+						let	lastIndexOfCurDir = output.lastIndexOf(curDir+">");
+						let	finalOutput = output.substring(secondToLastIndexOfCurDir, lastIndexOfCurDir);
+						let updated = tracker.updateOutput(finalOutput);
+						if(updated){
+							// tracker.commit();
+							console.log(finalOutput);
+						}
+					}
+
+					iter = 0;
+					eventData = new Object();
 				}
 			}
 		}
@@ -107,6 +90,10 @@ function activate(context) {
 
 	context.subscriptions.push(disposable);
 }
+
+function countOccurrences(string, word) {
+	return string.split(word).length - 1;
+ }
 
 // this method is called when your extension is deactivated
 function deactivate() {
