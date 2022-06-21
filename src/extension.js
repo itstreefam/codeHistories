@@ -3,6 +3,7 @@
 const vscode = require('vscode');
 const simpleGit = require('simple-git');
 const gitTracker = require('./git-tracker');
+var os = require('os');
 var tracker = null;
 var iter = 0;
 var eventData = new Object();
@@ -58,15 +59,20 @@ function activate(context) {
 							output = temp + output;
 						}
 
-						if(countOccurrences(output, curDir+">") > 1){
+						if(countOccurrences(output, "Windows PowerShell") == 0){
 							// grab everything between last and second to last occurence of curDir + ">"
 							let	secondToLastIndexOfCurDir = output.lastIndexOf(curDir+">", output.lastIndexOf(curDir+">")-1);
 							let	lastIndexOfCurDir = output.lastIndexOf(curDir+">");
+							// check if a few position before the last occurence of curDir + ">" contains "PS"
+							if(output.substring(lastIndexOfCurDir-3, lastIndexOfCurDir) == "PS "){
+								lastIndexOfCurDir = output.lastIndexOf(curDir+">") - 3;
+							}
+
 							let	finalOutput = output.substring(secondToLastIndexOfCurDir, lastIndexOfCurDir);
 							let updated = tracker.updateOutput(finalOutput);
 							if(updated){
-								tracker.commit();
-								// console.log(finalOutput);
+								console.log(finalOutput);
+								tracker.checkWebData();
 							}
 						}
 
@@ -91,10 +97,12 @@ function activate(context) {
 
 		// split vothientripham from /Users/vothientripham/Desktop/test-web
 		var user = currentDir.split("/")[2];
+		var hostname = os.hostname();
 
-		// get uname -n to get the hostname
-		var result = require('child_process').execSync('uname -n');
-		var hostname = result.toString().trim();
+		// grab the hostname before the first occurence of "."
+		if(hostname.indexOf(".") > 0){
+			hostname = hostname.substring(0, hostname.indexOf("."));
+		}
 
 		// check if mac_regex_dir matches "vothientripham@1350-AL-05044 test-web %"
 		// regex for validating folder name
@@ -131,10 +139,15 @@ function activate(context) {
 
 						// make sure output contains at most 1 occurence of mac_regex_dir
 						if(countOccurrences(output, user + "@" + hostname) <= 1){
+							// find the last occurence of "%" and second to last occurence of "%"
+							let secondToLastIndexOfPercent = output.lastIndexOf("%", output.lastIndexOf("%")-1);
+							if(secondToLastIndexOfPercent > 0){
+								output = output.substring(0, secondToLastIndexOfPercent);
+							}
 							let updated = tracker.updateOutput(output);	
 							if(updated){
-								tracker.commit();
-								// console.log(output);
+								tracker.checkWebData();
+								console.log(output);
 							}
 						}
 
