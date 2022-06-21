@@ -54,22 +54,11 @@ module.exports = class gitTracker {
         // store output of current terminal to a new file
         // if file already exists, append to it
 
-        if(process.platform == "win32"){
-            // avoid gitk or cd in commits if user accidentally using these commands within vscode terminal
-            let edgeCases = ["gitk", "cd", "dir", "ls"];
-            for(let i = 0; i < edgeCases.length; i++){
-                if(output.includes(edgeCases[i])){
-                    return false;
-                }
-            }
-        }
-
-        if(process.platform == "darwin"){
-            let edgeCases = ["ggitk", "ccd", "lls"];
-            for(let i=0; i<edgeCases.length; i++){
-                if(output.includes(edgeCases[i])){
-                    return false;
-                }
+        // avoid gitk or cd in commits if user accidentally using these commands within vscode terminal
+        let edgeCases = ["gitk", "cd", "dir", "ls"];
+        for(let i = 0; i < edgeCases.length; i++){
+            if(output.includes(edgeCases[i])){
+                return false;
             }
         }
 
