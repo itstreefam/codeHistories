@@ -58,15 +58,21 @@ function activate(context) {
 							output = temp + output;
 						}
 
-						if(countOccurrences(output, curDir+">") > 1){
+						if(countOccurrences(output, "Windows PowerShell") == 0){
 							// grab everything between last and second to last occurence of curDir + ">"
 							let	secondToLastIndexOfCurDir = output.lastIndexOf(curDir+">", output.lastIndexOf(curDir+">")-1);
 							let	lastIndexOfCurDir = output.lastIndexOf(curDir+">");
+							// check if a few position before the last occurence of curDir + ">" contains "PS"
+							if(output.substring(lastIndexOfCurDir-3, lastIndexOfCurDir) == "PS "){
+								lastIndexOfCurDir = output.lastIndexOf(curDir+">") - 3;
+							}
+
 							let	finalOutput = output.substring(secondToLastIndexOfCurDir, lastIndexOfCurDir);
 							let updated = tracker.updateOutput(finalOutput);
 							if(updated){
-								tracker.commit();
-								// console.log(finalOutput);
+								console.log(finalOutput);
+								tracker.checkWebData();
+								// tracker.commit();
 							}
 						}
 

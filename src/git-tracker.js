@@ -1,3 +1,4 @@
+const vscode = require('vscode');
 const simpleGit = require('simple-git');
 const fs = require('fs');
 
@@ -33,6 +34,22 @@ module.exports = class gitTracker {
         this.git.add('./*').commit(commitMessage);
     }
 
+    checkWebData(){
+        // check if web data is being tracked
+        if(fs.existsSync(this._currentDir + '/data')){
+            // set timeout for 10 seconds to make sure that data is most updated
+            vscode.window.showInformationMessage('Committing! Hang tight!');
+            setTimeout(() => {
+                this.commit();
+                vscode.window.showInformationMessage('Committed! Please continue!');
+            }
+            , 10000);
+        }
+        else{
+            vscode.window.showInformationMessage('Data does not exist! Make sure to also use webActivities.');
+        }
+    }
+
     updateOutput(output){
         // store output of current terminal to a new file
         // if file already exists, append to it
@@ -40,9 +57,8 @@ module.exports = class gitTracker {
         if(process.platform == "win32"){
             // avoid gitk or cd in commits if user accidentally using these commands within vscode terminal
             let edgeCases = ["gitk", "cd", "dir", "ls"];
-            let curDir = this._currentDir.charAt(0).toUpperCase() + this._currentDir.slice(1);
             for(let i = 0; i < edgeCases.length; i++){
-                if(output.includes(curDir + "> " + edgeCases[i])){
+                if(output.includes(edgeCases[i])){
                     return false;
                 }
             }
