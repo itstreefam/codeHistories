@@ -3,15 +3,34 @@
 const vscode = require('vscode');
 const simpleGit = require('simple-git');
 const gitTracker = require('./git-tracker');
-var os = require('os');
+const os = require('os');
+
 var tracker = null;
 var iter = 0;
 var eventData = new Object();
+var globalStr = "";
 
 /**
  * @param {vscode.ExtensionContext} context
  */
 function activate(context) {
+
+	// https://stackoverflow.com/questions/13697500/character-limit-of-a-javascript-string-variable
+	for (var startPow2 = 1; startPow2 < 9007199254740992; startPow2 *= 2) {
+		try {" ".repeat(startPow2);} catch(e) {
+			break;
+		}
+	}
+
+	var floor = Math.floor, mask = floor(startPow2 / 2);
+	while (startPow2 = floor(startPow2 / 2)) {
+		try {
+			" ".repeat(mask + startPow2);
+			mask += startPow2; // the previous statement succeeded
+		} catch(e) {}
+	}
+
+	var maxStrLength = mask;
 
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code will only be executed once when your extension is activated
@@ -118,43 +137,110 @@ function activate(context) {
 			activeTerminal = vscode.window.activeTerminal;
 			if (activeTerminal == event.terminal) {
 				if(event.terminal.name == "Python"){
-					let terminalData= event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '')
-					// .replace(/(\r\n|\n|\r)/gm, "");
-					
+					let terminalData= event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
 					iter += 1;
 					eventData[iter] = terminalData;
+					globalStr = globalStr + String(terminalData);
 
 					if(mac_regex_dir.test(eventData[iter].trim())){
 						// get the string between mac_regex_dir and previous index of mac_regex_dir
-						let output = eventData[iter];
+						// let output = eventData[iter];
 
-						for(let i = iter-1; i > 0; i--){
-							let temp = eventData[i];
-							let tempRegex = new RegExp(user + "@" + hostname + '[^\\\\/?%*:|"<>\.]+');
+						// for(let i = iter-1; i > 0; i--){
+						// 	let temp = eventData[i];
+						// 	let tempRegex = new RegExp(user + "@" + hostname + '[^\\\\/?%*:|"<>\.]+');
 		
-							// check if temp contains "mac_regex_dir"
-							if(temp.match(tempRegex)){
-								break
-							}
-							output = temp + output;
-						}
+						// 	// check if temp contains "mac_regex_dir"
+						// 	if(temp.match(tempRegex)){
+						// 		break
+						// 	}
+						// 	output = temp + output;
+						// }
 
-						// make sure output contains at most 1 occurence of mac_regex_dir
-						if(countOccurrences(output, user + "@" + hostname) <= 1){
-							// find the last occurence of "%" and second to last occurence of "%"
-							let secondToLastIndexOfPercent = output.lastIndexOf("%", output.lastIndexOf("%")-1);
-							if(secondToLastIndexOfPercent > 0){
-								output = output.substring(0, secondToLastIndexOfPercent);
-							}
-							let updated = tracker.updateOutput(output);	
-							if(updated){
-								tracker.checkWebData();
-								console.log(output);
-							}
-						}
+						// // make sure output contains at most 1 occurence of mac_regex_dir
+						// if(countOccurrences(output, user + "@" + hostname) <= 1){
+						// 	// find the last occurence of "%" and second to last occurence of "%"
+						// 	let secondToLastIndexOfPercent = output.lastIndexOf("%", output.lastIndexOf("%")-1);
+						// 	if(secondToLastIndexOfPercent > 0){
+						// 		output = output.substring(0, secondToLastIndexOfPercent);
+						// 	}
+						// 	let updated = tracker.updateOutput(output);	
+						// 	if(updated){
+						// 		// tracker.checkWebData();
+						// 		// console.log(output);
+						// 	}
+						// }
 
 						iter = 0;
 						eventData = new Object();
+					}
+
+					// if user is using virtual environment
+					if(globalStr.includes("activate")){
+						if(countOccurrences(globalStr, user + "@" + hostname) >= 3){
+							// grab everything between last and second to last occurence of user@hostname
+							let output = globalStr;
+							let lastIndexOfUserHostname = globalStr.lastIndexOf(user + "@" + hostname);
+							let secondToLastIndexOfUserHostname = globalStr.lastIndexOf(user + "@" + hostname, lastIndexOfUserHostname-1);
+							if(secondToLastIndexOfUserHostname > 0){
+								output = output.substring(secondToLastIndexOfUserHostname, lastIndexOfUserHostname);
+								let temp = new RegExp(user + "@" + hostname + '(.*?)%');
+								let cwd = output.match(temp)[0];
+	
+								// if eventData is empty
+								// wait until all data are completely written out in the terminal
+								if(JSON.stringify(eventData) === '{}'){
+									output = removeBackspaces(output);
+
+									// console.log(output.replaceAll(' ',''));
+									// console.log(cwd.replaceAll(' ',''));
+									// console.log(similarity(output.replaceAll(' ',''), cwd.replaceAll(' ','')));
+
+									// if similarity score is above 0.7
+									// the user is changing the terminal dimension
+									// or simply interacting with terminal using cmd such as cd
+									// it is advised that user limits their typing directly into the terminal
+									if(similarity(output.replaceAll(' ',''), cwd.replaceAll(' ','')) < 0.7){
+										let updated = tracker.updateOutput(output);
+									}
+
+									// if globalStr length is within 5% of max length
+									if(globalStr.length > maxStrLength*0.95){
+										console.log(globalStr.length);
+										globalStr = cwd;
+									}
+								}
+							}
+						}
+					} else {
+						if(countOccurrences(globalStr, user + "@" + hostname) >= 2){
+							// grab everything between last and second to last occurence of user@hostname
+							let output = globalStr;
+							let lastIndexOfUserHostname = globalStr.lastIndexOf(user + "@" + hostname);
+							let secondToLastIndexOfUserHostname = globalStr.lastIndexOf(user + "@" + hostname, lastIndexOfUserHostname-1);
+							if(secondToLastIndexOfUserHostname > 0){
+								output = output.substring(secondToLastIndexOfUserHostname, lastIndexOfUserHostname);
+								let temp = new RegExp(user + "@" + hostname + '(.*?)%');
+								let cwd = output.match(temp)[0];
+
+								if(JSON.stringify(eventData) === '{}'){
+									output = removeBackspaces(output);
+
+									// console.log(output.replaceAll(' ',''));
+									// console.log(cwd.replaceAll(' ',''));
+									// console.log(similarity(output.replaceAll(' ',''), cwd.replaceAll(' ','')));
+
+									if(similarity(output.replaceAll(' ',''), cwd.replaceAll(' ','')) < 0.7){
+										let updated = tracker.updateOutput(output);
+									}
+
+									if(globalStr.length > maxStrLength*0.95){
+										console.log(globalStr.length);
+										globalStr = cwd;
+									}
+								}
+							}
+						}
 					}
 				}
 			}
@@ -218,6 +304,14 @@ function editDistance(s1, s2) {
 		costs[s2.length] = lastValue;
 	}
 	return costs[s2.length];
+}
+
+// https://stackoverflow.com/questions/11891653/javascript-concat-string-with-backspace
+function removeBackspaces(str) {
+    while (str.indexOf("\b") != -1) {
+        str = str.replace(/.?\x08/, ""); // 0x08 is the ASCII code for \b
+    }
+    return str;
 }
 
 // this method is called when your extension is deactivated
