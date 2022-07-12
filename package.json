@@ -1,5 +1,5 @@
 {
-  "enabledApiProposals": ["terminalDataWriteEvent"],
+  "enabledApiProposals": ["terminalDataWriteEvent", "terminalDimensions"],
   "name": "codeHistories",
   "displayName": "code-histories",
   "description": "Tracking user's Python code state and output on VSCode",
