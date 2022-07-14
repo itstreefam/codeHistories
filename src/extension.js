@@ -39,7 +39,9 @@ function activate(context) {
 
 	if(process.platform === 'win32'){
 		// regex to match windows dir
-		var regex_dir = /^[\s\S]*:(\\[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+>+.*$/i;
+		var regex_dir = /[\s\S]*:(\\[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+>+.*/gi;
+		// /^[\s\S]*:(\\[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+>+.*$/i;
+		// /[\s\S]*:((\\|\/)[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+>{1}/gi;
 		// /^[a-zA-Z]:\\[\\\S|*\S]?.*$/g
 
 		var curDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
@@ -58,84 +60,75 @@ function activate(context) {
 		tracker = new gitTracker(currentDir);
 		tracker.isGitInitialized();
 
+		var repeatedDir = currentDir.charAt(0).toUpperCase() + currentDir.slice(1);
+		// grab "C:\\Users\\username\\"
+		repeatedDir = repeatedDir.split('\\')[0] + "\\" + repeatedDir.split('\\')[1] + "\\" + repeatedDir.split('\\')[2] + "\\";
+
 		// on did write to terminal
 		vscode.window.onDidWriteTerminalData(event => {
 			activeTerminal = vscode.window.activeTerminal;
 			if (activeTerminal == event.terminal) {
 				if(event.terminal.name == "Python"){
-					let terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
-					iter += 1;
-					eventData[iter] = terminalData;
-
 					if(!terminalDimChanged){
-						globalStr = globalStr + String(terminalData);
+						let terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+						if(!terminalData.includes("Windows PowerShell")){
+							iter += 1;
+							eventData[iter] = terminalData;
 
-						if(regex_dir.test(eventData[iter].trim())){
-							let output = eventData[iter];
-							curDir = output;
-							
-							// for(let i = iter-1; i > 0; i--){
-							// 	let temp = eventData[i];
-							// 	if(temp.match(regex_dir)){
-							// 		break;
-							// 	}
-							// 	output = temp + output;
-							// }
+							if(eventData[1].includes(repeatedDir)){
+								if(!globalStr.includes(repeatedDir)){
+									globalStr = globalStr + eventData[1];
+								} else {
+									if(Object.keys(eventData).length > 1){
+										if(similarity(eventData[1], eventData[2]) < 0.7){
+											globalStr = globalStr + eventData[iter];
+										}
+									}
+								}
+							} else {
+								if(eventData[2] == ''){
+									eventData[2] = repeatedDir;
+								}
+								globalStr = globalStr + eventData[iter];
+							}
 
-							// if(countOccurrences(output, "Windows PowerShell") == 0){
-							// 	// grab everything between last and second to last occurence of curDir + ">"
-							// 	let	secondToLastIndexOfCurDir = output.lastIndexOf(curDir, output.lastIndexOf(curDir)-1);
-							// 	let	lastIndexOfCurDir = output.lastIndexOf(curDir);
+							// console.log(globalStr);
+							// console.log(eventData);
 
-							// 	let	finalOutput = output.substring(secondToLastIndexOfCurDir, lastIndexOfCurDir);
-							// 	finalOutput = removeBackspaces(finalOutput);
+							if(regex_dir.test(eventData[iter].trim())){
+								iter = 0;
+								eventData = new Object();	
+							}
 
-							// 	// finalOutput = curDir + finalOutput;
+							if(countOccurrences(globalStr, repeatedDir) >= 2){
+								// grab everything between last and second to last occurence of curDir
+								let output = globalStr;
+								let lastIndexOfCurDir = output.lastIndexOf(repeatedDir);
+								let secondToLastIndexOfCurDir = output.lastIndexOf(repeatedDir, lastIndexOfCurDir-1);
 
-							// 	// console.log(globalStr);
+								if(secondToLastIndexOfCurDir >= 0){
+									output = output.substring(secondToLastIndexOfCurDir, lastIndexOfCurDir);
 
-							// 	// console.log(similarity(finalOutput, curDir));
-
-							// 	console.log(finalOutput);
-							// 	// console.log(entropy(finalOutput));
-
-							// 	if(!/cd|gitk|dir|ls/.test(finalOutput)){
-							// 		let updated = tracker.updateOutput(finalOutput);
-							// 		if(updated){
-							// 			// console.log(finalOutput);
-							// 			// tracker.checkWebData();
-							// 		}
-							// 	}
-							// }
-
-							iter = 0;
-							eventData = new Object();	
-						}
-
-						if(countOccurrences(globalStr, curDir) >= 2){
-							// grab everything between last and second to last occurence of curDir
-							let output = globalStr;
-							let lastIndexOfUserHostname = globalStr.lastIndexOf(curDir);
-							let secondToLastIndexOfUserHostname = globalStr.lastIndexOf(curDir, lastIndexOfUserHostname-1);
-							if(secondToLastIndexOfUserHostname > 0){
-								output = output.substring(secondToLastIndexOfUserHostname, lastIndexOfUserHostname);
-								if(JSON.stringify(eventData) === '{}'){
-									output = removeBackspaces(output);
-									// output = output.replace(curDir, '');
-									// console.log(entropy(output));
 									// console.log(output);
+									// console.log(eventData);
+									if(JSON.stringify(eventData) === '{}'){
+										output = removeBackspaces(output);
+										// console.log(output);
 
-									// console.log(output.replace(/(\r\n|\n|\r)/gm,''));
-									// console.log(curDir.replace(/(\r\n|\n|\r)/gm,''));
-									// console.log(similarity(output.replace(/(\r\n|\n|\r)/gm,''), curDir.replace(/(\r\n|\n|\r)/gm,'')));
+										let edgeCases = ["clear", "cd", "Activate", "activate"];
+										let test = edgeCases.some(el => output.includes(el));
+										
+										if(!test){
+											let updated = tracker.updateOutput(output);
+											if(updated){
+												console.log(output);
+											}
+										}
 
-									if(!/cd|ls|dir|clear|dir/.test(output)){
-										let updated = tracker.updateOutput(output);
-									} 
-
-									if(globalStr.length > maxStrLength*0.95){
-										console.log(globalStr.length);
-										globalStr = curDir;
+										if(globalStr.length > maxStrLength*0.95){
+											console.log(globalStr.length);
+											globalStr = repeatedDir;
+										}
 									}
 								}
 							}
@@ -148,7 +141,7 @@ function activate(context) {
 		});
 
 		vscode.window.onDidChangeTerminalDimensions(event => {
-			if(countOccurrences(globalStr, curDir) >= 2){
+			if(countOccurrences(globalStr, repeatedDir) >= 2){
 				terminalDimChanged = true;
 			}
 		});
@@ -251,6 +244,9 @@ function activate(context) {
 									// it is advised that user limits their typing directly into the terminal
 									if(similarity(output.replaceAll(' ',''), cwd.replaceAll(' ','')) < 0.7){
 										let updated = tracker.updateOutput(output);
+										if(updated){
+											tracker.checkWebData();
+										}
 									}
 
 									// if globalStr length is within 5% of max length
@@ -281,6 +277,9 @@ function activate(context) {
 
 									if(similarity(output.replaceAll(' ',''), cwd.replaceAll(' ','')) < 0.7){
 										let updated = tracker.updateOutput(output);
+										if(updated){
+											tracker.checkWebData();
+										}
 									}
 
 									if(globalStr.length > maxStrLength*0.95){
@@ -361,20 +360,6 @@ function removeBackspaces(str) {
         str = str.replace(/.?\x08/, ""); // 0x08 is the ASCII code for \b
     }
     return str;
-}
-
-// https://rosettacode.org/wiki/Entropy#JavaScript
-// Shannon entropy in bits per symbol.
-function entropy(str) {
-	const len = str.length
-   
-	// Build a frequency map from the string.
-	const frequencies = Array.from(str)
-	  .reduce((freq, c) => (freq[c] = (freq[c] || 0) + 1) && freq, {})
-   
-	// Sum the frequency of each character.
-	return Object.values(frequencies)
-	  .reduce((sum, f) => sum - f/len * Math.log2(f/len), 0)
 }
 
 // this method is called when your extension is deactivated
