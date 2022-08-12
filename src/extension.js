@@ -10,6 +10,7 @@ var iter = 0;
 var eventData = new Object();
 var globalStr = "";
 var terminalDimChanged = false;
+var terminalOpenedFirstTime = false;
 
 /**
  * @param {vscode.ExtensionContext} context
@@ -39,7 +40,9 @@ function activate(context) {
 
 	if(process.platform === 'win32'){
 		// regex to match windows dir
-		var regex_dir = /[\s\S]*:(\\[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+>+.*/gi;
+		var regex_dir = /[\s\S]*:((\\|\/)[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+[\s\S][\r\n]{1}/gi
+		// /[\s\S]*:((\\|\/)[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+[\s\S]*/gi
+		// /[\s\S]*:(\\[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+>+.*/gi;
 		// /^[\s\S]*:(\\[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+>+.*$/i;
 		// /[\s\S]*:((\\|\/)[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+>{1}/gi;
 		// /^[a-zA-Z]:\\[\\\S|*\S]?.*$/g
@@ -64,86 +67,102 @@ function activate(context) {
 		// grab "C:\\Users\\username\\"
 		repeatedDir = repeatedDir.split('\\')[0] + "\\" + repeatedDir.split('\\')[1] + "\\" + repeatedDir.split('\\')[2] + "\\";
 
+		var user = os.userInfo().username;
+		var hostname = os.hostname();
+
+		// grab the hostname before the first occurence of "."
+		if(hostname.indexOf(".") > 0){
+			hostname = hostname.substring(0, hostname.indexOf("."));
+		}
+		var test_regex_dir = new RegExp(user + "@" + hostname + '[\s\S]*');
+
 		// on did write to terminal
 		vscode.window.onDidWriteTerminalData(event => {
 			activeTerminal = vscode.window.activeTerminal;
 			if (activeTerminal == event.terminal) {
 				if(event.terminal.name == "Python"){
+					let terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');	
+					iter += 1;
+					eventData[iter] = terminalData;
 					if(!terminalDimChanged){
-						let terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
-						if(!terminalData.includes("Windows PowerShell")){
-							iter += 1;
-							eventData[iter] = terminalData;
+						
+						console.log(eventData);
 
-							if(eventData[1].includes(repeatedDir)){
-								if(!globalStr.includes(repeatedDir)){
-									globalStr = globalStr + eventData[1];
+						if(test_regex_dir.test(eventData[iter].trim())){
+							let output = eventData[iter].trim();
+							for(let i = iter-1; i > 0; i--){
+								let temp = eventData[i];
+								if(temp.match(test_regex_dir)){
+									break
+								}
+								output = temp + output;
+							}
+
+							if(Object.keys(eventData).length >= 2){
+								let secondToLastIndexOfTemp = output.lastIndexOf(user + "@" + hostname, output.lastIndexOf(user + "@" + hostname)-1);
+								let temp = output.lastIndexOf(user + "@" + hostname);
+								if(secondToLastIndexOfTemp > 0){
+									output = output.substring(secondToLastIndexOfTemp, temp-1);
 								} else {
-									if(Object.keys(eventData).length > 1){
-										if(similarity(eventData[1], eventData[2]) < 0.7){
-											globalStr = globalStr + eventData[iter];
-										}
-									}
+									output = output.substring(0, temp-1);
 								}
-							} else {
-								if(eventData[2] == ''){
-									eventData[2] = repeatedDir;
-								}
-								globalStr = globalStr + eventData[iter];
-							}
 
-							// console.log(globalStr);
-							// console.log(eventData);
+								// console.log(output);
+								console.log(output.match(regex_dir));
 
-							if(regex_dir.test(eventData[iter].trim())){
-								iter = 0;
-								eventData = new Object();	
-							}
-
-							if(countOccurrences(globalStr, repeatedDir) >= 2){
-								// grab everything between last and second to last occurence of curDir
-								let output = globalStr;
-								let lastIndexOfCurDir = output.lastIndexOf(repeatedDir);
-								let secondToLastIndexOfCurDir = output.lastIndexOf(repeatedDir, lastIndexOfCurDir-1);
-
-								if(secondToLastIndexOfCurDir >= 0){
-									output = output.substring(secondToLastIndexOfCurDir, lastIndexOfCurDir);
-
-									// console.log(output);
-									// console.log(eventData);
-									if(JSON.stringify(eventData) === '{}'){
+								if(terminalOpenedFirstTime){
+									console.log('ayo')
+									if(countOccurrences(output, user + "@" + hostname) == 0){
+										output = output.replace(output.match(regex_dir), '');
 										output = removeBackspaces(output);
-										// console.log(output);
-
-										let edgeCases = ["clear", "cd", "Activate", "activate"];
-										let test = edgeCases.some(el => output.includes(el));
-										
-										if(!test){
-											let updated = tracker.updateOutput(output);
-											if(updated){
-												console.log(output);
-											}
-										}
-
-										if(globalStr.length > maxStrLength*0.95){
-											console.log(globalStr.length);
-											globalStr = repeatedDir;
+										let updated = tracker.updateOutput(output);	
+										if(updated){
+											// tracker.checkWebData();
+											// console.log(output);
+											vscode.window.showInformationMessage('output.txt updated!');
 										}
 									}
-								}
+									// iter = 0;
+									// eventData = new Object();
+									terminalOpenedFirstTime = false;
+								} else {
+									console.log('here')
+									if(countOccurrences(output, user + "@" + hostname) == 0 && regex_dir.test(output)){
+										output = output.replace(output.match(regex_dir), '');
+										output = removeBackspaces(output);
+										let updated = tracker.updateOutput(output);	
+										if(updated){
+											// tracker.checkWebData();
+											// console.log(output);
+											vscode.window.showInformationMessage('output.txt updated!');
+										}
+									}
+								}		
 							}
+
+							iter = 0;
+							eventData = new Object();
 						}
 					} else {
 						terminalDimChanged = false;
+						if(terminalOpenedFirstTime){
+							iter = 0;
+							eventData = new Object();
+						} else {
+							eventData[iter] = '';
+						}
 					}
 				}
 			}
 		});
 
 		vscode.window.onDidChangeTerminalDimensions(event => {
-			if(countOccurrences(globalStr, repeatedDir) >= 2){
-				terminalDimChanged = true;
-			}
+			// console.log(event);
+			terminalDimChanged = true;
+		});
+
+		vscode.window.onDidOpenTerminal(event => {
+			terminalOpenedFirstTime = true;
 		});
 	}
 
@@ -305,7 +324,13 @@ function activate(context) {
 		vscode.window.showInformationMessage('Code histories activated!');
 	});
 
+	let executeCode = vscode.commands.registerCommand('codeHistories.checkAndCommit', function () {
+		// tracker.checkWebData();
+		console.log('call checkwebdata');
+	});
+
 	context.subscriptions.push(disposable);
+	context.subscriptions.push(executeCode);
 }
 
 function countOccurrences(string, word) {
