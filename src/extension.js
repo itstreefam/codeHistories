@@ -58,11 +58,11 @@ function activate(context) {
 			activeTerminal = vscode.window.activeTerminal;
 			if (activeTerminal == event.terminal) {
 				if(event.terminal.name == "Python"){
-					let terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');	
+					let terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
 					iter += 1;
 					eventData[iter] = terminalData;
 					if(!terminalDimChanged){
-						console.log(eventData);
+						// console.log(eventData);
 
 						if(test_regex_dir.test(eventData[iter].trim())){
 							let output = eventData[iter].trim();
@@ -74,57 +74,50 @@ function activate(context) {
 								output = temp + output;
 							}
 
-							if(Object.keys(eventData).length >= 2){
-								let secondToLastIndexOfTemp = output.lastIndexOf(user + "@" + hostname, output.lastIndexOf(user + "@" + hostname)-1);
-								let temp = output.lastIndexOf(user + "@" + hostname);
-								if(secondToLastIndexOfTemp > 0){
-									output = output.substring(secondToLastIndexOfTemp, temp-1);
-								} else {
-									output = output.substring(0, temp-1);
+							// console.log(output);
+							// console.log(output.lastIndexOf("\/Users\/" + user + '\/') )
+							// console.log(output.indexOf(user + "@" + hostname));
+
+							// do not commit source, activate, ]0;MINGW64, etc.
+							let avoidInitialTerminalLoad = (output.lastIndexOf("\/Users\/" + user + '\/') >= output.indexOf(user + "@" + hostname));
+							if(avoidInitialTerminalLoad){
+								// console.log(eventData);
+								iter = 0;
+								eventData = new Object();
+							} else {
+								if(Object.keys(eventData).length >= 2){
+									// console.log(output);
+									let secondToLastIndexOfTemp = output.lastIndexOf(user + "@" + hostname, output.lastIndexOf(user + "@" + hostname)-1);
+									let temp = output.lastIndexOf(user + "@" + hostname);
+									if(secondToLastIndexOfTemp > 0){
+										output = output.substring(secondToLastIndexOfTemp, temp-1);
+									} else {
+										output = output.substring(0, temp-1);
+									}
+	
+									// console.log(output);
+									// console.log(output.match(regex_dir));	
+
+									if(output.length > 1){
+										output = output.replaceAll('$', '');
+										output = removeBackspaces(output);
+										output = output.trim();
+										let updated = tracker.updateOutput(output);	
+										if(updated){
+											tracker.checkWebData();
+											// console.log(output);
+											// vscode.window.showInformationMessage('output.txt updated!');
+										}
+									}
+
+									iter = 0;
+									eventData = new Object();
 								}
-
-								// console.log(output);
-								console.log(output.match(regex_dir));
-
-								if(terminalOpenedFirstTime){
-									console.log('ayo')
-									if(countOccurrences(output, user + "@" + hostname) == 0){
-										output = output.replace(output.match(regex_dir), '');
-										output = removeBackspaces(output);
-										let updated = tracker.updateOutput(output);	
-										if(updated){
-											// tracker.checkWebData();
-											// console.log(output);
-											vscode.window.showInformationMessage('output.txt updated!');
-										}
-									}
-									terminalOpenedFirstTime = false;
-								} else {
-									console.log('here')
-									if(countOccurrences(output, user + "@" + hostname) == 0 && regex_dir.test(output)){
-										output = output.replace(output.match(regex_dir), '');
-										output = removeBackspaces(output);
-										let updated = tracker.updateOutput(output);	
-										if(updated){
-											// tracker.checkWebData();
-											// console.log(output);
-											vscode.window.showInformationMessage('output.txt updated!');
-										}
-									}
-								}		
 							}
-
-							iter = 0;
-							eventData = new Object();
 						}
 					} else {
 						terminalDimChanged = false;
-						if(terminalOpenedFirstTime){
-							iter = 0;
-							eventData = new Object();
-						} else {
-							eventData[iter] = '';
-						}
+						eventData[iter] = '';
 					}
 				}
 			}
@@ -133,10 +126,6 @@ function activate(context) {
 		vscode.window.onDidChangeTerminalDimensions(event => {
 			// console.log(event);
 			terminalDimChanged = true;
-		});
-
-		vscode.window.onDidOpenTerminal(event => {
-			terminalOpenedFirstTime = true;
 		});
 	}
 
@@ -281,7 +270,9 @@ function activate(context) {
 
 	let executeCode = vscode.commands.registerCommand('codeHistories.checkAndCommit', function () {
 		// tracker.checkWebData();
-		console.log('call checkwebdata');
+		// console.log('call checkwebdata');
+		vscode.commands.executeCommand("workbench.action.terminal.clear");
+		vscode.commands.executeCommand('python.execInTerminal');
 	});
 
 	context.subscriptions.push(disposable);
