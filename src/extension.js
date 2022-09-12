@@ -190,7 +190,7 @@ function activate(context) {
 								// console.log(output);
 								
 								if(terminalOpenedFirstTime){
-									console.log('ayo')
+									// console.log('ayo')
 									if(countOccurrences(output, user + "@" + hostname) == 0){
 										if(output.match(regex_dir).length > 1){
 											let tempIdx = output.lastIndexOf(output.match(regex_dir)[0]);
@@ -204,14 +204,14 @@ function activate(context) {
 										output = removeBackspaces(output);
 										let updated = tracker.updateOutput(output);	
 										if(updated){
-											// tracker.checkWebData();
+											tracker.checkWebData();
 											// console.log(output);
-											vscode.window.showInformationMessage('output.txt updated!');
+											// vscode.window.showInformationMessage('output.txt updated!');
 										}
 									}
 									terminalOpenedFirstTime = false;
 								} else {
-									console.log('here')
+									// console.log('here')
 									if(countOccurrences(output, user + "@" + hostname) == 0 && regex_dir.test(output)){
 										if(output.match(regex_dir).length > 1){
 											let tempIdx = output.lastIndexOf(output.match(regex_dir)[0]);
@@ -225,9 +225,9 @@ function activate(context) {
 										output = removeBackspaces(output);
 										let updated = tracker.updateOutput(output);	
 										if(updated){
-											// tracker.checkWebData();
+											tracker.checkWebData();
 											// console.log(output);
-											vscode.window.showInformationMessage('output.txt updated!');
+											// vscode.window.showInformationMessage('output.txt updated!');
 										}
 									}
 								}		
@@ -268,15 +268,7 @@ function activate(context) {
 		vscode.window.showInformationMessage('Code histories activated!');
 	});
 
-	let executeCode = vscode.commands.registerCommand('codeHistories.checkAndCommit', function () {
-		// tracker.checkWebData();
-		// console.log('call checkwebdata');
-		vscode.commands.executeCommand("workbench.action.terminal.clear");
-		vscode.commands.executeCommand('python.execInTerminal');
-	});
-
 	context.subscriptions.push(disposable);
-	context.subscriptions.push(executeCode);
 }
 
 function countOccurrences(string, word) {

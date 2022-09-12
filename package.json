@@ -22,21 +22,8 @@
       {
         "command": "codeHistories.codeHistories",
         "title": "Code Histories"
-      },
-      {
-        "command": "codeHistories.checkAndCommit",
-        "title": "Code Histories commit",
-        "icon": "$(check-all)"
       }
-    ],
-    "menus": {
-      "editor/title": [
-        {
-          "command": "codeHistories.checkAndCommit",
-          "group": "navigation"
-        }
-      ]
-    }
+    ]
   },
   
   "scripts": {
