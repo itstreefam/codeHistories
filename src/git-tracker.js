@@ -54,14 +54,6 @@ module.exports = class gitTracker {
         // store output of current terminal to a new file
         // if file already exists, append to it
 
-        // avoid gitk or cd in commits if user accidentally using these commands within vscode terminal
-        let edgeCases = ["gitk", "cd", "dir", "ls"];
-        for(let i = 0; i < edgeCases.length; i++){
-            if(output.includes(edgeCases[i])){
-                return false;
-            }
-        }
-
         if (fs.existsSync(this._currentDir + '/output.txt')) {
             // if file is empty
             if (fs.statSync(this._currentDir + '/output.txt').size == 0) {
