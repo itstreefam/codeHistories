@@ -9,7 +9,8 @@ var tracker = null;
 var iter = 0;
 var eventData = new Object();
 var terminalDimChanged = false;
-var terminalOpenedFirstTime = false;
+var checkThenCommit = null;
+var terminalName = "Code";
 
 /**
  * @param {vscode.ExtensionContext} context
@@ -57,12 +58,12 @@ function activate(context) {
 		vscode.window.onDidWriteTerminalData(event => {
 			activeTerminal = vscode.window.activeTerminal;
 			if (activeTerminal == event.terminal) {
-				if(event.terminal.name == "Python"){
+				if(event.terminal.name == terminalName){
 					let terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
 					iter += 1;
 					eventData[iter] = terminalData;
 					if(!terminalDimChanged){
-						// console.log(eventData);
+						console.log(eventData);
 
 						if(test_regex_dir.test(eventData[iter].trim())){
 							let output = eventData[iter].trim();
@@ -102,11 +103,14 @@ function activate(context) {
 										output = output.replaceAll('$', '');
 										output = removeBackspaces(output);
 										output = output.trim();
-										let updated = tracker.updateOutput(output);	
-										if(updated){
-											tracker.checkWebData();
+										if(checkThenCommit){
 											// console.log(output);
-											// vscode.window.showInformationMessage('output.txt updated!');
+											let outputUpdated = tracker.updateOutput(output);	
+											console.log('output.txt updated?', outputUpdated);
+											if(outputUpdated){
+												tracker.checkWebData();
+											}
+											checkThenCommit = false;
 										}
 									}
 
@@ -160,7 +164,7 @@ function activate(context) {
 		vscode.window.onDidWriteTerminalData(event => {
 			activeTerminal = vscode.window.activeTerminal;
 			if (activeTerminal == event.terminal) {
-				if(event.terminal.name == "Python"){
+				if(event.terminal.name == terminalName){
 					let terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');					
 					iter += 1;
 					eventData[iter] = terminalData;
@@ -268,7 +272,27 @@ function activate(context) {
 		vscode.window.showInformationMessage('Code histories activated!');
 	});
 
+	let executeCode = vscode.commands.registerCommand('codeHistories.checkAndCommit', function () {
+		// tracker.checkWebData();
+		// console.log('call checkwebdata');
+		// vscode.commands.executeCommand("workbench.action.terminal.clear");
+		checkThenCommit = true;
+
+		// save all files
+		vscode.commands.executeCommand("workbench.action.files.saveAll");
+
+		// add all files to git
+		tracker.gitAdd();
+
+		if(terminalName == "Python"){
+			vscode.commands.executeCommand('python.execInTerminal');
+		} else if(terminalName == "Code"){
+			vscode.commands.executeCommand('code-runner.run');
+		}
+	});
+
 	context.subscriptions.push(disposable);
+	context.subscriptions.push(executeCode);
 }
 
 function countOccurrences(string, word) {
