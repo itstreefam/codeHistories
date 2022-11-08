@@ -18,7 +18,10 @@ var terminalName = "Code";
 function activate(context) {
 	console.log('Congratulations, your extension "codeHistories" is now active!');
 
-	if(process.platform === 'win32'){
+	// make a regex that match everything between \033]0; and \007
+	var very_special_regex = new RegExp("\033]0;(.*)\007", "g");
+
+	if(process.platform === 'win32' || process.platform === 'linux'){
 		// regex to match windows dir
 		var regex_dir = /[\s\S]*:((\\|\/)[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+[\s\S][\r\n]{1}/gi
 		// /[\s\S]*:((\\|\/)[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+[\s\S]*/gi
@@ -60,8 +63,18 @@ function activate(context) {
 			if (activeTerminal == event.terminal) {
 				if(event.terminal.name == terminalName){
 					let terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+					
+					// test if very_special_regex matches
+					if(very_special_regex.test(terminalData)){
+						// get the matched string
+						var matched = terminalData.match(very_special_regex);
+						// remove the matched from the terminalData
+						terminalData = terminalData.replace(matched, "");
+					}
+					
 					iter += 1;
 					eventData[iter] = terminalData;
+
 					if(!terminalDimChanged){
 						console.log(eventData);
 
@@ -75,7 +88,7 @@ function activate(context) {
 								output = temp + output;
 							}
 
-							// console.log(output);
+							console.log(output);
 							// console.log(output.lastIndexOf("\/Users\/" + user + '\/') )
 							// console.log(output.indexOf(user + "@" + hostname));
 
@@ -194,7 +207,7 @@ function activate(context) {
 								// console.log(output);
 								
 								if(terminalOpenedFirstTime){
-									// console.log('ayo')
+									console.log('ayo')
 									if(countOccurrences(output, user + "@" + hostname) == 0){
 										if(output.match(regex_dir).length > 1){
 											let tempIdx = output.lastIndexOf(output.match(regex_dir)[0]);
@@ -206,16 +219,26 @@ function activate(context) {
 										}
 
 										output = removeBackspaces(output);
-										let updated = tracker.updateOutput(output);	
-										if(updated){
-											tracker.checkWebData();
+
+										// let updated = tracker.updateOutput(output);	
+										// if(updated){
+										// 	tracker.checkWebData();
+										// 	// console.log(output);
+										// 	// vscode.window.showInformationMessage('output.txt updated!');
+										// }
+										if(checkThenCommit){
 											// console.log(output);
-											// vscode.window.showInformationMessage('output.txt updated!');
+											let outputUpdated = tracker.updateOutput(output);	
+											console.log('output.txt updated?', outputUpdated);
+											if(outputUpdated){
+												tracker.checkWebData();
+											}
+											checkThenCommit = false;
 										}
 									}
 									terminalOpenedFirstTime = false;
 								} else {
-									// console.log('here')
+									console.log('here')
 									if(countOccurrences(output, user + "@" + hostname) == 0 && regex_dir.test(output)){
 										if(output.match(regex_dir).length > 1){
 											let tempIdx = output.lastIndexOf(output.match(regex_dir)[0]);
@@ -227,11 +250,20 @@ function activate(context) {
 										}
 
 										output = removeBackspaces(output);
-										let updated = tracker.updateOutput(output);	
-										if(updated){
-											tracker.checkWebData();
+										// let updated = tracker.updateOutput(output);	
+										// if(updated){
+										// 	tracker.checkWebData();
+										// 	// console.log(output);
+										// 	// vscode.window.showInformationMessage('output.txt updated!');
+										// }
+										if(checkThenCommit){
 											// console.log(output);
-											// vscode.window.showInformationMessage('output.txt updated!');
+											let outputUpdated = tracker.updateOutput(output);	
+											console.log('output.txt updated?', outputUpdated);
+											if(outputUpdated){
+												tracker.checkWebData();
+											}
+											checkThenCommit = false;
 										}
 									}
 								}		
