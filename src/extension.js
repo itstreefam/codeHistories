@@ -11,6 +11,8 @@ var eventData = new Object();
 var terminalDimChanged = false;
 var checkThenCommit = null;
 var terminalName = "Code";
+var allTerminalsData = new Object();
+var allTerminalsDirCount = new Object();
 
 /**
  * @param {vscode.ExtensionContext} context
@@ -335,83 +337,119 @@ function activate(context) {
 		var linux_regex_dir = new RegExp(user + "@" + hostname + ".*\\${1}", "g");
 		// var linux_regex_dir = new RegExp(user + "@" + hostname + '[\s\S]*');
 
-		var globalStr = '';
-		var counterMatchedDir = 0;
+		var returned_linux_regex_dir = new RegExp("\\r" + user + "@" + hostname + ".*\\${1}", "g");
+
+		// check if current terminals have more than one terminal instance where name is terminalName
+		var terminalList = vscode.window.terminals;
+		var terminalInstance = 0;
+		for(var i = 0; i < terminalList.length; i++){
+			if(terminalList[i].name == terminalName){
+				terminalInstance++;
+			}
+		}
+
+		// close all terminal instances with name terminalName
+		if(terminalInstance >= 1){
+			for(var i = 0; i < terminalList.length; i++){
+				if(terminalList[i].name == terminalName){
+					terminalList[i].dispose();
+				}
+			}
+		}
 		
 		// on did write to terminal
 		vscode.window.onDidWriteTerminalData(event => {
 			activeTerminal = vscode.window.activeTerminal;
 			if (activeTerminal == event.terminal) {
 				if(event.terminal.name == terminalName){
-					var terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
-					
-					// test if very_special_regex matches
-					if(very_special_regex.test(terminalData)){
-						// get the matched string
-						var matched = terminalData.match(very_special_regex);
-						// remove the matched from the terminalData
-						terminalData = terminalData.replace(matched, "");
-					}
-
-					// see if terminalData contains linux_regex_dir
-					if(linux_regex_dir.test(terminalData)){
-						// get the matched string
-						var matched = terminalData.match(linux_regex_dir);
-						console.log('matched: ', matched);
+					event.terminal.processId.then(pid => {
+						var terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
 						
-						// add length of matched array to counterMatchedDir
-						counterMatchedDir += matched.length;
-					}
-
-					iter += 1;
-					eventData[iter] = terminalData;
-
-					globalStr += terminalData;
-
-					if(checkThenCommit){
-						// combine all the strings in eventData
-						// console.log('globalStr: ', globalStr);
-						console.log('eventData: ', eventData);
-						// console.log('counterMatchedDir: ', counterMatchedDir);
-
-						// if counter is >= 2, then we should have enough information to trim and find the output
-						if(counterMatchedDir >= 2){
-							// grab everything between second to last occurence of linux_regex_dir and the last occurence of linux_regex_dir
-							let secondToLastOccurence = globalStr.lastIndexOf(matched[matched.length - 1], globalStr.lastIndexOf(matched[matched.length - 1]) - 1);
-							let lastOccurence = globalStr.lastIndexOf(matched[matched.length - 1]);
-
-							// find the first occurrence of "\r\n" after the second to last occurence of linux_regex_dir
-							let firstOccurenceOfNewLine = globalStr.indexOf("\r\n", secondToLastOccurence);
-
-							let output = globalStr.substring(firstOccurenceOfNewLine, lastOccurence);
-
-							// clear residual \033]0; and \007 (ESC]0; and BEL)
-							output = output.replace(/\033]0; | \007/g, "");
-							output = output.trim();
-							console.log('output: ', output);
-							
-							// reset globalStr to contain only the last line
-							globalStr = globalStr.substring(lastOccurence);
-							console.log('globalStr: ', globalStr);
-							
-							
-							counterMatchedDir = 1;
-							checkThenCommit = false;
-							eventData = new Object();
+						// test if very_special_regex matches
+						if(very_special_regex.test(terminalData)){
+							// get the matched string
+							var matched = terminalData.match(very_special_regex);
+							// remove the matched from the terminalData
+							terminalData = terminalData.replace(matched, "");
 						}
-					}
+
+						// see if terminalData contains linux_regex_dir
+						if(linux_regex_dir.test(terminalData) && !returned_linux_regex_dir.test(terminalData)){
+							// get the matched string
+							var matched = terminalData.match(linux_regex_dir);
+							console.log('matched: ', matched);
+							
+							// add length of matched array to counterMatchedDir
+							allTerminalsDirCount[pid] += 1;
+						}
+
+						// allTerminalsData[pid] = globalStr of the terminal instance with pid
+						allTerminalsData[pid] += terminalData;
+
+						if(checkThenCommit){
+							console.log('There are %s matched regex dir for pid %s', allTerminalsDirCount[pid], pid);
+
+							// if counter is >= 2, then we should have enough information to trim and find the output
+							if(allTerminalsDirCount[pid] >= 2){
+
+								if(returned_linux_regex_dir.test(allTerminalsData[pid])){
+									// get matched string with returned_linux_regex_dir (e.g. \rtri@tri-VirtualBox:~/Desktop/test$)
+									// happens when the terminal is interacted with without necessarily writing out new data
+									let carriage_return_dir = allTerminalsData[pid].match(returned_linux_regex_dir);
+									// console.log('carriage_return_dir: ', carriage_return_dir);
+
+									// remove the matched string from allTerminalsData[pid]
+									allTerminalsData[pid] = allTerminalsData[pid].replace(carriage_return_dir, "");
+								}
+
+								// grab everything between second to last occurence of linux_regex_dir and the last occurence of linux_regex_dir
+								let secondToLastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1], allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]) - 1);
+								let lastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]);
+
+								// find the first occurrence of "\r\n" after the second to last occurence of linux_regex_dir
+								let firstOccurenceOfNewLine = allTerminalsData[pid].indexOf("\r\n", secondToLastOccurence);
+
+								let output = allTerminalsData[pid].substring(firstOccurenceOfNewLine, lastOccurence);
+
+								// clear residual \033]0; and \007 (ESC]0; and BEL)
+								output = output.replace(/\033]0; | \007/g, "");
+								output = output.trim();
+								// console.log('output: ', output);
+								let outputUpdated = tracker.updateOutput(output);	
+								console.log('output.txt updated?', outputUpdated);
+
+								console.log('globalStr of %s before reset: ', pid, allTerminalsData[pid]);
+								
+								// reset globalStr to contain only the last line
+								allTerminalsData[pid] = allTerminalsData[pid].substring(lastOccurence);
+								console.log('globalStr of %s after reset: ', pid, allTerminalsData[pid]);
+								
+								allTerminalsDirCount[pid] = 1;
+								checkThenCommit = false;
+							}
+						}
+					});
 				}
 			}
 		});
 
-		// vs code onDidCloseTerminal
+		// on did open terminal
+		vscode.window.onDidOpenTerminal(event => {
+			if(event.name == terminalName){
+				event.processId.then(pid => {
+					allTerminalsData[pid] = "";
+					allTerminalsDirCount[pid] = 0;
+				});
+			}
+		});
+
+		// on did close terminal
 		vscode.window.onDidCloseTerminal(event => {
 			if(event.name == terminalName){
-				console.log('closed terminal');
-				counterMatchedDir = 0;
-				globalStr = '';
-				checkThenCommit = false;
-				eventData = new Object();
+				event.processId.then(pid => {
+					delete allTerminalsData[pid];
+					delete allTerminalsDirCount[pid];
+				});
 			}
 		});
 	}
@@ -423,6 +461,9 @@ function activate(context) {
 		// The code you place here will be executed every time your command is executed
 		// Display a message box to the user
 		vscode.window.showInformationMessage('Code histories activated!');
+
+		// clear data
+		allTerminalsData = new Object();
 	});
 
 	let executeCode = vscode.commands.registerCommand('codeHistories.checkAndCommit', function () {
@@ -463,6 +504,9 @@ function removeBackspaces(str) {
 // this method is called when your extension is deactivated
 function deactivate() {
 	console.log('Thank you for trying out "codeHistories"!');
+
+	// clear data
+	allTerminalsData = new Object();
 }
 
 module.exports = {
