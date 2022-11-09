@@ -21,7 +21,7 @@ function activate(context) {
 	// make a regex that match everything between \033]0; and \007
 	var very_special_regex = new RegExp("\033]0;(.*)\007", "g");
 
-	if(process.platform === 'win32' || process.platform === 'linux'){
+	if(process.platform === 'win32'){
 		// regex to match windows dir
 		var regex_dir = /[\s\S]*:((\\|\/)[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+[\s\S][\r\n]{1}/gi
 		// /[\s\S]*:((\\|\/)[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+[\s\S]*/gi
@@ -77,6 +77,7 @@ function activate(context) {
 
 					if(!terminalDimChanged){
 						console.log(eventData);
+						console.log('break here before next check');
 
 						if(test_regex_dir.test(eventData[iter].trim())){
 							let output = eventData[iter].trim();
@@ -178,11 +179,21 @@ function activate(context) {
 			activeTerminal = vscode.window.activeTerminal;
 			if (activeTerminal == event.terminal) {
 				if(event.terminal.name == terminalName){
-					let terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');					
+					let terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+					
+					// test if very_special_regex matches
+					if(very_special_regex.test(terminalData)){
+						// get the matched string
+						var matched = terminalData.match(very_special_regex);
+						// remove the matched from the terminalData
+						terminalData = terminalData.replace(matched, "");
+					}
+
 					iter += 1;
 					eventData[iter] = terminalData;
 					if(!terminalDimChanged){
 						console.log(eventData);
+						console.log('break here before next check');
 
 						if(mac_regex_dir.test(eventData[iter].trim())){
 							let output = eventData[iter].trim();
@@ -203,8 +214,8 @@ function activate(context) {
 									output = output.substring(0, temp-1);
 								}
 
-								// console.log(output.match(regex_dir));
-								// console.log(output);
+								console.log(output.match(regex_dir));
+								console.log(output);
 								
 								if(terminalOpenedFirstTime){
 									console.log('ayo')
@@ -292,6 +303,116 @@ function activate(context) {
 
 		vscode.window.onDidOpenTerminal(event => {
 			terminalOpenedFirstTime = true;
+		});
+	}
+
+	if(process.platform === 'linux'){
+		var curDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
+		// capitalize the first letter of the directory
+		curDir = curDir.charAt(0).toUpperCase() + curDir.slice(1);
+
+		simpleGit().clean(simpleGit.CleanOptions.FORCE);
+
+		if(!vscode.workspace.workspaceFolders){
+			message = "Working folder not found, please open a folder first." ;
+			vscode.window.showErrorMessage(message);
+			return;
+		}
+
+		var currentDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
+		tracker = new gitTracker(currentDir);
+		tracker.isGitInitialized();
+
+		var user = os.userInfo().username;
+		var hostname = os.hostname();
+
+		// grab the hostname before the first occurence of "."
+		if(hostname.indexOf(".") > 0){
+			hostname = hostname.substring(0, hostname.indexOf("."));
+		}
+
+		// linux defaut bash e.g. tri@tri-VirtualBox:~/Desktop/test$
+		var linux_regex_dir = new RegExp(user + "@" + hostname + ".*\\${1}", "g");
+		// var linux_regex_dir = new RegExp(user + "@" + hostname + '[\s\S]*');
+
+		var globalStr = '';
+		var counterMatchedDir = 0;
+		
+		// on did write to terminal
+		vscode.window.onDidWriteTerminalData(event => {
+			activeTerminal = vscode.window.activeTerminal;
+			if (activeTerminal == event.terminal) {
+				if(event.terminal.name == terminalName){
+					var terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+					
+					// test if very_special_regex matches
+					if(very_special_regex.test(terminalData)){
+						// get the matched string
+						var matched = terminalData.match(very_special_regex);
+						// remove the matched from the terminalData
+						terminalData = terminalData.replace(matched, "");
+					}
+
+					// see if terminalData contains linux_regex_dir
+					if(linux_regex_dir.test(terminalData)){
+						// get the matched string
+						var matched = terminalData.match(linux_regex_dir);
+						console.log('matched: ', matched);
+						
+						// add length of matched array to counterMatchedDir
+						counterMatchedDir += matched.length;
+					}
+
+					iter += 1;
+					eventData[iter] = terminalData;
+
+					globalStr += terminalData;
+
+					if(checkThenCommit){
+						// combine all the strings in eventData
+						// console.log('globalStr: ', globalStr);
+						console.log('eventData: ', eventData);
+						// console.log('counterMatchedDir: ', counterMatchedDir);
+
+						// if counter is >= 2, then we should have enough information to trim and find the output
+						if(counterMatchedDir >= 2){
+							// grab everything between second to last occurence of linux_regex_dir and the last occurence of linux_regex_dir
+							let secondToLastOccurence = globalStr.lastIndexOf(matched[matched.length - 1], globalStr.lastIndexOf(matched[matched.length - 1]) - 1);
+							let lastOccurence = globalStr.lastIndexOf(matched[matched.length - 1]);
+
+							// find the first occurrence of "\r\n" after the second to last occurence of linux_regex_dir
+							let firstOccurenceOfNewLine = globalStr.indexOf("\r\n", secondToLastOccurence);
+
+							let output = globalStr.substring(firstOccurenceOfNewLine, lastOccurence);
+
+							// clear residual \033]0; and \007 (ESC]0; and BEL)
+							output = output.replace(/\033]0; | \007/g, "");
+							output = output.trim();
+							console.log('output: ', output);
+							
+							// reset globalStr to contain only the last line
+							globalStr = globalStr.substring(lastOccurence);
+							console.log('globalStr: ', globalStr);
+							
+							
+							counterMatchedDir = 1;
+							checkThenCommit = false;
+							eventData = new Object();
+						}
+					}
+				}
+			}
+		});
+
+		// vs code onDidCloseTerminal
+		vscode.window.onDidCloseTerminal(event => {
+			if(event.name == terminalName){
+				console.log('closed terminal');
+				counterMatchedDir = 0;
+				globalStr = '';
+				checkThenCommit = false;
+				eventData = new Object();
+			}
 		});
 	}
 
