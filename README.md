@@ -28,7 +28,9 @@ Clone this reprository and run "npm i" to install all dependencies. The default 
     "terminal.integrated.defaultProfile.windows": "Git Bash",
     "terminal.integrated.defaultProfile.osx": "zsh",
     "terminal.integrated.defaultProfile.linux": "bash",
-    "code-runner.runInTerminal" : true,
+    "code-runner.runInTerminal": true,
+    "code-runner.ignoreSelection": true,
+    "code-runner.clearPreviousOutput": false,
     "terminal.integrated.shellIntegration.enabled": false
 }
 ```
