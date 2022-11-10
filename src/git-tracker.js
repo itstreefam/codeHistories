@@ -38,13 +38,13 @@ module.exports = class gitTracker {
         var timeStamp = this.timestamp();
         var conversion = new Date(timeStamp).toLocaleString('en-US');
         var commitMessage = `[Commit time: ${conversion}]`;
-        // this.git.commit(commitMessage);
-        console.log(commitMessage);
+        this.git.commit(commitMessage);
+        // console.log(commitMessage);
     }
 
     checkWebData(){
         // check if web data is being tracked
-        if(fs.existsSync(this._currentDir + '/data')){
+        if(fs.existsSync(this._currentDir + '/webData')){
             // set timeout for 5 seconds to make sure that data is most updated
             vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
@@ -54,10 +54,10 @@ module.exports = class gitTracker {
                 return new Promise((resolve, reject) => {
                     setTimeout(() => {
                         resolve(); 
-                    }, 5000);
+                    }, 4000);
                 });
             }).then(() => {
-                this.git.add('data');
+                this.git.add('webData');
                 this.gitCommit();
                 vscode.window.withProgress({
                     location: vscode.ProgressLocation.Notification,
@@ -73,7 +73,7 @@ module.exports = class gitTracker {
             });
         }
         else{
-            vscode.window.showInformationMessage('Data does not exist! Make sure to also use webActivities.');
+            vscode.window.showInformationMessage('Web data does not exist! Make sure to also use webActivities.');
         }
     }
 

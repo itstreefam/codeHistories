@@ -309,10 +309,6 @@ function activate(context) {
 	}
 
 	if(process.platform === 'linux'){
-		var curDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
-		// capitalize the first letter of the directory
-		curDir = curDir.charAt(0).toUpperCase() + curDir.slice(1);
-
 		simpleGit().clean(simpleGit.CleanOptions.FORCE);
 
 		if(!vscode.workspace.workspaceFolders){
@@ -342,7 +338,7 @@ function activate(context) {
 		// check if current terminals have more than one terminal instance where name is terminalName
 		var terminalList = vscode.window.terminals;
 		var terminalInstance = 0;
-		for(var i = 0; i < terminalList.length; i++){
+		for(let i = 0; i < terminalList.length; i++){
 			if(terminalList[i].name == terminalName){
 				terminalInstance++;
 			}
@@ -350,7 +346,7 @@ function activate(context) {
 
 		// close all terminal instances with name terminalName
 		if(terminalInstance >= 1){
-			for(var i = 0; i < terminalList.length; i++){
+			for(let i = 0; i < terminalList.length; i++){
 				if(terminalList[i].name == terminalName){
 					terminalList[i].dispose();
 				}
@@ -377,10 +373,10 @@ function activate(context) {
 						if(linux_regex_dir.test(terminalData) && !returned_linux_regex_dir.test(terminalData)){
 							// get the matched string
 							var matched = terminalData.match(linux_regex_dir);
-							console.log('matched: ', matched);
+							// console.log('matched: ', matched);
 							
 							// add length of matched array to counterMatchedDir
-							allTerminalsDirCount[pid] += 1;
+							allTerminalsDirCount[pid] += matched.length;
 						}
 
 						// allTerminalsData[pid] = globalStr of the terminal instance with pid
@@ -412,17 +408,21 @@ function activate(context) {
 								let output = allTerminalsData[pid].substring(firstOccurenceOfNewLine, lastOccurence);
 
 								// clear residual \033]0; and \007 (ESC]0; and BEL)
-								output = output.replace(/\033]0; | \007/g, "");
+								output = output.replace(/\\033]0; | \\007/g, "");
 								output = output.trim();
-								// console.log('output: ', output);
+								
 								let outputUpdated = tracker.updateOutput(output);	
 								console.log('output.txt updated?', outputUpdated);
 
-								console.log('globalStr of %s before reset: ', pid, allTerminalsData[pid]);
+								if(outputUpdated){
+									tracker.checkWebData();
+								}
+
+								// console.log('globalStr of %s before reset: ', pid, allTerminalsData[pid]);
 								
-								// reset globalStr to contain only the last line
+								// reset globalStr of pid to contain only the matched dir string
 								allTerminalsData[pid] = allTerminalsData[pid].substring(lastOccurence);
-								console.log('globalStr of %s after reset: ', pid, allTerminalsData[pid]);
+								// console.log('globalStr of %s after reset: ', pid, allTerminalsData[pid]);
 								
 								allTerminalsDirCount[pid] = 1;
 								checkThenCommit = false;
@@ -454,35 +454,28 @@ function activate(context) {
 		});
 	}
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with  registerCommand
-	// The commandId parameter must match the command field in package.json
 	let disposable = vscode.commands.registerCommand('codeHistories.codeHistories', function () {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
 		vscode.window.showInformationMessage('Code histories activated!');
 
 		// clear data
 		allTerminalsData = new Object();
+		allTerminalsDirCount = new Object();
 	});
 
 	let executeCode = vscode.commands.registerCommand('codeHistories.checkAndCommit', function () {
-		// tracker.checkWebData();
-		// console.log('call checkwebdata');
-		// vscode.commands.executeCommand("workbench.action.terminal.clear");
-		checkThenCommit = true;
-
 		// save all files
-		vscode.commands.executeCommand("workbench.action.files.saveAll");
+		vscode.commands.executeCommand("workbench.action.files.saveAll").then(() => {
+			// add all files to git
+			tracker.gitAdd();
 
-		// add all files to git
-		tracker.gitAdd();
+			if(terminalName == "Python"){
+				vscode.commands.executeCommand('python.execInTerminal');
+			} else if(terminalName == "Code"){
+				vscode.commands.executeCommand('code-runner.run');
+			}
 
-		if(terminalName == "Python"){
-			vscode.commands.executeCommand('python.execInTerminal');
-		} else if(terminalName == "Code"){
-			vscode.commands.executeCommand('code-runner.run');
-		}
+			checkThenCommit = true;
+		});
 	});
 
 	context.subscriptions.push(disposable);
@@ -501,12 +494,12 @@ function removeBackspaces(str) {
     return str;
 }
 
-// this method is called when your extension is deactivated
 function deactivate() {
 	console.log('Thank you for trying out "codeHistories"!');
 
 	// clear data
 	allTerminalsData = new Object();
+	allTerminalsDirCount = new Object();
 }
 
 module.exports = {
