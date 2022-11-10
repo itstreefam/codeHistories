@@ -26,27 +26,54 @@ module.exports = class gitTracker {
             .then(() => this.git.fetch());
     }
 
-    commit() {
+    gitAdd(){
+        // add all files
+        // this happens as soon as the user clicks on the checkAndCommit button
+        // to avoid situation where user maybe changing files while committing (the commit will be based on the files at the time of clicking the button)
+        this.git.add('./*');
+    }
+
+    gitCommit() {
         // commit with time stamp
         var timeStamp = this.timestamp();
         var conversion = new Date(timeStamp).toLocaleString('en-US');
         var commitMessage = `[Commit time: ${conversion}]`;
-        this.git.add('./*').commit(commitMessage);
+        this.git.commit(commitMessage);
+        // console.log(commitMessage);
     }
 
     checkWebData(){
         // check if web data is being tracked
-        if(fs.existsSync(this._currentDir + '/data')){
-            // set timeout for 10 seconds to make sure that data is most updated
-            vscode.window.showInformationMessage('Committing! Hang tight!');
-            setTimeout(() => {
-                this.commit();
-                vscode.window.showInformationMessage('Committed! Please continue!');
-            }
-            , 10000);
+        if(fs.existsSync(this._currentDir + '/webData')){
+            // set timeout for 5 seconds to make sure that data is most updated
+            vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: "Committing! Hang tight!",
+                cancellable: false
+            }, (progress, token) => {
+                return new Promise((resolve, reject) => {
+                    setTimeout(() => {
+                        resolve(); 
+                    }, 4000);
+                });
+            }).then(() => {
+                this.git.add('webData');
+                this.gitCommit();
+                vscode.window.withProgress({
+                    location: vscode.ProgressLocation.Notification,
+                    title: "Committed! Please continue!",
+                    cancellable: false
+                }, (progress, token) => {
+                    return new Promise((resolve, reject) => {
+                        setTimeout(() => {
+                            resolve();
+                        }, 1000);
+                    });
+                });
+            });
         }
         else{
-            vscode.window.showInformationMessage('Data does not exist! Make sure to also use webActivities.');
+            vscode.window.showInformationMessage('Web data does not exist! Make sure to also use webActivities.');
         }
     }
 
@@ -84,6 +111,7 @@ module.exports = class gitTracker {
                 }
             });   
         }
+        this.git.add('output.txt');
         return true;
     }
 }
