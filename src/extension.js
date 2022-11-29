@@ -170,142 +170,138 @@ function activate(context) {
 			hostname = hostname.substring(0, hostname.indexOf("."));
 		}
 
-		// use zsh as default terminal cmd
-		var mac_regex_dir = new RegExp(user + "@" + hostname + '[\s\S]*');
+		// console.log('user: ' + user);
+		// console.log('hostname: ' + hostname);
 
-		// regex to match mac absolute path
-		regex_dir = /((\\|\/)[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+[\s\S]{1}/gi
+		// use bash as default terminal cmd 
+		// pattern hostname:directory_name user$
+		// var mac_regex_dir = new RegExp(user + "@" + hostname + '[\s\S]*');
+		var mac_regex_dir = new RegExp("(\(.*\))?" + hostname + ".*" + user + "\\${1}", "g");
 
+		var returned_mac_regex_dir = new RegExp("\\r" + "(\(.*\))?" + hostname + ".*" + user + "\\${1}", "g");
+
+		// check if current terminals have more than one terminal instance where name is terminalName
+		var terminalList = vscode.window.terminals;
+		var terminalInstance = 0;
+		for(let i = 0; i < terminalList.length; i++){
+			if(terminalList[i].name == terminalName){
+				terminalInstance++;
+			}
+		}
+
+		// close all terminal instances with name terminalName
+		if(terminalInstance >= 1){
+			for(let i = 0; i < terminalList.length; i++){
+				if(terminalList[i].name == terminalName){
+					terminalList[i].dispose();
+				}
+			}
+		}
+		
 		// on did write to terminal
 		vscode.window.onDidWriteTerminalData(event => {
 			activeTerminal = vscode.window.activeTerminal;
 			if (activeTerminal == event.terminal) {
 				if(event.terminal.name == terminalName){
-					let terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
-					
-					// test if very_special_regex matches
-					if(very_special_regex.test(terminalData)){
-						// get the matched string
-						var matched = terminalData.match(very_special_regex);
-						// remove the matched from the terminalData
-						terminalData = terminalData.replace(matched, "");
-					}
+					event.terminal.processId.then(pid => {
+						var terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+						
+						// test if very_special_regex matches
+						if(very_special_regex.test(terminalData)){
+							// get the matched string
+							var matched = terminalData.match(very_special_regex);
+							// remove the matched from the terminalData
+							terminalData = terminalData.replace(matched, "");
+						}
 
-					iter += 1;
-					eventData[iter] = terminalData;
-					if(!terminalDimChanged){
-						console.log(eventData);
-						console.log('break here before next check');
+						// see if terminalData contains linux_regex_dir
+						if(mac_regex_dir.test(terminalData) && !returned_mac_regex_dir.test(terminalData)){
+							// get the matched string
+							var matched = terminalData.match(mac_regex_dir);
+							// console.log('matched: ', matched);
+							
+							// add length of matched array to counterMatchedDir
+							allTerminalsDirCount[pid] += matched.length;
+						}
 
-						if(mac_regex_dir.test(eventData[iter].trim())){
-							let output = eventData[iter].trim();
-							for(let i = iter-1; i > 0; i--){
-								let temp = eventData[i];
-								if(temp.match(mac_regex_dir)){
-									break
+						// iter += 1;
+						// eventData[iter] = terminalData;
+						// console.log(eventData);
+
+						// allTerminalsData[pid] = globalStr of the terminal instance with pid
+						allTerminalsData[pid] += terminalData;
+
+						if(checkThenCommit){
+							console.log('There are %s matched regex dir for pid %s', allTerminalsDirCount[pid], pid);
+
+							// if counter is >= 2, then we should have enough information to trim and find the output
+							if(allTerminalsDirCount[pid] >= 2){
+
+								if(returned_mac_regex_dir.test(allTerminalsData[pid])){
+									// get matched string with returned_linux_regex_dir (e.g. \rtri@tri-VirtualBox:~/Desktop/test$)
+									// happens when the terminal is interacted with without necessarily writing out new data
+									let carriage_return_dir = allTerminalsData[pid].match(returned_mac_regex_dir);
+									// console.log('carriage_return_dir: ', carriage_return_dir);
+
+									// remove the matched string from allTerminalsData[pid]
+									allTerminalsData[pid] = allTerminalsData[pid].replace(carriage_return_dir, "");
 								}
-								output = temp + output;
-							}
 
-							if(Object.keys(eventData).length >= 2){
-								let secondToLastIndexOfTemp = output.lastIndexOf(user + "@" + hostname, output.lastIndexOf(user + "@" + hostname)-1);
-								let temp = output.lastIndexOf(user + "@" + hostname);
-								if(secondToLastIndexOfTemp > 0){
-									output = output.substring(secondToLastIndexOfTemp, temp-1);
-								} else {
-									output = output.substring(0, temp-1);
-								}
+								// grab everything between second to last occurence of linux_regex_dir and the last occurence of linux_regex_dir
+								let secondToLastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1], allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]) - 1);
+								let lastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]);
 
-								console.log(output.match(regex_dir));
-								console.log(output);
+								// find the first occurrence of "\r\n" after the second to last occurence of linux_regex_dir
+								let firstOccurenceOfNewLine = allTerminalsData[pid].indexOf("\r\n", secondToLastOccurence);
+
+								let output = allTerminalsData[pid].substring(firstOccurenceOfNewLine, lastOccurence);
+
+								// clear residual \033]0; and \007 (ESC]0; and BEL)
+								output = output.replace(/\\033]0; | \\007/g, "");
+								output = output.trim();
 								
-								if(terminalOpenedFirstTime){
-									console.log('ayo')
-									if(countOccurrences(output, user + "@" + hostname) == 0){
-										if(output.match(regex_dir).length > 1){
-											let tempIdx = output.lastIndexOf(output.match(regex_dir)[0]);
-											let lastIndexOfPercent = output.lastIndexOf("%");
-											output = output.substring(tempIdx, lastIndexOfPercent);
-											output = output.replace(output.match(regex_dir)[0], '');
-										} else {
-											output = output.replace(output.match(regex_dir)[0], '');
-										}
+								let outputUpdated = tracker.updateOutput(output);	
+								console.log('output.txt updated?', outputUpdated);
 
-										output = removeBackspaces(output);
+								if(outputUpdated){
+									tracker.checkWebData();
+								}
 
-										// let updated = tracker.updateOutput(output);	
-										// if(updated){
-										// 	tracker.checkWebData();
-										// 	// console.log(output);
-										// 	// vscode.window.showInformationMessage('output.txt updated!');
-										// }
-										if(checkThenCommit){
-											// console.log(output);
-											let outputUpdated = tracker.updateOutput(output);	
-											console.log('output.txt updated?', outputUpdated);
-											if(outputUpdated){
-												tracker.checkWebData();
-											}
-											checkThenCommit = false;
-										}
-									}
-									terminalOpenedFirstTime = false;
-								} else {
-									console.log('here')
-									if(countOccurrences(output, user + "@" + hostname) == 0 && regex_dir.test(output)){
-										if(output.match(regex_dir).length > 1){
-											let tempIdx = output.lastIndexOf(output.match(regex_dir)[0]);
-											let lastIndexOfPercent = output.lastIndexOf("%");
-											output = output.substring(tempIdx, lastIndexOfPercent);
-											output = output.replace(output.match(regex_dir)[0], '');
-										} else {
-											output = output.replace(output.match(regex_dir)[0], '');
-										}
-
-										output = removeBackspaces(output);
-										// let updated = tracker.updateOutput(output);	
-										// if(updated){
-										// 	tracker.checkWebData();
-										// 	// console.log(output);
-										// 	// vscode.window.showInformationMessage('output.txt updated!');
-										// }
-										if(checkThenCommit){
-											// console.log(output);
-											let outputUpdated = tracker.updateOutput(output);	
-											console.log('output.txt updated?', outputUpdated);
-											if(outputUpdated){
-												tracker.checkWebData();
-											}
-											checkThenCommit = false;
-										}
-									}
-								}		
+								// console.log('globalStr of %s before reset: ', pid, allTerminalsData[pid]);
+								
+								// reset globalStr of pid to contain only the matched dir string
+								allTerminalsData[pid] = allTerminalsData[pid].substring(lastOccurence);
+								// console.log('globalStr of %s after reset: ', pid, allTerminalsData[pid]);
+								
+								allTerminalsDirCount[pid] = 1;
+								checkThenCommit = false;
 							}
-
-							iter = 0;
-							eventData = new Object();
 						}
-					} else {
-						terminalDimChanged = false;
-						if(terminalOpenedFirstTime){
-							iter = 0;
-							eventData = new Object();
-						} else {
-							eventData[iter] = '';
-						}
-					}
+					});
 				}
 			}
 		});
 
-		vscode.window.onDidChangeTerminalDimensions(event => {
-			// console.log(event);
-			terminalDimChanged = true;
+		// on did open terminal
+		vscode.window.onDidOpenTerminal(event => {
+			if(event.name == terminalName){
+				event.processId.then(pid => {
+					allTerminalsData[pid] = "";
+					allTerminalsDirCount[pid] = 0;
+				});
+			}
 		});
 
-		vscode.window.onDidOpenTerminal(event => {
-			terminalOpenedFirstTime = true;
+		// on did close terminal
+		vscode.window.onDidCloseTerminal(event => {
+			if(event.name == terminalName){
+				event.processId.then(pid => {
+					delete allTerminalsData[pid];
+					delete allTerminalsDirCount[pid];
+				});
+			}
 		});
+
 	}
 
 	if(process.platform === 'linux'){
