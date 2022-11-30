@@ -44,37 +44,36 @@ module.exports = class gitTracker {
 
     checkWebData(){
         // check if web data is being tracked
-        if(fs.existsSync(this._currentDir + '/webData')){
-            // set timeout for 5 seconds to make sure that data is most updated
+        if(!fs.existsSync(this._currentDir + '/webData')){
+            vscode.window.showInformationMessage('Web data does not exist! Make sure to also use webActivities.');
+        }
+
+        // set timeout for 5 seconds to make sure that data is most updated
+        vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "Committing! Hang tight!",
+            cancellable: false
+        }, (progress, token) => {
+            return new Promise((resolve, reject) => {
+                setTimeout(() => {
+                    resolve(); 
+                }, 4000);
+            });
+        }).then(() => {
+            this.git.add('webData');
+            this.gitCommit();
             vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
-                title: "Committing! Hang tight!",
+                title: "Committed! Please continue!",
                 cancellable: false
             }, (progress, token) => {
                 return new Promise((resolve, reject) => {
                     setTimeout(() => {
-                        resolve(); 
-                    }, 4000);
-                });
-            }).then(() => {
-                this.git.add('webData');
-                this.gitCommit();
-                vscode.window.withProgress({
-                    location: vscode.ProgressLocation.Notification,
-                    title: "Committed! Please continue!",
-                    cancellable: false
-                }, (progress, token) => {
-                    return new Promise((resolve, reject) => {
-                        setTimeout(() => {
-                            resolve();
-                        }, 1000);
-                    });
+                        resolve();
+                    }, 1000);
                 });
             });
-        }
-        else{
-            vscode.window.showInformationMessage('Web data does not exist! Make sure to also use webActivities.');
-        }
+        });
     }
 
     updateOutput(output){

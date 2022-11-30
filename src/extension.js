@@ -24,18 +24,6 @@ function activate(context) {
 	var very_special_regex = new RegExp("\033]0;(.*)\007", "g");
 
 	if(process.platform === 'win32'){
-		// regex to match windows dir
-		var regex_dir = /[\s\S]*:((\\|\/)[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+[\s\S][\r\n]{1}/gi
-		// /[\s\S]*:((\\|\/)[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+[\s\S]*/gi
-		// /[\s\S]*:(\\[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+>+.*/gi;
-		// /^[\s\S]*:(\\[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+>+.*$/i;
-		// /[\s\S]*:((\\|\/)[a-z0-9\s_@\-^!.#$%&+={}\[\]]+)+>{1}/gi;
-		// /^[a-zA-Z]:\\[\\\S|*\S]?.*$/g
-
-		var curDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
-		// capitalize the first letter of the directory
-		curDir = curDir.charAt(0).toUpperCase() + curDir.slice(1);
-
 		simpleGit().clean(simpleGit.CleanOptions.FORCE);
 
 		if(!vscode.workspace.workspaceFolders){
@@ -57,96 +45,141 @@ function activate(context) {
 		}
 
 		// make sure to have Git for Windows installed to use Git Bash as default cmd
-		var test_regex_dir = new RegExp(user + "@" + hostname + '[\s\S]*');
+		// var win_regex_dir = new RegExp(user + "@" + hostname + ".*\\){1}", "g");
+		var win_regex_dir = new RegExp(user + "@" + hostname + '[\s\S]*');
 
+		// check if current terminals have more than one terminal instance where name is terminalName
+		var terminalList = vscode.window.terminals;
+		var terminalInstance = 0;
+		for(let i = 0; i < terminalList.length; i++){
+			if(terminalList[i].name == terminalName){
+				terminalInstance++;
+			}
+		}
+
+		// close all terminal instances with name terminalName
+		if(terminalInstance >= 1){
+			for(let i = 0; i < terminalList.length; i++){
+				if(terminalList[i].name == terminalName){
+					terminalList[i].dispose();
+				}
+			}
+		}
+		
 		// on did write to terminal
 		vscode.window.onDidWriteTerminalData(event => {
 			activeTerminal = vscode.window.activeTerminal;
 			if (activeTerminal == event.terminal) {
 				if(event.terminal.name == terminalName){
-					let terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
-					
-					// test if very_special_regex matches
-					if(very_special_regex.test(terminalData)){
-						// get the matched string
-						var matched = terminalData.match(very_special_regex);
-						// remove the matched from the terminalData
-						terminalData = terminalData.replace(matched, "");
-					}
-					
-					iter += 1;
-					eventData[iter] = terminalData;
+					event.terminal.processId.then(pid => {
+						var terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+						
+						// test if very_special_regex matches
+						if(very_special_regex.test(terminalData)){
+							// get the matched string
+							var matched = terminalData.match(very_special_regex);
+							// remove the matched from the terminalData
+							terminalData = terminalData.replace(matched, "");
+						}
 
-					if(!terminalDimChanged){
+						// see if terminalData contains win_regex_dir
+						if(win_regex_dir.test(terminalData)){
+							terminalData = terminalData.trim();
+							// get the matched string
+							var matched = terminalData.match(win_regex_dir);
+							// console.log('matched: ', matched);
+							
+							// add length of matched array to counterMatchedDir
+							allTerminalsDirCount[pid] += matched.length;
+						}
+
+						iter += 1;
+						eventData[iter] = terminalData;
 						console.log(eventData);
-						console.log('break here before next check');
 
-						if(test_regex_dir.test(eventData[iter].trim())){
-							let output = eventData[iter].trim();
-							for(let i = iter-1; i > 0; i--){
-								let temp = eventData[i];
-								if(temp.match(test_regex_dir)){
-									break
+						// allTerminalsData[pid] = globalStr of the terminal instance with pid
+						allTerminalsData[pid] += terminalData;
+
+						if(checkThenCommit){
+							console.log('There are %s matched regex dir for pid %s', allTerminalsDirCount[pid], pid);
+
+							// if counter is >= 2, then we should have enough information to trim and find the output
+							if(allTerminalsDirCount[pid] >= 2){
+								// grab everything between second to last occurence of win_regex_dir and the last occurence of win_regex_dir
+								let secondToLastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1], allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]) - 1);
+								let lastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]);
+
+								// find the first occurrence of "\r\n" after the second to last occurence of win_regex_dir
+								let firstOccurenceOfNewLine = allTerminalsData[pid].indexOf("\r\n", secondToLastOccurence);
+
+								let output = allTerminalsData[pid].substring(firstOccurenceOfNewLine, lastOccurence);
+
+								// clear consecutive new lines
+								output = removeConsecutiveOccurrences(output, "\r\n");
+
+								// remove $ and the first ocurrence of \r\n
+								if(/\$.*[\r\n]{1}/g.test(output)){
+									// get the matched string
+									var matched = output.match(/\$.*[\r\n]{1}/g);
+									// remove the matched from the terminalData
+									output = output.replace(matched, "");
 								}
-								output = temp + output;
-							}
 
-							console.log(output);
-							// console.log(output.lastIndexOf("\/Users\/" + user + '\/') )
-							// console.log(output.indexOf(user + "@" + hostname));
+								output = output.trim();
 
-							// do not commit source, activate, ]0;MINGW64, etc.
-							let avoidInitialTerminalLoad = (output.lastIndexOf("\/Users\/" + user + '\/') >= output.indexOf(user + "@" + hostname));
-							if(avoidInitialTerminalLoad){
-								// console.log(eventData);
-								iter = 0;
-								eventData = new Object();
-							} else {
-								if(Object.keys(eventData).length >= 2){
-									// console.log(output);
-									let secondToLastIndexOfTemp = output.lastIndexOf(user + "@" + hostname, output.lastIndexOf(user + "@" + hostname)-1);
-									let temp = output.lastIndexOf(user + "@" + hostname);
-									if(secondToLastIndexOfTemp > 0){
-										output = output.substring(secondToLastIndexOfTemp, temp-1);
-									} else {
-										output = output.substring(0, temp-1);
-									}
-	
-									// console.log(output);
-									// console.log(output.match(regex_dir));	
+								// console.log('output: ', output);
+								
+								let outputUpdated = tracker.updateOutput(output);	
+								console.log('output.txt updated?', outputUpdated);
 
-									if(output.length > 1){
-										output = output.replaceAll('$', '');
-										output = removeBackspaces(output);
-										output = output.trim();
-										if(checkThenCommit){
-											// console.log(output);
-											let outputUpdated = tracker.updateOutput(output);	
-											console.log('output.txt updated?', outputUpdated);
-											if(outputUpdated){
-												tracker.checkWebData();
-											}
-											checkThenCommit = false;
-										}
-									}
-
-									iter = 0;
-									eventData = new Object();
+								if(outputUpdated){
+									tracker.checkWebData();
 								}
+
+								// console.log('globalStr of %s before reset: ', pid, allTerminalsData[pid]);
+								
+								// reset globalStr of pid to contain only the matched dir string
+								allTerminalsData[pid] = allTerminalsData[pid].substring(lastOccurence);
+								// console.log('globalStr of %s after reset: ', pid, allTerminalsData[pid]);
+								
+								allTerminalsDirCount[pid] = 1;
+								checkThenCommit = false;
 							}
 						}
-					} else {
-						terminalDimChanged = false;
-						eventData[iter] = '';
-					}
+					});
 				}
 			}
 		});
 
-		vscode.window.onDidChangeTerminalDimensions(event => {
-			// console.log(event);
-			terminalDimChanged = true;
+		// on did open terminal
+		vscode.window.onDidOpenTerminal(event => {
+			if(event.name == terminalName){
+				event.processId.then(pid => {
+					allTerminalsData[pid] = "";
+					allTerminalsDirCount[pid] = 0;
+				});
+			}
 		});
+
+		// on did close terminal
+		vscode.window.onDidCloseTerminal(event => {
+			if(event.name == terminalName){
+				event.processId.then(pid => {
+					delete allTerminalsData[pid];
+					delete allTerminalsDirCount[pid];
+				});
+			}
+		});
+
+		// on did change terminal size
+		// vscode.window.onDidChangeTerminalDimensions(event => {
+		// 	if(event.terminal.name == terminalName){
+		// 		event.terminal.processId.then(pid => {
+		// 			allTerminalsData[pid] = matched[matched.length - 1];
+		// 			allTerminalsDirCount[pid] = 0;
+		// 		});
+		// 	}
+		// });
 	}
 
 	if(process.platform === "darwin"){
@@ -480,6 +513,19 @@ function activate(context) {
 
 function countOccurrences(string, word) {
 	return string.split(word).length - 1;
+}
+
+function removeConsecutiveOccurrences(string, word) {
+	let temp = string.split(word);
+
+	// remove empty strings
+	// and recombine the array into a string
+	temp = temp.filter(function (el) {
+		return el != "";
+	}).join(word);
+
+	// return
+	return temp;
 }
 
 // https://stackoverflow.com/questions/11891653/javascript-concat-string-with-backspace
