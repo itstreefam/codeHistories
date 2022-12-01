@@ -8,7 +8,8 @@ const os = require('os');
 var tracker = null;
 var iter = 0;
 var eventData = new Object();
-var terminalDimChanged = false;
+var terminalDimChanged = new Object();
+var terminalOpenedFirstTime = new Object();
 var checkThenCommit = null;
 var terminalName = "Code";
 var allTerminalsData = new Object();
@@ -46,7 +47,9 @@ function activate(context) {
 
 		// make sure to have Git for Windows installed to use Git Bash as default cmd
 		// var win_regex_dir = new RegExp(user + "@" + hostname + ".*\\){1}", "g");
-		var win_regex_dir = new RegExp(user + "@" + hostname + '[\s\S]*');
+		// var win_regex_dir = new RegExp(user + "@" + hostname + '[\s\S]*');
+		var win_regex_dir = new RegExp(user + "@" + hostname + "(\(.*\))?", "g");
+		var resizing_win_regex_dir = new RegExp(user + "@" + hostname + "(\(.*\))?" + ".*\\r\\n\\${1}", "g");
 
 		// check if current terminals have more than one terminal instance where name is terminalName
 		var terminalList = vscode.window.terminals;
@@ -73,6 +76,11 @@ function activate(context) {
 				if(event.terminal.name == terminalName){
 					event.terminal.processId.then(pid => {
 						var terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+
+						if(terminalDimChanged[pid]){
+							terminalData = "";
+							terminalDimChanged[pid] = false;
+						}
 						
 						// test if very_special_regex matches
 						if(very_special_regex.test(terminalData)){
@@ -83,14 +91,14 @@ function activate(context) {
 						}
 
 						// see if terminalData contains win_regex_dir
-						if(win_regex_dir.test(terminalData)){
-							terminalData = terminalData.trim();
+						if(win_regex_dir.test(terminalData.trim())){
 							// get the matched string
 							var matched = terminalData.match(win_regex_dir);
-							// console.log('matched: ', matched);
-							
-							// add length of matched array to counterMatchedDir
-							allTerminalsDirCount[pid] += matched.length;
+							console.log('matched: ', matched);
+
+							// if((resizing_win_regex_dir.test(terminalData.trim()) && allTerminalsData[pid].indexOf(matched[matched.length - 1]) <= 0)){
+								allTerminalsDirCount[pid] += matched.length;
+							// }
 						}
 
 						iter += 1;
@@ -105,6 +113,16 @@ function activate(context) {
 
 							// if counter is >= 2, then we should have enough information to trim and find the output
 							if(allTerminalsDirCount[pid] >= 2){
+
+								// if(resizing_win_regex_dir.test(allTerminalsData[pid]) && allTerminalsData[pid].indexOf(matched[matched.length - 1]) > 0){
+								// 	// get matched string with resizing_win_regex_dir
+								// 	// happens when the terminal is interacted with without necessarily writing out new data
+								// 	let temp = allTerminalsData[pid].match(resizing_win_regex_dir);
+
+								// 	// remove the matched string from allTerminalsData[pid]
+								// 	allTerminalsData[pid] = allTerminalsData[pid].replace(temp, "");
+								// }
+
 								// grab everything between second to last occurence of win_regex_dir and the last occurence of win_regex_dir
 								let secondToLastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1], allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]) - 1);
 								let lastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]);
@@ -116,6 +134,8 @@ function activate(context) {
 
 								// clear consecutive new lines
 								output = removeConsecutiveOccurrences(output, "\r\n");
+								output = removeConsecutiveOccurrences(output, "\r$");
+								output = removeConsecutiveOccurrences(output, "\n$");
 
 								// remove $ and the first ocurrence of \r\n
 								if(/\$.*[\r\n]{1}/g.test(output)){
@@ -157,6 +177,8 @@ function activate(context) {
 				event.processId.then(pid => {
 					allTerminalsData[pid] = "";
 					allTerminalsDirCount[pid] = 0;
+					terminalDimChanged[pid] = false;
+					terminalOpenedFirstTime[pid] = true;
 				});
 			}
 		});
@@ -167,19 +189,25 @@ function activate(context) {
 				event.processId.then(pid => {
 					delete allTerminalsData[pid];
 					delete allTerminalsDirCount[pid];
+					delete terminalDimChanged[pid];
+					delete terminalOpenedFirstTime[pid];
 				});
 			}
 		});
 
 		// on did change terminal size
-		// vscode.window.onDidChangeTerminalDimensions(event => {
-		// 	if(event.terminal.name == terminalName){
-		// 		event.terminal.processId.then(pid => {
-		// 			allTerminalsData[pid] = matched[matched.length - 1];
-		// 			allTerminalsDirCount[pid] = 0;
-		// 		});
-		// 	}
-		// });
+		vscode.window.onDidChangeTerminalDimensions(event => {
+			if(event.terminal.name == terminalName){
+				event.terminal.processId.then(pid => {
+					if(terminalOpenedFirstTime[pid]){
+						terminalDimChanged[pid] = false;
+						terminalOpenedFirstTime[pid] = false;
+					}else if(allTerminalsData[pid]){
+						terminalDimChanged[pid] = true;
+					}
+				});
+			}
+		});
 	}
 
 	if(process.platform === "darwin"){
