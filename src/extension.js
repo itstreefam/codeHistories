@@ -4,6 +4,8 @@ const vscode = require('vscode');
 const simpleGit = require('simple-git');
 const gitTracker = require('./git-tracker');
 const os = require('os');
+const fs = require('fs');
+const path = require('path');
 
 var tracker = null;
 var iter = 0;
@@ -494,6 +496,32 @@ function activate(context) {
 		// clear data
 		allTerminalsData = new Object();
 		allTerminalsDirCount = new Object();
+
+		// make a folder .vscode in the current workspace
+		let workspacePath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+		let vscodePath = path.join(workspacePath, ".vscode");
+		let settingsPath = path.join(vscodePath, "settings.json");
+		let settings = JSON.stringify({
+			"terminal.integrated.profiles.windows": {
+				"Git Bash": {
+					"source": "Git Bash"
+				}
+			},
+			"terminal.integrated.defaultProfile.windows": "Git Bash",
+			"terminal.integrated.defaultProfile.osx": "zsh",
+			"terminal.integrated.defaultProfile.linux": "bash",
+			"code-runner.runInTerminal": true,
+			"code-runner.ignoreSelection": true,
+			"code-runner.clearPreviousOutput": false,
+			"terminal.integrated.shellIntegration.enabled": false
+		}, null, 4);
+
+		if(!fs.existsSync(settingsPath)){
+			fs.mkdirSync(settingsPath);
+			fs.writeFileSync(settingsPath, settings);
+		} else {
+			fs.writeFileSync(settingsPath, settings);
+		}
 	});
 
 	let executeCode = vscode.commands.registerCommand('codeHistories.checkAndCommit', function () {
