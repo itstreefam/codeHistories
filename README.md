@@ -16,7 +16,11 @@ https://user-images.githubusercontent.com/44308446/158084110-06305b2c-af13-4664-
 
 ## Extension Settings
 
-Clone this reprository and run "npm i" to install all dependencies. The default **terminalName** in *extension.js* is set to "Code" assuming Code Runner extension is installed. This variable would need to be changed to another name if other semi-auto code execution extension is used (e.g. to "Python" if Python extension is installed and preferred). Once you start running debugging (or F5), you will almost always work with "[Extension Development Host]" VS Code window, so make sure to create a new folder called *.vscode* in this "[Extension Development Host]" window. Inside this folder, add *settings.json* containing the following information.
+Clone this reprository and run "npm i" to install all dependencies. The default **terminalName** in *extension.js* is set to "Code" assuming Code Runner extension is installed. This variable would need to be changed to another name if other semi-auto code execution extension is used (e.g. to "Python" if Python extension is installed and preferred). 
+
+Once you start running debugging (or F5), you will work with the newly created VS Code Window named "[Extension Development Host]." In this new window, select the your working directory. Once ready, you can open up the Command Palette using Ctrl + Shift + P on Windows or CMD + Shift + P on Mac, and look for "Code Histories." Once you click on it, you should see an information pop-up saying the extension is activated.
+
+There should also be a newly created folder called *.vscode* in your working directory. Inside this folder will be a *settings.json* containing the following information for converging extension behavior.
 
 ```
 {
@@ -28,12 +32,19 @@ Clone this reprository and run "npm i" to install all dependencies. The default 
     "terminal.integrated.defaultProfile.windows": "Git Bash",
     "terminal.integrated.defaultProfile.osx": "zsh",
     "terminal.integrated.defaultProfile.linux": "bash",
-    "code-runner.runInTerminal" : true,
-    "terminal.integrated.shellIntegration.enabled": false
+    "code-runner.runInTerminal": true,
+    "code-runner.ignoreSelection": true,
+    "code-runner.clearPreviousOutput": false,
+    "terminal.integrated.shellIntegration.enabled": false,
+    "python.terminal.activateEnvironment": false,
 }
 ```
 
-As mentioned above, the "[Extension Development Host]" window will be where you start working on your project. There is a chance there might be more than two run buttons, so make sure you right click on the "Run Code" button and hide it. The custom "Code Histories commit" ensures that the terminal data are captured only when that button is clicked. The intial VS Code will run in the background to capture the code state and output.
+There is a chance there might be more than two run buttons, so make sure you right click on the "Run Code" button and hide it. The custom "Code Histories commit" ensures that the terminal data are captured only when that button is clicked. 
+
+For directly typed executions in the terminal, you could use the run "Code Histories commit" button first time and select "No" in the pop-up to not commit since the typed executions are different from the ones from the button.
+
+The intial VS Code window will run in the background to capture the code state and output.
 
 ## Release Notes
 
@@ -51,7 +62,7 @@ Avoid resizing VS Code window when the code is executing as that might impact th
 
 ### V2.x
 
-Added support for Linux. A custom "Code Histories commit" button is added to enforce correct output capture behavior (i.e. only when the user clicks on this button). Any direct interactions with the "Code" terminal (cd, ls, pip install/uninstall, using up/down arrow key up to access next/previous execution, etc.) is ignored and will not trigger a git commit.
+Added support for Linux. A custom "Code Histories commit" button is added to enforce correct output capture behavior (i.e. only when the user clicks on this button). For directly typed executions in the terminal, there has not been a better solution than asking the user to reconfirm valid output.txt via yes/no commit pop-up.
 
 ## Contact
 

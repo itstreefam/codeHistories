@@ -77,7 +77,7 @@ function activate(context) {
 				if(event.terminal.name == terminalName){
 					event.terminal.processId.then(pid => {
 						var terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
-						console.log('terminalData: ', terminalData);
+						// console.log('terminalData: ', terminalData);
 
 						if(terminalDimChanged[pid]){
 							terminalData = "";
@@ -513,7 +513,8 @@ function activate(context) {
 			"code-runner.runInTerminal": true,
 			"code-runner.ignoreSelection": true,
 			"code-runner.clearPreviousOutput": false,
-			"terminal.integrated.shellIntegration.enabled": false
+			"terminal.integrated.shellIntegration.enabled": false,
+			"python.terminal.activateEnvironment": false,
 		}, null, 4);
 
 		if(!fs.existsSync(settingsPath)){
