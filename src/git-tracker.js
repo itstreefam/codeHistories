@@ -43,42 +43,49 @@ module.exports = class gitTracker {
     }
 
     checkWebData(){
-        // check if web data is being tracked
-        if(!fs.existsSync(this._currentDir + '/webData')){
-            vscode.window.showInformationMessage('Web data does not exist! Make sure to also use webActivities.');
-        }
+        vscode.window.showInformationMessage("output.txt recently updated. Do you want to commit?", "Yes", "No").then(answer => {
+            if (answer === "Yes") {
+                // check if web data is being tracked
+                if(!fs.existsSync(this._currentDir + '/webData')){
+                    vscode.window.showInformationMessage('Web data does not exist! Make sure to also use webActivities.');
+                }
 
-        // set timeout for 5 seconds to make sure that data is most updated
-        vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: "Committing! Hang tight!",
-            cancellable: false
-        }, (progress, token) => {
-            return new Promise((resolve, reject) => {
-                setTimeout(() => {
-                    resolve(); 
-                }, 4000);
-            });
-        }).then(() => {
-            this.git.add('webData');
-            this.gitCommit();
-            vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: "Committed! Please continue!",
-                cancellable: false
-            }, (progress, token) => {
-                return new Promise((resolve, reject) => {
-                    setTimeout(() => {
-                        resolve();
-                    }, 1000);
-                });
-            });
+                // set timeout for 5 seconds to make sure that data is most updated
+                vscode.window.withProgress({
+                    location: vscode.ProgressLocation.Notification,
+                    title: "Committing! Hang tight!",
+                    cancellable: false
+                }, (progress, token) => {
+                    return new Promise((resolve, reject) => {
+                        setTimeout(() => {
+                            resolve(); 
+                        }, 4000);
+                    });
+                }).then(() => {
+                    this.git.add('webData');
+                    this.gitCommit();
+                    vscode.window.withProgress({
+                        location: vscode.ProgressLocation.Notification,
+                        title: "Committed! Please continue!",
+                        cancellable: false
+                    }, (progress, token) => {
+                        return new Promise((resolve, reject) => {
+                            setTimeout(() => {
+                                resolve();
+                            }, 1000);
+                        });
+                    });
+                }); 
+            }
         });
     }
 
     updateOutput(output){
         // store output of current terminal to a new file
         // if file already exists, append to it
+        if(!this.checkEdgeCases(output)){
+            return false;
+        }
 
         if (fs.existsSync(this._currentDir + '/output.txt')) {
             // if file is empty
@@ -111,6 +118,16 @@ module.exports = class gitTracker {
             });   
         }
         this.git.add('output.txt');
+        return true;
+    }
+
+    checkEdgeCases(str){
+        // console.log(str);
+        let edgeCasesRegex = /clear[\s]*|(pwd|ls|cd|mkdir|touch|cp|rm|nano|cat|echo|apt|pip|git)[\s]+/g;
+        if(edgeCasesRegex.test(str)){
+            console.log("Encounter edge case", str.match(edgeCasesRegex));
+            return false;
+        }
         return true;
     }
 }

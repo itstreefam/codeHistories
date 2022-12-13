@@ -49,7 +49,6 @@ function activate(context) {
 		// var win_regex_dir = new RegExp(user + "@" + hostname + ".*\\){1}", "g");
 		// var win_regex_dir = new RegExp(user + "@" + hostname + '[\s\S]*');
 		var win_regex_dir = new RegExp(user + "@" + hostname + "(\(.*\))?", "g");
-		var resizing_win_regex_dir = new RegExp(user + "@" + hostname + "(\(.*\))?" + ".*\\r\\n\\${1}", "g");
 
 		// check if current terminals have more than one terminal instance where name is terminalName
 		var terminalList = vscode.window.terminals;
@@ -76,6 +75,7 @@ function activate(context) {
 				if(event.terminal.name == terminalName){
 					event.terminal.processId.then(pid => {
 						var terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+						console.log('terminalData: ', terminalData);
 
 						if(terminalDimChanged[pid]){
 							terminalData = "";
@@ -85,9 +85,9 @@ function activate(context) {
 						// test if very_special_regex matches
 						if(very_special_regex.test(terminalData)){
 							// get the matched string
-							var matched = terminalData.match(very_special_regex);
+							var specialMatched = terminalData.match(very_special_regex);
 							// remove the matched from the terminalData
-							terminalData = terminalData.replace(matched, "");
+							terminalData = terminalData.replace(specialMatched, "");
 						}
 
 						// see if terminalData contains win_regex_dir
@@ -96,9 +96,7 @@ function activate(context) {
 							var matched = terminalData.match(win_regex_dir);
 							console.log('matched: ', matched);
 
-							// if((resizing_win_regex_dir.test(terminalData.trim()) && allTerminalsData[pid].indexOf(matched[matched.length - 1]) <= 0)){
-								allTerminalsDirCount[pid] += matched.length;
-							// }
+							allTerminalsDirCount[pid] += matched.length;
 						}
 
 						iter += 1;
@@ -107,45 +105,24 @@ function activate(context) {
 
 						// allTerminalsData[pid] = globalStr of the terminal instance with pid
 						allTerminalsData[pid] += terminalData;
+						// console.log('allTerminalsData: ', allTerminalsData[pid]);
 
-						if(checkThenCommit){
+						// if(checkThenCommit){
 							console.log('There are %s matched regex dir for pid %s', allTerminalsDirCount[pid], pid);
 
 							// if counter is >= 2, then we should have enough information to trim and find the output
 							if(allTerminalsDirCount[pid] >= 2){
-
-								// if(resizing_win_regex_dir.test(allTerminalsData[pid]) && allTerminalsData[pid].indexOf(matched[matched.length - 1]) > 0){
-								// 	// get matched string with resizing_win_regex_dir
-								// 	// happens when the terminal is interacted with without necessarily writing out new data
-								// 	let temp = allTerminalsData[pid].match(resizing_win_regex_dir);
-
-								// 	// remove the matched string from allTerminalsData[pid]
-								// 	allTerminalsData[pid] = allTerminalsData[pid].replace(temp, "");
-								// }
-
 								// grab everything between second to last occurence of win_regex_dir and the last occurence of win_regex_dir
 								let secondToLastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1], allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]) - 1);
 								let lastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]);
 
 								// find the first occurrence of "\r\n" after the second to last occurence of win_regex_dir
-								let firstOccurenceOfNewLine = allTerminalsData[pid].indexOf("\r\n", secondToLastOccurence);
+								// let firstOccurenceOfNewLine = allTerminalsData[pid].indexOf("\r\n", secondToLastOccurence);
 
-								let output = allTerminalsData[pid].substring(firstOccurenceOfNewLine, lastOccurence);
-
-								// clear consecutive new lines
-								output = removeConsecutiveOccurrences(output, "\r\n");
-								output = removeConsecutiveOccurrences(output, "\r$");
-								output = removeConsecutiveOccurrences(output, "\n$");
-
-								// remove $ and the first ocurrence of \r\n
-								if(/\$.*[\r\n]{1}/g.test(output)){
-									// get the matched string
-									var matched = output.match(/\$.*[\r\n]{1}/g);
-									// remove the matched from the terminalData
-									output = output.replace(matched, "");
-								}
+								let output = allTerminalsData[pid].substring(secondToLastOccurence, lastOccurence);
 
 								output = output.trim();
+								output = removeBackspaces(output);
 
 								// console.log('output: ', output);
 								
@@ -165,7 +142,7 @@ function activate(context) {
 								allTerminalsDirCount[pid] = 1;
 								checkThenCommit = false;
 							}
-						}
+						// }
 					});
 				}
 			}
