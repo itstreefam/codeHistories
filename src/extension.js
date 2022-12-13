@@ -515,12 +515,13 @@ function activate(context) {
 			"code-runner.clearPreviousOutput": false,
 			"terminal.integrated.shellIntegration.enabled": false,
 			"python.terminal.activateEnvironment": false,
+			"code-runner.executorMapByFileExtension": {
+				".html": "python -m http.server 8080 --directory \"$workspaceRoot\""
+			}
 		}, null, 4);
 
 		if(!fs.existsSync(settingsPath)){
 			fs.mkdirSync(settingsPath);
-			fs.writeFileSync(settingsPath, settings);
-		} else {
 			fs.writeFileSync(settingsPath, settings);
 		}
 	});

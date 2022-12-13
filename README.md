@@ -37,12 +37,15 @@ There should also be a newly created folder called *.vscode* in your working dir
     "code-runner.clearPreviousOutput": false,
     "terminal.integrated.shellIntegration.enabled": false,
     "python.terminal.activateEnvironment": false,
+    "code-runner.executorMapByFileExtension": {
+        ".html": "python -m http.server 8080 --directory \"$workspaceRoot\""
+    }
 }
 ```
 
 There is a chance there might be more than two run buttons, so make sure you right click on the "Run Code" button and hide it. The custom "Code Histories commit" ensures that the terminal data are captured only when that button is clicked. 
 
-For directly typed executions in the terminal, you could use the run "Code Histories commit" button first time and select "No" in the pop-up to not commit since the typed executions are different from the ones from the button.
+For directly typed executions in the terminal, you still could use the run "Code Histories commit" button the first time to enter "Code" terminal and select "No" in the pop-up to not commit. An example of starting up localserver by html file extension is included. Please make sure to use keyboard interrupt (Ctrl + C) for exit to trigger output.txt update.
 
 The intial VS Code window will run in the background to capture the code state and output.
 
