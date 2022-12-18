@@ -109,7 +109,7 @@ function activate(context) {
 						allTerminalsData[pid] += terminalData;
 						// console.log('allTerminalsData: ', allTerminalsData[pid]);
 
-						// if(checkThenCommit){
+						if(checkThenCommit){
 							console.log('There are %s matched regex dir for pid %s', allTerminalsDirCount[pid], pid);
 
 							// if counter is >= 2, then we should have enough information to trim and find the output
@@ -144,7 +144,7 @@ function activate(context) {
 								allTerminalsDirCount[pid] = 1;
 								checkThenCommit = false;
 							}
-						// }
+						}
 					});
 				}
 			}
@@ -515,13 +515,13 @@ function activate(context) {
 			"code-runner.clearPreviousOutput": false,
 			"terminal.integrated.shellIntegration.enabled": false,
 			"python.terminal.activateEnvironment": false,
-			"code-runner.executorMapByFileExtension": {
-				".html": "python -m http.server 8080 --directory \"$workspaceRoot\""
+			"code-runner.executorMap": {
+				"html": "python -m http.server 8080 --directory \"$workspaceRoot\""
 			}
 		}, null, 4);
 
-		if(!fs.existsSync(settingsPath)){
-			fs.mkdirSync(settingsPath);
+		if(!fs.existsSync(vscodePath)){
+			fs.mkdirSync(vscodePath);
 			fs.writeFileSync(settingsPath, settings);
 		}
 	});
@@ -577,6 +577,8 @@ function deactivate() {
 	// clear data
 	allTerminalsData = new Object();
 	allTerminalsDirCount = new Object();
+	terminalDimChanged = new Object();
+	terminalOpenedFirstTime = new Object();
 }
 
 module.exports = {

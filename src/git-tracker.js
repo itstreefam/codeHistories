@@ -43,41 +43,37 @@ module.exports = class gitTracker {
     }
 
     checkWebData(){
-        vscode.window.showInformationMessage("output.txt recently updated. Do you want to commit?", "Yes", "No").then(answer => {
-            if (answer === "Yes") {
-                // check if web data is being tracked
-                if(!fs.existsSync(this._currentDir + '/webData')){
-                    vscode.window.showInformationMessage('Web data does not exist! Make sure to also use webActivities.');
-                }
+        // check if web data is being tracked
+        if(!fs.existsSync(this._currentDir + '/webData')){
+            vscode.window.showInformationMessage('Web data does not exist! Make sure to also use webActivities.');
+        }
 
-                // set timeout for 5 seconds to make sure that data is most updated
-                vscode.window.withProgress({
-                    location: vscode.ProgressLocation.Notification,
-                    title: "Committing! Hang tight!",
-                    cancellable: false
-                }, (progress, token) => {
-                    return new Promise((resolve, reject) => {
-                        setTimeout(() => {
-                            resolve(); 
-                        }, 4000);
-                    });
-                }).then(() => {
-                    this.git.add('webData');
-                    this.gitCommit();
-                    vscode.window.withProgress({
-                        location: vscode.ProgressLocation.Notification,
-                        title: "Committed! Please continue!",
-                        cancellable: false
-                    }, (progress, token) => {
-                        return new Promise((resolve, reject) => {
-                            setTimeout(() => {
-                                resolve();
-                            }, 1000);
-                        });
-                    });
-                }); 
-            }
-        });
+        // set timeout to make sure that webData is most updated
+        vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "Committing! Hang tight!",
+            cancellable: false
+        }, (progress, token) => {
+            return new Promise((resolve, reject) => {
+                setTimeout(() => {
+                    resolve(); 
+                }, 4000);
+            });
+        }).then(() => {
+            this.git.add('webData');
+            this.gitCommit();
+            this.keepOrUndoCommit();
+        }); 
+    }
+
+    async keepOrUndoCommit(){
+        const choice = await vscode.window.showWarningMessage('Recently committed! Do you want to keep or undo?', 'Keep commit', 'Undo commit');
+        if (choice === 'Keep commit') {
+            // do nothing, message dismissed
+        }
+        else if (choice === 'Undo commit') {
+            this.git.reset(['HEAD~1']);
+        }
     }
 
     updateOutput(output){
@@ -123,7 +119,7 @@ module.exports = class gitTracker {
 
     checkEdgeCases(str){
         // console.log(str);
-        let edgeCasesRegex = /clear[\s]*|(pwd|ls|cd|mkdir|touch|cp|rm|nano|cat|echo|apt|pip|git)[\s]+/g;
+        let edgeCasesRegex = /(clear|gitk)[\s]*|(pwd|ls|cd|mkdir|touch|cp|rm|nano|cat|echo|apt|pip|git)[\s]+/g;
         if(edgeCasesRegex.test(str)){
             console.log("Encounter edge case", str.match(edgeCasesRegex));
             return false;

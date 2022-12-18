@@ -37,8 +37,8 @@ There should also be a newly created folder called *.vscode* in your working dir
     "code-runner.clearPreviousOutput": false,
     "terminal.integrated.shellIntegration.enabled": false,
     "python.terminal.activateEnvironment": false,
-    "code-runner.executorMapByFileExtension": {
-        ".html": "python -m http.server 8080 --directory \"$workspaceRoot\""
+    "code-runner.executorMap": {
+        "html": "python -m http.server 8080 --directory \"$workspaceRoot\""
     }
 }
 ```
