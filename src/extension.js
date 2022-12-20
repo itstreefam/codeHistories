@@ -66,8 +66,6 @@ function activate(context) {
 	if(process.platform === 'win32'){
 		// make sure to have Git for Windows installed to use Git Bash as default cmd
 		// e.g. tri@DESKTOP-XXXXXXX MINGW64 ~/Desktop/test-folder (master)
-		// var win_regex_dir = new RegExp(user + "@" + hostname + ".*\\){1}", "g");
-		// var win_regex_dir = new RegExp(user + "@" + hostname + '[\s\S]*');
 		var win_regex_dir = new RegExp(user + "@" + hostname + "(\(.*\))?", "g");
 		
 		// on did write to terminal
@@ -191,10 +189,10 @@ function activate(context) {
 
 	if(process.platform === "darwin"){
 		// use bash as default terminal cmd 
-		// pattern hostname:directory_name user$
-		// var mac_regex_dir = new RegExp(user + "@" + hostname + '[\s\S]*');
+		// hostname:directory_name user$
 		var mac_regex_dir = new RegExp("(\(.*\))?" + hostname + ".*" + user + "\\${1}", "g");
 
+		// \rhostname:directory_name user$
 		var returned_mac_regex_dir = new RegExp("\\r" + "(\(.*\))?" + hostname + ".*" + user + "\\${1}", "g");
 		
 		// on did write to terminal
@@ -245,11 +243,11 @@ function activate(context) {
 									allTerminalsData[pid] = allTerminalsData[pid].replace(carriage_return_dir, "");
 								}
 
-								// grab everything between second to last occurence of linux_regex_dir and the last occurence of linux_regex_dir
+								// grab everything between second to last occurence of mac_regex_dir and the last occurence of mac_regex_dir
 								let secondToLastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1], allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]) - 1);
 								let lastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]);
 
-								// find the first occurrence of "\r\n" after the second to last occurence of linux_regex_dir
+								// find the first occurrence of "\r\n" after the second to last occurence of mac_regex_dir
 								let firstOccurenceOfNewLine = allTerminalsData[pid].indexOf("\r\n", secondToLastOccurence);
 
 								let output = allTerminalsData[pid].substring(firstOccurenceOfNewLine, lastOccurence);
@@ -305,10 +303,10 @@ function activate(context) {
 
 	if(process.platform === 'linux'){
 		// linux defaut bash e.g. tri@tri-VirtualBox:~/Desktop/test$
-		var linux_regex_dir = new RegExp(user + "@" + hostname + ".*\\${1}", "g");
-		// var linux_regex_dir = new RegExp(user + "@" + hostname + '[\s\S]*');
-
-		var returned_linux_regex_dir = new RegExp("\\r" + user + "@" + hostname + ".*\\${1}", "g");
+		var linux_regex_dir = new RegExp("(\(.*\))?" + user + "@" + hostname + ".*\\${1}", "g");
+		
+		// \rtri@tri-VirtualBox:~/Desktop/test$
+		var returned_linux_regex_dir = new RegExp("\\r" + "(\(.*\))?" + user + "@" + hostname + ".*\\${1}", "g");
 		
 		// on did write to terminal
 		vscode.window.onDidWriteTerminalData(event => {
@@ -336,6 +334,10 @@ function activate(context) {
 							allTerminalsDirCount[pid] += matched.length;
 						}
 
+						// iter += 1;
+						// eventData[iter] = terminalData;
+						// console.log(eventData);
+
 						// allTerminalsData[pid] = globalStr of the terminal instance with pid
 						allTerminalsData[pid] += terminalData;
 
@@ -346,7 +348,6 @@ function activate(context) {
 							if(allTerminalsDirCount[pid] >= 2){
 
 								if(returned_linux_regex_dir.test(allTerminalsData[pid])){
-									// get matched string with returned_linux_regex_dir (e.g. \rtri@tri-VirtualBox:~/Desktop/test$)
 									// happens when the terminal is interacted with without necessarily writing out new data
 									let carriage_return_dir = allTerminalsData[pid].match(returned_linux_regex_dir);
 									// console.log('carriage_return_dir: ', carriage_return_dir);
@@ -367,6 +368,7 @@ function activate(context) {
 								// clear residual \033]0; and \007 (ESC]0; and BEL)
 								output = output.replace(/\\033]0; | \\007/g, "");
 								output = output.trim();
+								output = removeBackspaces(output);
 								
 								let outputUpdated = tracker.updateOutput(output);	
 								console.log('output.txt updated?', outputUpdated);
@@ -470,19 +472,6 @@ function activate(context) {
 
 function countOccurrences(string, word) {
 	return string.split(word).length - 1;
-}
-
-function removeConsecutiveOccurrences(string, word) {
-	let temp = string.split(word);
-
-	// remove empty strings
-	// and recombine the array into a string
-	temp = temp.filter(function (el) {
-		return el != "";
-	}).join(word);
-
-	// return
-	return temp;
 }
 
 // https://stackoverflow.com/questions/11891653/javascript-concat-string-with-backspace
