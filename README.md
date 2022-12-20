@@ -30,7 +30,7 @@ There should also be a newly created folder called *.vscode* in your working dir
         }
     },
     "terminal.integrated.defaultProfile.windows": "Git Bash",
-    "terminal.integrated.defaultProfile.osx": "zsh",
+    "terminal.integrated.defaultProfile.osx": "bash",
     "terminal.integrated.defaultProfile.linux": "bash",
     "code-runner.runInTerminal": true,
     "code-runner.ignoreSelection": true,
@@ -38,7 +38,8 @@ There should also be a newly created folder called *.vscode* in your working dir
     "terminal.integrated.shellIntegration.enabled": false,
     "python.terminal.activateEnvironment": false,
     "code-runner.executorMap": {
-        "html": "python -m http.server 8080 --directory \"$workspaceRoot\""
+        "html": "\"$pythonPath\" -m http.server 8080 --directory \"$workspaceRoot\"",
+        "python": "\"$pythonPath\" -u \"$fullFileName\"",
     }
 }
 ```

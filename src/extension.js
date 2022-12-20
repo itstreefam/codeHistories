@@ -23,52 +23,52 @@ var allTerminalsDirCount = new Object();
 function activate(context) {
 	console.log('Congratulations, your extension "codeHistories" is now active!');
 
+	if(!vscode.workspace.workspaceFolders){
+		message = "Working folder not found, please open a folder first." ;
+		vscode.window.showErrorMessage(message);
+		return;
+	}
+
+	// check git init status
+	simpleGit().clean(simpleGit.CleanOptions.FORCE);
+	var currentDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
+	tracker = new gitTracker(currentDir);
+	tracker.isGitInitialized();
+
+	// get user and hostname for regex matching
+	var user = os.userInfo().username;
+	var hostname = os.hostname();
+	if(hostname.indexOf(".") > 0){
+		hostname = hostname.substring(0, hostname.indexOf("."));
+	}
+
+	// check if current terminals have more than one terminal instance where name is terminalName
+	var terminalList = vscode.window.terminals;
+	var terminalInstance = 0;
+	for(let i = 0; i < terminalList.length; i++){
+		if(terminalList[i].name == terminalName){
+			terminalInstance++;
+		}
+	}
+
+	// close all terminal instances with name terminalName
+	if(terminalInstance >= 1){
+		for(let i = 0; i < terminalList.length; i++){
+			if(terminalList[i].name == terminalName){
+				terminalList[i].dispose();
+			}
+		}
+	}
+
 	// make a regex that match everything between \033]0; and \007
 	var very_special_regex = new RegExp("\033]0;(.*)\007", "g");
 
 	if(process.platform === 'win32'){
-		simpleGit().clean(simpleGit.CleanOptions.FORCE);
-
-		if(!vscode.workspace.workspaceFolders){
-			message = "Working folder not found, please open a folder first." ;
-			vscode.window.showErrorMessage(message);
-			return;
-		}
-
-		var currentDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
-		tracker = new gitTracker(currentDir);
-		tracker.isGitInitialized();
-
-		var user = os.userInfo().username;
-		var hostname = os.hostname();
-
-		// grab the hostname before the first occurence of "."
-		if(hostname.indexOf(".") > 0){
-			hostname = hostname.substring(0, hostname.indexOf("."));
-		}
-
 		// make sure to have Git for Windows installed to use Git Bash as default cmd
+		// e.g. tri@DESKTOP-XXXXXXX MINGW64 ~/Desktop/test-folder (master)
 		// var win_regex_dir = new RegExp(user + "@" + hostname + ".*\\){1}", "g");
 		// var win_regex_dir = new RegExp(user + "@" + hostname + '[\s\S]*');
 		var win_regex_dir = new RegExp(user + "@" + hostname + "(\(.*\))?", "g");
-
-		// check if current terminals have more than one terminal instance where name is terminalName
-		var terminalList = vscode.window.terminals;
-		var terminalInstance = 0;
-		for(let i = 0; i < terminalList.length; i++){
-			if(terminalList[i].name == terminalName){
-				terminalInstance++;
-			}
-		}
-
-		// close all terminal instances with name terminalName
-		if(terminalInstance >= 1){
-			for(let i = 0; i < terminalList.length; i++){
-				if(terminalList[i].name == terminalName){
-					terminalList[i].dispose();
-				}
-			}
-		}
 		
 		// on did write to terminal
 		vscode.window.onDidWriteTerminalData(event => {
@@ -101,9 +101,9 @@ function activate(context) {
 							allTerminalsDirCount[pid] += matched.length;
 						}
 
-						iter += 1;
-						eventData[iter] = terminalData;
-						console.log(eventData);
+						// iter += 1;
+						// eventData[iter] = terminalData;
+						// console.log(eventData);
 
 						// allTerminalsData[pid] = globalStr of the terminal instance with pid
 						allTerminalsData[pid] += terminalData;
@@ -190,53 +190,12 @@ function activate(context) {
 	}
 
 	if(process.platform === "darwin"){
-		simpleGit().clean(simpleGit.CleanOptions.FORCE);
-
-		if(!vscode.workspace.workspaceFolders){
-			message = "Working folder not found, please open a folder first." ;
-			vscode.window.showErrorMessage(message);
-			return;
-		}
-
-		var currentDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
-		tracker = new gitTracker(currentDir);
-		tracker.isGitInitialized();
-
-		var user = os.userInfo().username;
-		var hostname = os.hostname();
-
-		// grab the hostname before the first occurence of "."
-		if(hostname.indexOf(".") > 0){
-			hostname = hostname.substring(0, hostname.indexOf("."));
-		}
-
-		// console.log('user: ' + user);
-		// console.log('hostname: ' + hostname);
-
 		// use bash as default terminal cmd 
 		// pattern hostname:directory_name user$
 		// var mac_regex_dir = new RegExp(user + "@" + hostname + '[\s\S]*');
 		var mac_regex_dir = new RegExp("(\(.*\))?" + hostname + ".*" + user + "\\${1}", "g");
 
 		var returned_mac_regex_dir = new RegExp("\\r" + "(\(.*\))?" + hostname + ".*" + user + "\\${1}", "g");
-
-		// check if current terminals have more than one terminal instance where name is terminalName
-		var terminalList = vscode.window.terminals;
-		var terminalInstance = 0;
-		for(let i = 0; i < terminalList.length; i++){
-			if(terminalList[i].name == terminalName){
-				terminalInstance++;
-			}
-		}
-
-		// close all terminal instances with name terminalName
-		if(terminalInstance >= 1){
-			for(let i = 0; i < terminalList.length; i++){
-				if(terminalList[i].name == terminalName){
-					terminalList[i].dispose();
-				}
-			}
-		}
 		
 		// on did write to terminal
 		vscode.window.onDidWriteTerminalData(event => {
@@ -278,7 +237,6 @@ function activate(context) {
 							if(allTerminalsDirCount[pid] >= 2){
 
 								if(returned_mac_regex_dir.test(allTerminalsData[pid])){
-									// get matched string with returned_linux_regex_dir (e.g. \rtri@tri-VirtualBox:~/Desktop/test$)
 									// happens when the terminal is interacted with without necessarily writing out new data
 									let carriage_return_dir = allTerminalsData[pid].match(returned_mac_regex_dir);
 									// console.log('carriage_return_dir: ', carriage_return_dir);
@@ -299,6 +257,7 @@ function activate(context) {
 								// clear residual \033]0; and \007 (ESC]0; and BEL)
 								output = output.replace(/\\033]0; | \\007/g, "");
 								output = output.trim();
+								output = removeBackspaces(output);
 								
 								let outputUpdated = tracker.updateOutput(output);	
 								console.log('output.txt updated?', outputUpdated);
@@ -345,49 +304,11 @@ function activate(context) {
 	}
 
 	if(process.platform === 'linux'){
-		simpleGit().clean(simpleGit.CleanOptions.FORCE);
-
-		if(!vscode.workspace.workspaceFolders){
-			message = "Working folder not found, please open a folder first." ;
-			vscode.window.showErrorMessage(message);
-			return;
-		}
-
-		var currentDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
-		tracker = new gitTracker(currentDir);
-		tracker.isGitInitialized();
-
-		var user = os.userInfo().username;
-		var hostname = os.hostname();
-
-		// grab the hostname before the first occurence of "."
-		if(hostname.indexOf(".") > 0){
-			hostname = hostname.substring(0, hostname.indexOf("."));
-		}
-
 		// linux defaut bash e.g. tri@tri-VirtualBox:~/Desktop/test$
 		var linux_regex_dir = new RegExp(user + "@" + hostname + ".*\\${1}", "g");
 		// var linux_regex_dir = new RegExp(user + "@" + hostname + '[\s\S]*');
 
 		var returned_linux_regex_dir = new RegExp("\\r" + user + "@" + hostname + ".*\\${1}", "g");
-
-		// check if current terminals have more than one terminal instance where name is terminalName
-		var terminalList = vscode.window.terminals;
-		var terminalInstance = 0;
-		for(let i = 0; i < terminalList.length; i++){
-			if(terminalList[i].name == terminalName){
-				terminalInstance++;
-			}
-		}
-
-		// close all terminal instances with name terminalName
-		if(terminalInstance >= 1){
-			for(let i = 0; i < terminalList.length; i++){
-				if(terminalList[i].name == terminalName){
-					terminalList[i].dispose();
-				}
-			}
-		}
 		
 		// on did write to terminal
 		vscode.window.onDidWriteTerminalData(event => {
@@ -508,7 +429,7 @@ function activate(context) {
 				}
 			},
 			"terminal.integrated.defaultProfile.windows": "Git Bash",
-			"terminal.integrated.defaultProfile.osx": "zsh",
+			"terminal.integrated.defaultProfile.osx": "bash",
 			"terminal.integrated.defaultProfile.linux": "bash",
 			"code-runner.runInTerminal": true,
 			"code-runner.ignoreSelection": true,
@@ -516,7 +437,8 @@ function activate(context) {
 			"terminal.integrated.shellIntegration.enabled": false,
 			"python.terminal.activateEnvironment": false,
 			"code-runner.executorMap": {
-				"html": "python -m http.server 8080 --directory \"$workspaceRoot\""
+				"html": "\"$pythonPath\" -m http.server 8080 --directory \"$workspaceRoot\"",
+				"python": "\"$pythonPath\" -u \"$fullFileName\"",
 			}
 		}, null, 4);
 
