@@ -16,12 +16,12 @@ https://user-images.githubusercontent.com/44308446/158084110-06305b2c-af13-4664-
 
 ## Extension Setup
 
-1.  Clone code histories repository.
+1.  Clone this repository.
 2.  Download the Insiders version of VSCode: https://code.visualstudio.com/insiders/
 3.  Open VSCode. You can determine whether you’ve gotten Insiders based on the icon color, which should be jade green for Insiders (rather than blue).
 4.  Install the Code Runner Extension. You should be able to search for it from the extensions tab on the left hand side of the screen (looks like little blocks).
 5.  Open the code histories repository folder in VSCode.
-6.  From the main directory of the code histories repository, run npm i to install all dependencies.
+6.  From the main directory of the code histories repository, run ```npm i``` to install all dependencies.
 7.  Back in VSCode, press f5 to enter debug mode. This will open a new VScode window which has "[Extension Development Host]" in its name. This is where you should set up the code that you want to be tracked.
 8.  Open the repository or folder that you want to work in using VSCode.
 9.  CTRL-SHIFT-P should start the extension (CMD-SHIFT-P for Mac). That will bring up a menu of options. Look for and choose Code Histories. Note: When this runs, it should automatically create the settings that are needed for the extension. But, if that fails to happen (which would manifest as an error on CTRL-SHIFT-P) you can do the following:
