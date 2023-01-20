@@ -1,6 +1,7 @@
 const vscode = require('vscode');
 const simpleGit = require('simple-git');
 const fs = require('fs');
+const cp = require('child_process');
 
 module.exports = class gitTracker {
     constructor(currentDir) {
@@ -21,6 +22,36 @@ module.exports = class gitTracker {
 
     isGitInitialized() {
         this.git = simpleGit(this._currentDir);
+
+        if(process.platform === 'win32') {
+            var gitReposInCurrentDir = cp.execSync('Get-ChildItem . -Attributes Directory+Hidden -ErrorAction SilentlyContinue -Filter ".git" -Recurse | % { Write-Host $_.FullName }', {cwd: this._currentDir, shell: "PowerShell"});
+            // console.log(gitRepoInCurrentDir.toString());
+            // get individual lines of output
+            var gitRepos = gitReposInCurrentDir.toString().split('\n');
+            // console.log(gitRepos);
+
+            // eliminate empty lines
+            gitRepos = gitRepos.filter(function (el) {
+                return el != "";
+            });
+
+            // remove .git from the end of each line
+            var gitReposFiltered = gitRepos.map(function (el) {
+                return el.substring(0, el.length - 5);
+            });
+
+            console.log(gitReposFiltered);
+
+        }
+
+        // const wholeRepoStatus = this.git.status();
+        // const subDirStatusUsingOptArray = this.git.status(['--', 'sub-dir']);
+        // const subDirStatusUsingOptObject = this.git.status({ '--': null, 'sub-dir': null });
+
+        // console.log('wholeRepoStatus: ', wholeRepoStatus);
+        // console.log('subDirStatusUsingOptArray: ', subDirStatusUsingOptArray);
+        // console.log('subDirStatusUsingOptObject: ', subDirStatusUsingOptObject);
+
         return this.git.checkIsRepo()
             .then(isRepo => !isRepo && this.initializeGit(this.git))
             .then(() => this.git.fetch());
