@@ -6,6 +6,7 @@ const cp = require('child_process');
 module.exports = class gitTracker {
     constructor(currentDir) {
         this._currentDir = currentDir;
+        this._initialWorkspaceDir = currentDir;
     }
 
     timestamp() {
@@ -15,16 +16,9 @@ module.exports = class gitTracker {
         return time();
     }
 
-    initializeGit(git){
-        console.log("Initializing git...");
-        return git.init();
-    }
-
-    isGitInitialized() {
-        this.git = simpleGit(this._currentDir);
-
+    listGitRepos() {
         if(process.platform === 'win32') {
-            var gitReposInCurrentDir = cp.execSync('Get-ChildItem . -Attributes Directory+Hidden -ErrorAction SilentlyContinue -Filter ".git" -Recurse | % { Write-Host $_.FullName }', {cwd: this._currentDir, shell: "PowerShell"});
+            var gitReposInCurrentDir = cp.execSync('Get-ChildItem . -Attributes Directory+Hidden -ErrorAction SilentlyContinue -Filter ".git" -Recurse | % { Write-Host $_.FullName }', {cwd: this._initialWorkspaceDir, shell: "PowerShell"});
             // console.log(gitRepoInCurrentDir.toString());
             // get individual lines of output
             var gitRepos = gitReposInCurrentDir.toString().split('\n');
@@ -37,21 +31,60 @@ module.exports = class gitTracker {
 
             // remove .git from the end of each line
             var gitReposFiltered = gitRepos.map(function (el) {
-                return el.substring(0, el.length - 5);
+                el = el.substring(0, el.length - 5);
+                // make first letter of each line lowercase
+                el = el.charAt(0).toLowerCase() + el.slice(1);
+                return el;
             });
 
             console.log(gitReposFiltered);
-
+            return gitReposFiltered;
         }
+    }
 
-        // const wholeRepoStatus = this.git.status();
-        // const subDirStatusUsingOptArray = this.git.status(['--', 'sub-dir']);
-        // const subDirStatusUsingOptObject = this.git.status({ '--': null, 'sub-dir': null });
+    presentGitRepos() {
+        var gitRepos = this.listGitRepos();
+        if(gitRepos.length == 0) {
+            vscode.window.showInformationMessage('No git repos found in current directory! Initializing git in current directory...');
+            // initialize git in current directory
+            this.git = simpleGit(this._currentDir);
+            this.initializeGit(this.git);
+        }
+        else {
+            var items = [];
+            // if current directory is in gitRepos, add it to the top of the list
+            if(gitRepos.includes(this._currentDir)) {
+                items.push({ label: this._currentDir.toString(), description: "Current directory" });
+            }
+            // add all other git repos to the list
+            for(var i = 0; i < gitRepos.length; i++) {
+                if(gitRepos[i] != this._currentDir) {
+                    items.push({ label: gitRepos[i].toString(), description: '' });
+                }
+            }
 
-        // console.log('wholeRepoStatus: ', wholeRepoStatus);
-        // console.log('subDirStatusUsingOptArray: ', subDirStatusUsingOptArray);
-        // console.log('subDirStatusUsingOptObject: ', subDirStatusUsingOptObject);
+            vscode.window.showQuickPick(items, {
+                canPickMany: false, 
+                placeHolder: 'Select a git repo to track', 
+                ignoreFocusOut: true,
+                matchOnDescription: true,
+                matchOnDetail: true,
+            }).then((selectedRepo) => {
+                if(selectedRepo) {
+                    this._currentDir = selectedRepo.label;
+                    this.git = simpleGit(this._currentDir);
+                }
+            });
+        }
+    }
 
+    initializeGit(git){
+        console.log("Initializing git...");
+        return git.init();
+    }
+
+    isGitInitialized() {
+        this.git = simpleGit(this._currentDir);
         return this.git.checkIsRepo()
             .then(isRepo => !isRepo && this.initializeGit(this.git))
             .then(() => this.git.fetch());
@@ -70,6 +103,9 @@ module.exports = class gitTracker {
         var conversion = new Date(timeStamp).toLocaleString('en-US');
         var commitMessage = `[Commit time: ${conversion}]`;
         this.git.commit(commitMessage);
+        // commit in .pseudogit folder
+        // this.git.commit(commitMessage, { '--git-dir': this._currentDir + '/.pseudogit' });
+
         // console.log(commitMessage);
     }
 
