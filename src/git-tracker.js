@@ -35,20 +35,25 @@ module.exports = class gitTracker {
     }
 
     listGitRepos() {
+        var gitReposInCurrentDir = ['./.git'];
         if(process.platform === 'win32') {
-            var gitReposInCurrentDir = cp.execSync('Get-ChildItem . -Attributes Directory,Hidden -ErrorAction SilentlyContinue -Filter *.git -Recurse | % { Write-Host $_.FullName }', {cwd: this._initialWorkspaceDir, shell: "PowerShell"});
-            // console.log(gitRepoInCurrentDir.toString());
-            // get individual lines of output
-            var gitRepos = gitReposInCurrentDir.toString().split('\n');
-
-            // eliminate empty lines
-            gitRepos = gitRepos.filter(function (el) {
-                return el != "";
-            });
-
-            console.log(gitRepos);
-            return gitRepos;
+            gitReposInCurrentDir = cp.execSync('Get-ChildItem . -Attributes Directory,Hidden -ErrorAction SilentlyContinue -Filter *.git -Recurse | % { Write-Host $_.FullName }', {cwd: this._initialWorkspaceDir, shell: "PowerShell"});
         }
+        else if(process.platform === 'darwin') {
+            gitReposInCurrentDir = cp.execSync('find ~+ -type d -name "*.git"', {cwd: this._initialWorkspaceDir, shell: "bash"});
+        }
+
+        // console.log(gitRepoInCurrentDir.toString());
+        // get individual lines of output
+        var gitRepos = gitReposInCurrentDir.toString().split('\n');
+
+        // eliminate empty lines
+        gitRepos = gitRepos.filter(function (el) {
+            return el != "";
+        });
+
+        console.log(gitRepos);
+        return gitRepos;
     }
 
     presentGitRepos() {
@@ -58,21 +63,21 @@ module.exports = class gitTracker {
 
             if(this.isUsingCodeHistoriesGit){
                 // if current directory is in gitRepos, add it to the top of the list
-                if(gitRepos.includes(this._currentDir + '\\codeHistories.git')) {
+                if(gitRepos.includes(this._currentDir + '\\codeHistories.git') || gitRepos.includes(this._currentDir + '/codeHistories.git')) {
                     items.push({ label: this._currentDir + '\\codeHistories.git', description: "Current repo" });
                 }
                 // add all other git repos to the list
                 for(var i = 0; i < gitRepos.length; i++) {
-                    if(gitRepos[i] != this._currentDir + '\\codeHistories.git') {
+                    if(gitRepos[i] != this._currentDir + '\\codeHistories.git' && gitRepos[i] != this._currentDir + '/codeHistories.git') {
                         items.push({ label: gitRepos[i].toString(), description: '' });
                     }
                 }
             } else {
-                if(gitRepos.includes(this._currentDir + '\\.git')) {
+                if(gitRepos.includes(this._currentDir + '\\.git') || gitRepos.includes(this._currentDir + '/.git')) {
                     items.push({ label: this._currentDir + '\\.git', description: "Current repo" });
                 }
                 for(var i = 0; i < gitRepos.length; i++) {
-                    if(gitRepos[i] != this._currentDir + '\\.git') {
+                    if(gitRepos[i] != this._currentDir + '\\.git' && gitRepos[i] != this._currentDir + '/.git') {
                         items.push({ label: gitRepos[i].toString(), description: '' });
                     }
                 }
@@ -90,10 +95,8 @@ module.exports = class gitTracker {
                     // omit last \\ or / from path
                     this._currentDir = this._currentDir.substring(0, this._currentDir.length - 1);
                     if(selectedRepo.label.includes('codeHistories.git')) {
-                        this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': this._currentDir + '/codeHistories.git', 'GIT_WORK_TREE': this._currentDir});
                         this.isUsingCodeHistoriesGit = true;
                     } else {
-                        this.git = simpleGit(this._currentDir);
                         this.isUsingCodeHistoriesGit = false;
                     }
                     this.initGitingore();
@@ -148,11 +151,13 @@ module.exports = class gitTracker {
                 console.log(".git folder does not exist");
                 this.git = simpleGit(this._currentDir);
                 this.isGitInitialized(this.git);
-                this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': this._currentDir + '/codeHistories.git', 'GIT_WORK_TREE': this._currentDir }).fetch();
+                this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': this._currentDir + '/codeHistories.git', 'GIT_WORK_TREE': this._currentDir });
+                this.isGitInitialized(this.codeHistoriesGit);
                 break;
             case "case 3":
                 console.log("codeHistories.git folder does not exist");
-                this.git = simpleGit(this._currentDir).fetch();
+                this.git = simpleGit(this._currentDir);
+                this.isGitInitialized(this.git);
 
                 // run git log
                 // if output is empty, create codeHistories.git and set it to be default repo
@@ -193,8 +198,10 @@ module.exports = class gitTracker {
                 break;
             case "case 4":
                 console.log("both .git and codeHistories.git folders exist");
-                this.git = simpleGit(this._currentDir).fetch();
-                this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': this._currentDir + '/codeHistories.git', 'GIT_WORK_TREE': this._currentDir }).fetch();
+                this.git = simpleGit(this._currentDir);
+                this.isGitInitialized(this.git);
+                this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': this._currentDir + '/codeHistories.git', 'GIT_WORK_TREE': this._currentDir });
+                this.isGitInitialized(this.codeHistoriesGit);
                 break;
         }
     }
