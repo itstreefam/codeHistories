@@ -33,7 +33,7 @@ function activate(context) {
 	simpleGit().clean(simpleGit.CleanOptions.FORCE);
 	var currentDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
 	tracker = new gitTracker(currentDir);
-	tracker.isGitInitialized();
+	tracker.createGitFolders();
 
 	// get user and hostname for regex matching
 	var user = os.userInfo().username;
@@ -466,8 +466,17 @@ function activate(context) {
 		});
 	});
 
+	let selectGitRepo = vscode.commands.registerCommand('codeHistories.selectGitRepo', function () {
+		if(!tracker){
+			vscode.window.showErrorMessage('Code histories is not activated!');
+		} else {
+			tracker.presentGitRepos();
+		}
+	});
+
 	context.subscriptions.push(disposable);
 	context.subscriptions.push(executeCode);
+	context.subscriptions.push(selectGitRepo);
 }
 
 function countOccurrences(string, word) {

@@ -27,6 +27,17 @@
         "command": "codeHistories.checkAndCommit",
         "title": "Code Histories commit",
         "icon": "$(run-all)"
+      },
+      {
+        "command": "codeHistories.selectGitRepo",
+        "title": "Code Histories: Select git repo"
+      }
+    ],
+    "keybindings":[
+      {
+        "command": "codeHistories.selectGitRepo",
+        "key": "Ctrl+Shift+G",
+        "mac": "Cmd+Shift+G"
       }
     ],
     "menus": {
