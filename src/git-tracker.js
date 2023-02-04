@@ -39,7 +39,7 @@ module.exports = class gitTracker {
         if(process.platform === 'win32') {
             gitReposInCurrentDir = cp.execSync('Get-ChildItem . -Attributes Directory,Hidden -ErrorAction SilentlyContinue -Filter *.git -Recurse | % { Write-Host $_.FullName }', {cwd: this._initialWorkspaceDir, shell: "PowerShell"});
         }
-        else if(process.platform === 'darwin') {
+        else if(process.platform === 'darwin' || process.platform === 'linux') {
             gitReposInCurrentDir = cp.execSync('find ~+ -type d -name "*.git"', {cwd: this._initialWorkspaceDir, shell: "bash"});
         }
 
@@ -50,6 +50,11 @@ module.exports = class gitTracker {
         // eliminate empty lines
         gitRepos = gitRepos.filter(function (el) {
             return el != "";
+        });
+
+        // make first letter of each line lowercase
+        gitRepos = gitRepos.map(function (el) {
+            return el.charAt(0).toLowerCase() + el.slice(1);
         });
 
         console.log(gitRepos);
@@ -63,8 +68,10 @@ module.exports = class gitTracker {
 
             if(this.isUsingCodeHistoriesGit){
                 // if current directory is in gitRepos, add it to the top of the list
-                if(gitRepos.includes(this._currentDir + '\\codeHistories.git') || gitRepos.includes(this._currentDir + '/codeHistories.git')) {
+                if(gitRepos.includes(this._currentDir + '\\codeHistories.git')){
                     items.push({ label: this._currentDir + '\\codeHistories.git', description: "Current repo" });
+                } else if(gitRepos.includes(this._currentDir + '/codeHistories.git')){
+                    items.push({ label: this._currentDir + '/codeHistories.git', description: "Current repo" });
                 }
                 // add all other git repos to the list
                 for(var i = 0; i < gitRepos.length; i++) {
@@ -73,8 +80,10 @@ module.exports = class gitTracker {
                     }
                 }
             } else {
-                if(gitRepos.includes(this._currentDir + '\\.git') || gitRepos.includes(this._currentDir + '/.git')) {
+                if(gitRepos.includes(this._currentDir + '\\.git')){
                     items.push({ label: this._currentDir + '\\.git', description: "Current repo" });
+                } else if(gitRepos.includes(this._currentDir + '/.git')){
+                    items.push({ label: this._currentDir + '/.git', description: "Current repo" });
                 }
                 for(var i = 0; i < gitRepos.length; i++) {
                     if(gitRepos[i] != this._currentDir + '\\.git' && gitRepos[i] != this._currentDir + '/.git') {
