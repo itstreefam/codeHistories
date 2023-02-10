@@ -439,8 +439,7 @@ function activate(context) {
 			"terminal.integrated.shellIntegration.enabled": false,
 			"python.terminal.activateEnvironment": false,
 			"code-runner.executorMap": {
-				"html": "\"$pythonPath\" -m http.server 8080 --directory \"$workspaceRoot\"",
-				"python": "\"$pythonPath\" -u \"$fullFileName\"",
+				"html": "python -m http.server 8080 --directory \"$workspaceRoot\"",
 			}
 		}, null, 4);
 
