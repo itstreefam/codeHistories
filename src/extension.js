@@ -6,6 +6,7 @@ const gitTracker = require('./git-tracker');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
+const Terminal = require('./terminal');
 
 var tracker = null;
 var iter = 0;
@@ -13,7 +14,7 @@ var eventData = new Object();
 var terminalDimChanged = new Object();
 var terminalOpenedFirstTime = new Object();
 var checkThenCommit = null;
-var terminalName = "Code";
+var terminalName = "Code Histories";
 var allTerminalsData = new Object();
 var allTerminalsDirCount = new Object();
 
@@ -35,6 +36,25 @@ function activate(context) {
 	tracker = new gitTracker(currentDir);
 	tracker.createGitFolders();
 
+	// get all existing terminal instances
+	var terminals = vscode.window.terminals;
+
+	// check if there are any existing terminals with the desired name
+	var existingTerminal = terminals.find(t => t.name === 'Code Histories');
+
+	// create a new terminal instance only if there are no existing terminals with the desired name
+	if (!existingTerminal) {
+		// create a new terminal instance with name terminalName
+		var codeHistoriesTerminal = new Terminal(terminalName, currentDir);
+
+		codeHistoriesTerminal.checkBashProfilePath();
+		codeHistoriesTerminal.show();
+		codeHistoriesTerminal.sendText(`source ~/.bash_profile`);
+	} else {
+		existingTerminal.show();
+		existingTerminal.sendText(`source ~/.bash_profile`);
+	}
+
 	// get user and hostname for regex matching
 	var user = os.userInfo().username;
 	var hostname = os.hostname();
@@ -42,23 +62,23 @@ function activate(context) {
 		hostname = hostname.substring(0, hostname.indexOf("."));
 	}
 
-	// check if current terminals have more than one terminal instance where name is terminalName
-	var terminalList = vscode.window.terminals;
-	var terminalInstance = 0;
-	for(let i = 0; i < terminalList.length; i++){
-		if(terminalList[i].name == terminalName){
-			terminalInstance++;
-		}
-	}
+	// // check if current terminals have more than one terminal instance where name is terminalName
+	// var terminalList = vscode.window.terminals;
+	// var terminalInstance = 0;
+	// for(let i = 0; i < terminalList.length; i++){
+	// 	if(terminalList[i].name == terminalName){
+	// 		terminalInstance++;
+	// 	}
+	// }
 
-	// close all terminal instances with name terminalName
-	if(terminalInstance >= 1){
-		for(let i = 0; i < terminalList.length; i++){
-			if(terminalList[i].name == terminalName){
-				terminalList[i].dispose();
-			}
-		}
-	}
+	// // close all terminal instances with name terminalName
+	// if(terminalInstance >= 1){
+	// 	for(let i = 0; i < terminalList.length; i++){
+	// 		if(terminalList[i].name == terminalName){
+	// 			terminalList[i].dispose();
+	// 		}
+	// 	}
+	// }
 
 	// make a regex that match everything between \033]0; and \007
 	var very_special_regex = new RegExp("\033]0;(.*)\007", "g");
@@ -80,6 +100,14 @@ function activate(context) {
 						if(terminalDimChanged[pid]){
 							terminalData = "";
 							terminalDimChanged[pid] = false;
+						}
+
+						if(typeof allTerminalsData[pid] === 'undefined'){
+							allTerminalsData[pid] = "";
+						}
+
+						if(typeof allTerminalsDirCount[pid] === 'undefined'){
+							allTerminalsDirCount[pid] = 0;
 						}
 						
 						// test if very_special_regex matches
@@ -105,9 +133,9 @@ function activate(context) {
 
 						// allTerminalsData[pid] = globalStr of the terminal instance with pid
 						allTerminalsData[pid] += terminalData;
-						// console.log('allTerminalsData: ', allTerminalsData[pid]);
+						console.log('allTerminalsData: ', allTerminalsData[pid]);
 
-						if(checkThenCommit){
+						// if(checkThenCommit){
 							console.log('There are %s matched regex dir for pid %s', allTerminalsDirCount[pid], pid);
 
 							// if counter is >= 2, then we should have enough information to trim and find the output
@@ -124,13 +152,13 @@ function activate(context) {
 								output = output.trim();
 								output = removeBackspaces(output);
 
-								// console.log('output: ', output);
+								console.log('output: ', output);
 								
 								let outputUpdated = tracker.updateOutput(output);	
 								console.log('output.txt updated?', outputUpdated);
 
 								if(outputUpdated){
-									tracker.checkWebData();
+									// tracker.checkWebData();
 								}
 
 								// console.log('globalStr of %s before reset: ', pid, allTerminalsData[pid]);
@@ -142,7 +170,7 @@ function activate(context) {
 								allTerminalsDirCount[pid] = 1;
 								checkThenCommit = false;
 							}
-						}
+						// }
 					});
 				}
 			}
@@ -186,6 +214,8 @@ function activate(context) {
 			}
 		});
 	}
+
+	/*
 
 	if(process.platform === "darwin"){
 		// use bash as default terminal cmd 
@@ -411,7 +441,7 @@ function activate(context) {
 				});
 			}
 		});
-	}
+	} */
 
 	let disposable = vscode.commands.registerCommand('codeHistories.codeHistories', function () {
 		vscode.window.showInformationMessage('Code histories activated!');
@@ -459,6 +489,8 @@ function activate(context) {
 				vscode.commands.executeCommand('python.execInTerminal');
 			} else if(terminalName == "Code"){
 				vscode.commands.executeCommand('code-runner.run');
+			} else if(terminalName == "Code Histories"){
+				codeHistoriesTerminal.sendText(`source ~/.bash_profile`);
 			}
 
 			checkThenCommit = true;

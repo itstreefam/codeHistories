@@ -174,6 +174,9 @@ module.exports = class gitTracker {
                 this.git.log((err, log) => {
                     if(err) {
                         console.log(err);
+                        // create codeHistories.git
+                        this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': this._currentDir + '/codeHistories.git' , 'GIT_WORK_TREE': this._currentDir });
+                        this.initializeGit(this.codeHistoriesGit);
                     }
                     else {
                         if(log.total == 0) {
@@ -329,11 +332,17 @@ module.exports = class gitTracker {
 
     checkEdgeCases(str){
         // console.log(str);
-        let edgeCasesRegex = /(clear|gitk)[\s]*|(pwd|ls|cd|mkdir|touch|cp|rm|nano|cat|echo|apt|pip|git)[\s]+/g;
-        if(edgeCasesRegex.test(str)){
-            console.log("Encounter edge case", str.match(edgeCasesRegex));
-            return false;
+        // let edgeCasesRegex = /(clear|gitk)[\s]*|(pwd|ls|cd|mkdir|touch|cp|rm|nano|cat|echo|apt|pip|git)[\s]+/g;
+        // if(edgeCasesRegex.test(str)){
+        //     console.log("Encounter edge case", str.match(edgeCasesRegex));
+        //     return false;
+        // }
+        // return true;
+
+        // only returns true if str contains codehistories
+        if(str.includes("codehistories")){
+            return true;
         }
-        return true;
+        return false;
     }
 }
