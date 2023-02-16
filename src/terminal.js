@@ -1,6 +1,7 @@
 const vscode = require('vscode');
 const os = require('os');
 const fs = require('fs');
+const path = require('path');
 
 class Terminal {
   constructor(name, cwd) {
@@ -13,6 +14,11 @@ class Terminal {
       shellPath: this.terminalShellPath,
       shellArgs: [],
     });
+
+    let promptCommand = this.getPromptCommand();
+    if (promptCommand) {
+      this.terminal.sendText(promptCommand);
+    }
   }
 
   show() {
@@ -21,6 +27,19 @@ class Terminal {
 
   sendText(text) {
     this.terminal.sendText(text);
+  }
+
+  getPromptCommand() {
+    let promptCommand = '';
+    if (os.platform() === 'darwin') {
+      this.terminalShellPath = '/bin/bash';
+
+      // when open up a new terminal, bash-3.2$ was shown
+      // change this to hostname:current_directory username$
+      promptCommand = "export PS1='\\h:\\W \\u\\$ '";
+    }
+
+    return promptCommand;
   }
 
   checkBashProfilePath(){

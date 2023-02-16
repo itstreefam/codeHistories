@@ -31,6 +31,10 @@
       {
         "command": "codeHistories.selectGitRepo",
         "title": "Code Histories: Select git repo"
+      },
+      {
+        "command": "codeHistories.setNewCmd",
+        "title": "Code Histories: Set new command"
       }
     ],
     "keybindings":[
@@ -38,6 +42,11 @@
         "command": "codeHistories.selectGitRepo",
         "key": "Ctrl+Shift+G",
         "mac": "Cmd+Shift+G"
+      },
+      {
+        "command": "codeHistories.setNewCmd",
+        "key": "Ctrl+Shift+C",
+        "mac": "Cmd+Shift+C"
       }
     ],
     "menus": {
