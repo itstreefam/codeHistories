@@ -248,7 +248,7 @@ function activate(context) {
 
 						// allTerminalsData[pid] = globalStr of the terminal instance with pid
 						allTerminalsData[pid] += terminalData;
-						console.log('allTerminalsData: ', pid, allTerminalsData[pid]);
+						// console.log('allTerminalsData: ', pid, allTerminalsData[pid]);
 
 						// if(checkThenCommit){
 							console.log('There are %s matched regex dir for pid %s', allTerminalsDirCount[pid], pid);
@@ -279,13 +279,16 @@ function activate(context) {
 								output = output.trim();
 								output = removeBackspaces(output);
 						
-								console.log('output: ', output);
+								// console.log('output: ', output);
 								
 								let outputUpdated = tracker.updateOutput(output);	
 								console.log('output.txt updated?', outputUpdated);
 
 								if(outputUpdated){
-									// tracker.checkWebData();
+									tracker.checkWebData();
+								} else {
+									// if output.txt is not updated, then we should revert the git add
+									tracker.gitReset();
 								}
 
 								// console.log('globalStr of %s before reset: ', pid, allTerminalsData[pid]);
