@@ -484,14 +484,8 @@ function activate(context) {
 			"terminal.integrated.defaultProfile.windows": "Git Bash",
 			"terminal.integrated.defaultProfile.osx": "bash",
 			"terminal.integrated.defaultProfile.linux": "bash",
-			"code-runner.runInTerminal": true,
-			"code-runner.ignoreSelection": true,
-			"code-runner.clearPreviousOutput": false,
 			"terminal.integrated.shellIntegration.enabled": false,
-			"python.terminal.activateEnvironment": false,
-			"code-runner.executorMap": {
-				"html": "python -m http.server 8080 --directory \"$workspaceRoot\"",
-			}
+			"python.terminal.activateEnvironment": false
 		}, null, 4);
 
 		if(!fs.existsSync(vscodePath)){
@@ -506,11 +500,7 @@ function activate(context) {
 			// add all files to git
 			tracker.gitAdd();
 
-			if(terminalName == "Python"){
-				vscode.commands.executeCommand('python.execInTerminal');
-			} else if(terminalName == "Code"){
-				vscode.commands.executeCommand('code-runner.run');
-			} else if(terminalName == "Code Histories"){
+			if(terminalName == "Code Histories"){
 				// get all existing terminal instances
 				var terminals = vscode.window.terminals;
 
