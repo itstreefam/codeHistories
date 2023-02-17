@@ -267,30 +267,39 @@ module.exports = class gitTracker {
         }
     }
 
-    gitCommit() {
+    async gitCommit() {
         // commit with time stamp
         var timeStamp = this.timestamp();
         var conversion = new Date(timeStamp).toLocaleString('en-US');
         var commitMessage = `[Commit time: ${conversion}]`;
         if(this.isUsingCodeHistoriesGit) {
             let commitCmd = `git --git-dir=${this._currentDir}/codeHistories.git --work-tree=${this._currentDir} commit -m "${commitMessage}"`;
-            cp.exec(commitCmd, {cwd: this._currentDir}, (error, stdout, stderr) => {
-                if (error) {
-                    console.error(`exec error: ${error}`);
-                    vscode.window.showErrorMessage('Commit failed! Please try again.');
-                    return;
-                }
-                console.log('Committed to codeHistories.git');
+            try {
+                await new Promise((resolve, reject) => {
+                    cp.exec(commitCmd, {cwd: this._currentDir}, (error, stdout, stderr) => {
+                        if (error) {
+                            console.error(`exec error: ${error}`);
+                            reject(error);
+                        } else {
+                            console.log('Committed to codeHistories.git');
+                            resolve();
+                        }
+                    });
+                });
                 this.keepOrUndoCommit();
-            });
-        } else {
-            this.git.commit(commitMessage).then((success) => {
-                console.log('Committed to .git');
-                this.keepOrUndoCommit();
-            }, (err) => {
-                console.log(err);
+            } catch (error) {
                 vscode.window.showErrorMessage('Commit failed! Please try again.');
-            });
+            }
+        } else {
+            this.git.commit(commitMessage)
+                    .then(() => {
+                        console.log('Committed to .git');
+                        this.keepOrUndoCommit();
+                    })
+                    .catch((err) => {
+                        console.log(err);
+                        vscode.window.showErrorMessage('Commit failed! Please try again.');
+                    });
         }
     }
 
@@ -426,19 +435,21 @@ module.exports = class gitTracker {
     }
 
     checkEdgeCases(str){
-        // console.log(str);
-        // let edgeCasesRegex = /(clear|gitk)[\s]*|(pwd|ls|cd|mkdir|touch|cp|rm|nano|cat|echo|apt|pip|git)[\s]+/g;
-        // if(edgeCasesRegex.test(str)){
-        //     console.log("Encounter edge case", str.match(edgeCasesRegex));
-        //     return false;
-        // }
-        // return true;
-
-        // only returns true if str contains codehistories
-        if(str.includes("codehistories") && this.countOccurrences(str, "codehistories") == 1){
+        // if vs code terminal name is not codeHistories, return false
+        if(vscode.window.activeTerminal.name === "Code Histories"){
+            // only returns true if str contains codehistories
+            if(str.includes("codehistories") && this.countOccurrences(str, "codehistories") == 1){
+                return true;
+            }
+            return false;
+        } else {
+            let edgeCasesRegex = /(clear|gitk)[\s]*|(pwd|ls|cd|mkdir|touch|cp|rm|nano|cat|echo|apt|pip|git)[\s]+/g;
+            if(edgeCasesRegex.test(str)){
+                // console.log("Encounter edge case", str.match(edgeCasesRegex));
+                return false;
+            }
             return true;
         }
-        return false;
     }
 
     countOccurrences(string, word) {
