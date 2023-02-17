@@ -106,7 +106,11 @@ function activate(context) {
 							var matched = terminalData.match(win_regex_dir);
 							console.log('matched: ', matched);
 
-							allTerminalsDirCount[pid] += matched.length;
+							//if matched.length is a number
+							if(matched.length){
+								// add length of matched array to counterMatchedDir
+								allTerminalsDirCount[pid] += matched.length;
+							}
 						}
 
 						// iter += 1;
@@ -115,7 +119,7 @@ function activate(context) {
 
 						// allTerminalsData[pid] = globalStr of the terminal instance with pid
 						allTerminalsData[pid] += terminalData;
-						console.log('allTerminalsData: ', allTerminalsData[pid]);
+						// console.log('allTerminalsData: ', allTerminalsData[pid]);
 
 						// if(checkThenCommit){
 							console.log('There are %s matched regex dir for pid %s', allTerminalsDirCount[pid], pid);
@@ -134,13 +138,16 @@ function activate(context) {
 								output = output.trim();
 								output = removeBackspaces(output);
 
-								console.log('output: ', output);
+								// console.log('output: ', output);
 								
 								let outputUpdated = tracker.updateOutput(output);	
 								console.log('output.txt updated?', outputUpdated);
 
 								if(outputUpdated){
-									// tracker.checkWebData();
+									tracker.checkWebData();
+								} else {
+									// if output.txt is not updated, then we should revert the git add
+									tracker.gitReset();
 								}
 
 								// console.log('globalStr of %s before reset: ', pid, allTerminalsData[pid]);
@@ -213,6 +220,14 @@ function activate(context) {
 					event.terminal.processId.then(pid => {
 						var terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
 
+						if(typeof allTerminalsData[pid] === 'undefined'){
+							allTerminalsData[pid] = "";
+						}
+
+						if(typeof allTerminalsDirCount[pid] === 'undefined'){
+							allTerminalsDirCount[pid] = 0;
+						}
+
 						// test if very_special_regex matches
 						if(very_special_regex.test(terminalData)){
 							// get the matched string
@@ -232,14 +247,6 @@ function activate(context) {
 								// add length of matched array to counterMatchedDir
 								allTerminalsDirCount[pid] += matched.length;
 							}
-						}
-
-						if(typeof allTerminalsData[pid] === 'undefined'){
-							allTerminalsData[pid] = "";
-						}
-
-						if(typeof allTerminalsDirCount[pid] === 'undefined'){
-							allTerminalsDirCount[pid] = 0;
 						}
 
 						// iter += 1;
@@ -342,6 +349,14 @@ function activate(context) {
 				if(event.terminal.name == terminalName){
 					event.terminal.processId.then(pid => {
 						var terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+
+						if(typeof allTerminalsData[pid] === 'undefined'){
+							allTerminalsData[pid] = "";
+						}
+
+						if(typeof allTerminalsDirCount[pid] === 'undefined'){
+							allTerminalsDirCount[pid] = 0;
+						}
 						
 						// test if very_special_regex matches
 						if(very_special_regex.test(terminalData)){
@@ -357,8 +372,11 @@ function activate(context) {
 							var matched = terminalData.match(linux_regex_dir);
 							// console.log('matched: ', matched);
 							
-							// add length of matched array to counterMatchedDir
-							allTerminalsDirCount[pid] += matched.length;
+							//if matched.length is a number
+							if(matched.length){
+								// add length of matched array to counterMatchedDir
+								allTerminalsDirCount[pid] += matched.length;
+							}
 						}
 
 						// iter += 1;
@@ -367,7 +385,7 @@ function activate(context) {
 
 						// allTerminalsData[pid] = globalStr of the terminal instance with pid
 						allTerminalsData[pid] += terminalData;
-						console.log('globalStr of %s: ', pid, allTerminalsData[pid]);
+						// console.log('globalStr of %s: ', pid, allTerminalsData[pid]);
 
 						// if(checkThenCommit){
 							console.log('There are %s matched regex dir for pid %s', allTerminalsDirCount[pid], pid);
@@ -398,13 +416,16 @@ function activate(context) {
 								output = output.trim();
 								output = removeBackspaces(output);
 
-								console.log('output: ', output);
+								// console.log('output: ', output);
 								
 								let outputUpdated = tracker.updateOutput(output);	
 								console.log('output.txt updated?', outputUpdated);
 
 								if(outputUpdated){
 									tracker.checkWebData();
+								} else {
+									// if output.txt is not updated, then we should revert the git add
+									tracker.gitReset();
 								}
 
 								// console.log('globalStr of %s before reset: ', pid, allTerminalsData[pid]);
