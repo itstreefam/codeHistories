@@ -37,25 +37,6 @@ function activate(context) {
 	tracker = new gitTracker(currentDir);
 	tracker.createGitFolders();
 
-	// // get all existing terminal instances
-	// var terminals = vscode.window.terminals;
-
-	// // check if there are any existing terminals with the desired name
-	// var existingTerminal = terminals.find(t => t.name === 'Code Histories');
-
-	// // create a new terminal instance only if there are no existing terminals with the desired name
-	// if (!existingTerminal) {
-	// 	// create a new terminal instance with name terminalName
-	// 	var codeHistoriesTerminal = new Terminal(terminalName, currentDir);
-
-	// 	// codeHistoriesTerminal.checkBashProfilePath();
-	// 	codeHistoriesTerminal.show();
-	// 	codeHistoriesTerminal.sendText(`source ~/.bash_profile`);
-	// } else {
-	// 	existingTerminal.show();
-	// 	existingTerminal.sendText(`source ~/.bash_profile`);
-	// }
-
 	// get user and hostname for regex matching
 	var user = os.userInfo().username;
 	var hostname = os.hostname();
@@ -513,6 +494,7 @@ function activate(context) {
 				if (!existingTerminal) {
 					// create a new terminal instance with name terminalName
 					var codeHistoriesTerminal = new Terminal(terminalName, currentDir);
+					codeHistoriesTerminal.checkBashProfilePath();
 					codeHistoriesTerminal.show();
 					codeHistoriesTerminal.sendText(cmdPrompt);
 				} else {
@@ -550,14 +532,10 @@ function activate(context) {
 	context.subscriptions.push(setNewCmd);
 }
 
-function countOccurrences(string, word) {
-	return string.split(word).length - 1;
-}
-
 function removeBackspaces(str) {
 	var pattern = /[\u0000]|[\u0001]|[\u0002]|[\u0003]|[\u0004]|[\u0005]|[\u0006]|[\u0007]|[\u0008]|[\u000b]|[\u000c]|[\u000d]|[\u000e]|[\u000f]|[\u0010]|[\u0011]|[\u0012]|[\u0013]|[\u0014]|[\u0015]|[\u0016]|[\u0017]|[\u0018]|[\u0019]|[\u001a]|[\u001b]|[\u001c]|[\u001d]|[\u001e]|[\u001f]|[\u001c]|[\u007f]|[\u0040]/gm;
-    while (str.indexOf("\u0008") != -1) {
-        str = str.replace(/.?\u0008/, ""); // 0x08 is the ASCII code for \b
+    while (str.indexOf("\b") != -1) {
+        str = str.replace(/.?\x08/, ""); // 0x08 is the ASCII code for \b
     }
 	str = str.replace(pattern, "");	
 	return str;

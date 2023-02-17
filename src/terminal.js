@@ -32,8 +32,6 @@ class Terminal {
   getPromptCommand() {
     let promptCommand = '';
     if (os.platform() === 'darwin') {
-      this.terminalShellPath = '/bin/bash';
-
       // when open up a new terminal, bash-3.2$ was shown
       // change this to hostname:current_directory username$
       promptCommand = "export PS1='\\h:\\W \\u\\$ '";
@@ -57,11 +55,13 @@ codehistories() {
     if (!fs.existsSync(bashProfilePath)) {
       // create the file and add these lines
       fs.writeFileSync(bashProfilePath, content);
+      console.log('Created .bash_profile and added codehistories.');
     } else {
       // check if the lines are already there
       const fileContent = fs.readFileSync(bashProfilePath, 'utf8');
-      if (!fileContent.includes('codehistories')) {
+      if (!fileContent.includes('codehistories()')) {
         fs.appendFileSync(bashProfilePath, content);
+        console.log('Added codehistories to .bash_profile.');
       }
     }
   }

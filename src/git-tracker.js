@@ -340,9 +340,13 @@ module.exports = class gitTracker {
         // return true;
 
         // only returns true if str contains codehistories
-        if(str.includes("codehistories")){
+        if(str.includes("codehistories") && this.countOccurrences(str, "codehistories") == 1){
             return true;
         }
         return false;
+    }
+
+    countOccurrences(string, word) {
+        return string.split(word).length - 1;
     }
 }
