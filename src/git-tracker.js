@@ -123,7 +123,14 @@ module.exports = class gitTracker {
     isGitInitialized(git) {
         return git.checkIsRepo()
             .then(isRepo => !isRepo && this.initializeGit(git))
-            .then(() => git.fetch());
+            .then(() => {
+                git.fetch().then((success) => {
+                    console.log("Fetched");
+                }
+                , (failure) => {
+                    console.log("Failed to fetch");
+                });
+            });
     }
 
     checkGitFolders() {
@@ -176,13 +183,13 @@ module.exports = class gitTracker {
                         console.log(err);
                         // create codeHistories.git
                         this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': this._currentDir + '/codeHistories.git' , 'GIT_WORK_TREE': this._currentDir });
-                        this.initializeGit(this.codeHistoriesGit);
+                        this.isGitInitialized(this.codeHistoriesGit);
                     }
                     else {
                         if(log.total == 0) {
                             // create codeHistories.git
                             this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': this._currentDir + '/codeHistories.git' , 'GIT_WORK_TREE': this._currentDir });
-                            this.initializeGit(this.codeHistoriesGit);
+                            this.isGitInitialized(this.codeHistoriesGit);
                         }
                         else {
                             // retrieve hash of commits that have [Commit time:.*] in the commit message
@@ -195,7 +202,7 @@ module.exports = class gitTracker {
 
                             // create codeHistories.git
                             this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': this._currentDir + '/codeHistories.git', 'GIT_WORK_TREE': this._currentDir });
-                            this.initializeGit(this.codeHistoriesGit);
+                            this.isGitInitialized(this.codeHistoriesGit);
 
                             // copy .git to codeHistories.git
                             fs.cpSync(this._currentDir + '/.git', this._currentDir + '/codeHistories.git', {recursive: true});
@@ -235,10 +242,29 @@ module.exports = class gitTracker {
         var conversion = new Date(timeStamp).toLocaleString('en-US');
         var commitMessage = `[Commit time: ${conversion}]`;
         if(this.isUsingCodeHistoriesGit) {
-            this.codeHistoriesGit.commit(commitMessage);
+            if(process.platform == 'linux') {
+                // use cp.exec to run git commit
+                let commitCmd = 'git ' + '--git-dir=' + this._currentDir + '/codeHistories.git' + ' --work-tree=' + this._currentDir + ' commit -m "' + commitMessage + '"';
+                cp.exec(commitCmd, {cwd: this._currentDir}, (error, stdout, stderr) => {
+                    if (error) {
+                        console.error(`exec error: ${error}`);
+                        return;
+                    }
+                });
+            } else {
+                // use simple-git to run git commit
+                this.codeHistoriesGit.commit(commitMessage).then((success) => {
+                    console.log("commit for codeHistories.git");
+                }, (err) => {
+                    console.log(err);
+                    vscode.window.showErrorMessage('Commit failed! Please try again.');
+                });
+            }
         } else {
             this.git.commit(commitMessage);
+            console.log("commit for .git");
         }
+        this.keepOrUndoCommit();
     }
 
     checkWebData(){
@@ -265,7 +291,6 @@ module.exports = class gitTracker {
                 this.git.add('webData');
             }
             this.gitCommit();
-            this.keepOrUndoCommit();
         }); 
     }
 
@@ -276,8 +301,10 @@ module.exports = class gitTracker {
         }
         else if (choice === 'Undo commit') {
             if(this.isUsingCodeHistoriesGit) {
+                console.log("undoing commit for codeHistories.git");
                 this.codeHistoriesGit.reset(['HEAD~1']);
             } else {
+                console.log("undoing commit for .git");
                 this.git.reset(['HEAD~1']);
             }
         }

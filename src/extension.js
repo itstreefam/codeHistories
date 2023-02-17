@@ -325,7 +325,7 @@ function activate(context) {
 
 	}
 
-	/*if(process.platform === 'linux'){
+	if(process.platform === 'linux'){
 		// linux defaut bash e.g. tri@tri-VirtualBox:~/Desktop/test$
 		var linux_regex_dir = new RegExp("(\(.*\))?" + user + "@" + hostname + ".*\\${1}", "g");
 		
@@ -364,8 +364,9 @@ function activate(context) {
 
 						// allTerminalsData[pid] = globalStr of the terminal instance with pid
 						allTerminalsData[pid] += terminalData;
+						console.log('globalStr of %s: ', pid, allTerminalsData[pid]);
 
-						if(checkThenCommit){
+						// if(checkThenCommit){
 							console.log('There are %s matched regex dir for pid %s', allTerminalsDirCount[pid], pid);
 
 							// if counter is >= 2, then we should have enough information to trim and find the output
@@ -385,14 +386,16 @@ function activate(context) {
 								let lastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]);
 
 								// find the first occurrence of "\r\n" after the second to last occurence of linux_regex_dir
-								let firstOccurenceOfNewLine = allTerminalsData[pid].indexOf("\r\n", secondToLastOccurence);
+								// let firstOccurenceOfNewLine = allTerminalsData[pid].indexOf("\r\n", secondToLastOccurence);
 
-								let output = allTerminalsData[pid].substring(firstOccurenceOfNewLine, lastOccurence);
+								let output = allTerminalsData[pid].substring(secondToLastOccurence, lastOccurence);
 
 								// clear residual \033]0; and \007 (ESC]0; and BEL)
 								output = output.replace(/\\033]0; | \\007/g, "");
 								output = output.trim();
 								output = removeBackspaces(output);
+
+								console.log('output: ', output);
 								
 								let outputUpdated = tracker.updateOutput(output);	
 								console.log('output.txt updated?', outputUpdated);
@@ -410,7 +413,7 @@ function activate(context) {
 								allTerminalsDirCount[pid] = 1;
 								checkThenCommit = false;
 							}
-						}
+						// }
 					});
 				}
 			}
@@ -435,7 +438,7 @@ function activate(context) {
 				});
 			}
 		});
-	} */
+	}
 
 	let disposable = vscode.commands.registerCommand('codeHistories.codeHistories', function () {
 		vscode.window.showInformationMessage('Code histories activated!');
