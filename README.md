@@ -17,12 +17,11 @@ https://user-images.githubusercontent.com/44308446/158084110-06305b2c-af13-4664-
 1.  Clone this repository.
 2.  Download the Insiders version of VSCode: https://code.visualstudio.com/insiders/
 3.  Open VSCode. You can determine whether you’ve gotten Insiders based on the icon color, which should be jade green for Insiders (rather than blue).
-4.  Install the Code Runner Extension. You should be able to search for it from the extensions tab on the left hand side of the screen (looks like little blocks).
-5.  Open the code histories repository folder in VSCode.
-6.  From the main directory of the code histories repository, run ```npm i``` to install all dependencies.
-7.  Back in VSCode, press f5 (fn + F5 for Mac) to enter debug mode. This will open a new VScode window which has "[Extension Development Host]" in its name. This is where you should set up the code that you want to be tracked.
-8.  Open the repository or folder that you want to work in using VSCode.
-9.  CTRL-SHIFT-P should start the extension (CMD-SHIFT-P for Mac). That will bring up a menu of options. Look for and choose Code Histories. Note: When this runs, it should automatically create the settings that are needed for the extension. But, if that fails to happen (which would manifest as an error on CTRL-SHIFT-P) you can do the following:
+4.  Open the code histories repository folder in VSCode.
+5.  From the main directory of the code histories repository, run ```npm i``` to install all dependencies.
+6.  Back in VSCode, press f5 (fn + F5 for Mac) to enter debug mode. This will open a new VScode window which has "[Extension Development Host]" in its name. This is where you should set up the code that you want to be tracked.
+7.  Open the repository or folder that you want to work in using VSCode.
+8.  CTRL-SHIFT-P should start the extension (CMD-SHIFT-P for Mac). That will bring up a menu of options. Look for and choose Code Histories. Note: When this runs, it should automatically create the settings that are needed for the extension. But, if that fails to happen (which would manifest as an error on CTRL-SHIFT-P) you can do the following:
     -   Open the directory in a file browser
 
     -   Make .vscode directory
@@ -44,11 +43,13 @@ https://user-images.githubusercontent.com/44308446/158084110-06305b2c-af13-4664-
         }
         ```
 
-10.  You should see a “Code Histories activated.” message on the bottom right of the screen when it is running.
+9.  You should see a “Code Histories activated.” message on the bottom right of the screen when it is running.
+
+10. Press on the multi-play button (which says “Code Histories commit” if you hover over it) the first time to enter Code Histories terminal and load in .bash_profile.
 
 ## Important notes
 
-1. When the extension starts, it will create .bash_profile in your root folder (~) and add this information to it:
+1. When the extension starts, it will automatically create .bash_profile in your root folder (~) and add the following information:
     
     ```
     codehistories() {
@@ -62,14 +63,12 @@ https://user-images.githubusercontent.com/44308446/158084110-06305b2c-af13-4664-
     }
     ```
     This is to make sure that when you run ```codehistories <cmd> [args]```, the bash terminal can understand and capture the execution's output. You need to always run your code with ```codehistories``` as prefix since it is an important keyword for the tool to capture the code state and output.
-    
-2. Press on the multi-play button (which says “Code Histories commit” if you hover over it) the first time to load in the bash_profile.
 
-3. In case you don't want to type out full execution command every time, you use Ctrl + Shift + C (or CMD + Shift + C on Mac) to update the command for the subsequent executions. Then you can press the multi-play button to run the updated execution. For e.g. if you want to run an http server, you set the command to ```python -m http.server 8080```. Note that this command will be updated for all future executions until you change it again.
+2. In case you don't want to type out full execution command every time, you use Ctrl + Shift + C (or CMD + Shift + C on Mac) to update the command for the subsequent executions. Then you can press the multi-play button to run the updated execution. For e.g. if you want to run an http server, you set the command to ```python -m http.server 8080```. Note that this command will be updated for all future executions until you change it again.
 
-4. Please don’t make changes while the code is running, as these may not be captured correctly. Also, if you do not want to commit changes because an execution was detected incorrectly, there is a confirmation box on the lower right of the screen that will appear after the codes were committed so you can undo and go back to the previous commit. In the case where the box has already disappeared, you can do ```git reset HEAD~1``` in the terminal to revert back to the previous correct commit.
+3. Please don’t make changes while the code is running, as these may not be captured correctly. Also, if you do not want to commit changes because an execution was detected incorrectly, there is a confirmation box on the lower right of the screen that will appear after the codes were committed so you can undo and go back to the previous commit. In the case where the box has already disappeared, you can do ```git reset HEAD~1``` in the terminal to revert back to the previous correct commit.
 
-5. When starting up codeHistories extension, codeHistories.git will be created and set as default. The intention here is to have a git repo solely for codeHistories commits which would not interfere with the commonly known .git repo (that might contain more meaningful, containing larger changes commits, especially if user starts out with repos cloned online).The user can switch back and forth between .git and codeHistories.git using Ctrl + Shift + G (or CMD + Shift + G on Mac) or searching for Code Histories: Select git repo (from VS Code View tab -> Command Palette.. option).
+4. When starting up codeHistories extension, codeHistories.git will be created and set as default. The intention here is to have a git repo solely for codeHistories commits which would not interfere with the commonly known .git repo (that might contain more meaningful, containing larger changes commits, especially if user starts out with repos cloned online).The user can switch back and forth between .git and codeHistories.git using Ctrl + Shift + G (or CMD + Shift + G on Mac) or searching for Code Histories: Select git repo (from VS Code View tab -> Command Palette.. option).
 
 ## Release Notes
 
