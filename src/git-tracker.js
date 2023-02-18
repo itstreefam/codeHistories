@@ -123,7 +123,14 @@ module.exports = class gitTracker {
     isGitInitialized(git) {
         return git.checkIsRepo()
             .then(isRepo => !isRepo && this.initializeGit(git))
-            .then(() => git.fetch());
+            .then(() => {
+                git.fetch().then((success) => {
+                    console.log("Fetched");
+                }
+                , (failure) => {
+                    console.log("Failed to fetch");
+                });
+            });
     }
 
     checkGitFolders() {
@@ -174,12 +181,15 @@ module.exports = class gitTracker {
                 this.git.log((err, log) => {
                     if(err) {
                         console.log(err);
+                        // create codeHistories.git
+                        this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': this._currentDir + '/codeHistories.git' , 'GIT_WORK_TREE': this._currentDir });
+                        this.isGitInitialized(this.codeHistoriesGit);
                     }
                     else {
                         if(log.total == 0) {
                             // create codeHistories.git
                             this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': this._currentDir + '/codeHistories.git' , 'GIT_WORK_TREE': this._currentDir });
-                            this.initializeGit(this.codeHistoriesGit);
+                            this.isGitInitialized(this.codeHistoriesGit);
                         }
                         else {
                             // retrieve hash of commits that have [Commit time:.*] in the commit message
@@ -192,15 +202,10 @@ module.exports = class gitTracker {
 
                             // create codeHistories.git
                             this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': this._currentDir + '/codeHistories.git', 'GIT_WORK_TREE': this._currentDir });
-                            this.initializeGit(this.codeHistoriesGit);
+                            this.isGitInitialized(this.codeHistoriesGit);
 
                             // copy .git to codeHistories.git
                             fs.cpSync(this._currentDir + '/.git', this._currentDir + '/codeHistories.git', {recursive: true});
-
-                            // remove all commits that have [Commit time:.*] in the commit message
-                            // for(var i = 0; i < hashes.length; i++) {
-                            //     this.git.reset(['--soft', hashes[i]]);
-                            // }
                         }
                     }
                 });
@@ -220,21 +225,81 @@ module.exports = class gitTracker {
         // this happens as soon as the user clicks on the checkAndCommit button
         // to avoid situation where user maybe changing files while committing (the commit will be based on the files at the time of clicking the button)
         if(this.isUsingCodeHistoriesGit) {
-            this.codeHistoriesGit.add('./*');
+            let addCmd = `git --git-dir=${this._currentDir}/codeHistories.git --work-tree=${this._currentDir} add .`;
+            cp.exec(addCmd, {cwd: this._currentDir}, (err, stdout, stderr) => {
+                if(err) {
+                    console.log('Error adding all files to codeHistories.git');
+                    console.log(err);
+                    return;
+                }
+                console.log('Added all files to codeHistories.git');
+            });
         } else {
-            this.git.add('./*');
+            this.git.add('./*').then((success) => {
+                console.log('Added all files to .git');
+            }, (err) => {
+                console.log('Error adding all files to .git');
+                console.log(err);
+            });
         }
     }
 
-    gitCommit() {
+    gitReset(){
+        // reset all files
+        // this happens as soon as output.txt not updated
+        if(this.isUsingCodeHistoriesGit) {
+            let resetCmd = `git --git-dir=${this._currentDir}/codeHistories.git --work-tree=${this._currentDir} reset`;
+            cp.exec(resetCmd, {cwd: this._currentDir}, (err, stdout, stderr) => {
+                if(err) {
+                    console.log('Error resetting all files in codeHistories.git');
+                    console.log(err);
+                    return;
+                }
+                console.log('Successfully reset all files in codeHistories.git');
+            });
+        } else {
+            this.git.reset(['./*']).then((success) => {
+                console.log('Successfully reset all files in .git');
+            }, (err) => {
+                console.log('Error resetting all files in .git');
+                console.log(err);
+            });
+        }
+    }
+
+    async gitCommit() {
         // commit with time stamp
         var timeStamp = this.timestamp();
         var conversion = new Date(timeStamp).toLocaleString('en-US');
         var commitMessage = `[Commit time: ${conversion}]`;
         if(this.isUsingCodeHistoriesGit) {
-            this.codeHistoriesGit.commit(commitMessage);
+            let commitCmd = `git --git-dir=${this._currentDir}/codeHistories.git --work-tree=${this._currentDir} commit -m "${commitMessage}"`;
+            try {
+                await new Promise((resolve, reject) => {
+                    cp.exec(commitCmd, {cwd: this._currentDir}, (error, stdout, stderr) => {
+                        if (error) {
+                            console.error(`exec error: ${error}`);
+                            reject(error);
+                        } else {
+                            console.log('Committed to codeHistories.git');
+                            resolve();
+                        }
+                    });
+                });
+                this.keepOrUndoCommit();
+            } catch (error) {
+                vscode.window.showErrorMessage('Commit failed! Please try again.');
+            }
         } else {
-            this.git.commit(commitMessage);
+            this.git.commit(commitMessage)
+                    .then(() => {
+                        console.log('Committed to .git');
+                        this.keepOrUndoCommit();
+                    })
+                    .catch((err) => {
+                        console.log(err);
+                        vscode.window.showErrorMessage('Commit failed! Please try again.');
+                    });
         }
     }
 
@@ -257,12 +322,24 @@ module.exports = class gitTracker {
             });
         }).then(() => {
             if(this.isUsingCodeHistoriesGit) {
-                this.codeHistoriesGit.add('webData');
+                let addWebDataCmd = `git --git-dir=${this._currentDir}/codeHistories.git --work-tree=${this._currentDir} add webData`;
+                cp.exec(addWebDataCmd, {cwd: this._currentDir}, (err, stdout, stderr) => {
+                    if(err) {
+                        console.log('Error adding webData to codeHistories.git');
+                        console.log(err);
+                        return;
+                    }
+                    console.log('Added webData to codeHistories.git');
+                });
             } else {
-                this.git.add('webData');
+                this.git.add('webData').then((success) => {
+                    console.log('Added webData to .git');
+                }, (err) => {
+                    console.log('Error adding webData to .git');
+                    console.log(err);
+                });
             }
             this.gitCommit();
-            this.keepOrUndoCommit();
         }); 
     }
 
@@ -273,14 +350,31 @@ module.exports = class gitTracker {
         }
         else if (choice === 'Undo commit') {
             if(this.isUsingCodeHistoriesGit) {
-                this.codeHistoriesGit.reset(['HEAD~1']);
+                let undoCmd = `git --git-dir=${this._currentDir}/codeHistories.git --work-tree=${this._currentDir} reset HEAD~1`;
+                cp.exec(undoCmd, {cwd: this._currentDir}, (err, stdout, stderr) => {
+                    if(err) {
+                        console.log('Error undoing last commit for codeHistories.git');
+                        console.log(err);
+                        return;
+                    }
+                    console.log('Successfully undone commit for codeHistories.git');
+                });
             } else {
-                this.git.reset(['HEAD~1']);
+                console.log("undoing commit for .git");
+                this.git.reset(['HEAD~1']).then((success) => {
+                    console.log("Successfully undone commit for .git");
+                }, (err) => {
+                    console.log('Error undoing commit for .git');
+                    console.log(err);
+                });
             }
         }
     }
 
     updateOutput(output){
+        // stage everything before updating output.txt
+        this.gitAdd();
+
         // store output of current terminal to a new file
         // if file already exists, append to it
         if(!this.checkEdgeCases(output)){
@@ -320,20 +414,45 @@ module.exports = class gitTracker {
         }
 
         if(this.isUsingCodeHistoriesGit) {
-            this.codeHistoriesGit.add('output.txt');
+            let addOutputCmd = `git --git-dir=${this._currentDir}/codeHistories.git --work-tree=${this._currentDir} add output.txt`;
+            cp.exec(addOutputCmd, {cwd: this._currentDir}, (err, stdout, stderr) => {
+                if(err) {
+                    console.log('Error adding output.txt to codeHistories.git');
+                    console.log(err);
+                    return;
+                }
+                console.log('Added output.txt to codeHistories.git');
+            });
         } else {
-            this.git.add('output.txt');
+            this.git.add('output.txt').then((success) => {
+                console.log('Added output.txt to .git');
+            }, (err) => {
+                console.log('Error adding output.txt to .git');
+                console.log(err);
+            });
         }
         return true;
     }
 
     checkEdgeCases(str){
-        // console.log(str);
-        let edgeCasesRegex = /(clear|gitk)[\s]*|(pwd|ls|cd|mkdir|touch|cp|rm|nano|cat|echo|apt|pip|git)[\s]+/g;
-        if(edgeCasesRegex.test(str)){
-            console.log("Encounter edge case", str.match(edgeCasesRegex));
+        // if vs code terminal name is not codeHistories, return false
+        if(vscode.window.activeTerminal.name === "Code Histories"){
+            // only returns true if str contains codehistories
+            if(str.includes("codehistories") && this.countOccurrences(str, "codehistories") == 1){
+                return true;
+            }
             return false;
+        } else {
+            let edgeCasesRegex = /(clear|gitk)[\s]*|(pwd|ls|cd|mkdir|touch|cp|rm|nano|cat|echo|apt|pip|git)[\s]+/g;
+            if(edgeCasesRegex.test(str)){
+                // console.log("Encounter edge case", str.match(edgeCasesRegex));
+                return false;
+            }
+            return true;
         }
-        return true;
+    }
+
+    countOccurrences(string, word) {
+        return string.split(word).length - 1;
     }
 }

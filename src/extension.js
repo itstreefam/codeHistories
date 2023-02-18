@@ -6,6 +6,7 @@ const gitTracker = require('./git-tracker');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
+const Terminal = require('./terminal');
 
 var tracker = null;
 var iter = 0;
@@ -13,9 +14,10 @@ var eventData = new Object();
 var terminalDimChanged = new Object();
 var terminalOpenedFirstTime = new Object();
 var checkThenCommit = null;
-var terminalName = "Code";
+var terminalName = "Code Histories";
 var allTerminalsData = new Object();
 var allTerminalsDirCount = new Object();
+var cmdPrompt = `source ~/.bash_profile`;
 
 /**
  * @param {vscode.ExtensionContext} context
@@ -30,7 +32,7 @@ function activate(context) {
 	}
 
 	// check git init status
-	simpleGit().clean(simpleGit.CleanOptions.FORCE);
+	// simpleGit().clean(simpleGit.CleanOptions.FORCE);
 	var currentDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
 	tracker = new gitTracker(currentDir);
 	tracker.createGitFolders();
@@ -81,6 +83,14 @@ function activate(context) {
 							terminalData = "";
 							terminalDimChanged[pid] = false;
 						}
+
+						if(typeof allTerminalsData[pid] === 'undefined'){
+							allTerminalsData[pid] = "";
+						}
+
+						if(typeof allTerminalsDirCount[pid] === 'undefined'){
+							allTerminalsDirCount[pid] = 0;
+						}
 						
 						// test if very_special_regex matches
 						if(very_special_regex.test(terminalData)){
@@ -96,7 +106,11 @@ function activate(context) {
 							var matched = terminalData.match(win_regex_dir);
 							console.log('matched: ', matched);
 
-							allTerminalsDirCount[pid] += matched.length;
+							//if matched.length is a number
+							if(matched.length){
+								// add length of matched array to counterMatchedDir
+								allTerminalsDirCount[pid] += matched.length;
+							}
 						}
 
 						// iter += 1;
@@ -107,7 +121,7 @@ function activate(context) {
 						allTerminalsData[pid] += terminalData;
 						// console.log('allTerminalsData: ', allTerminalsData[pid]);
 
-						if(checkThenCommit){
+						// if(checkThenCommit){
 							console.log('There are %s matched regex dir for pid %s', allTerminalsDirCount[pid], pid);
 
 							// if counter is >= 2, then we should have enough information to trim and find the output
@@ -131,6 +145,9 @@ function activate(context) {
 
 								if(outputUpdated){
 									tracker.checkWebData();
+								} else {
+									// if output.txt is not updated, then we should revert the git add
+									tracker.gitReset();
 								}
 
 								// console.log('globalStr of %s before reset: ', pid, allTerminalsData[pid]);
@@ -142,7 +159,7 @@ function activate(context) {
 								allTerminalsDirCount[pid] = 1;
 								checkThenCommit = false;
 							}
-						}
+						// }
 					});
 				}
 			}
@@ -202,7 +219,15 @@ function activate(context) {
 				if(event.terminal.name == terminalName){
 					event.terminal.processId.then(pid => {
 						var terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
-						
+
+						if(typeof allTerminalsData[pid] === 'undefined'){
+							allTerminalsData[pid] = "";
+						}
+
+						if(typeof allTerminalsDirCount[pid] === 'undefined'){
+							allTerminalsDirCount[pid] = 0;
+						}
+
 						// test if very_special_regex matches
 						if(very_special_regex.test(terminalData)){
 							// get the matched string
@@ -215,10 +240,13 @@ function activate(context) {
 						if(mac_regex_dir.test(terminalData) && !returned_mac_regex_dir.test(terminalData)){
 							// get the matched string
 							var matched = terminalData.match(mac_regex_dir);
-							// console.log('matched: ', matched);
+							console.log('matched: ', matched);
 							
-							// add length of matched array to counterMatchedDir
-							allTerminalsDirCount[pid] += matched.length;
+							//if matched.length is a number
+							if(matched.length){
+								// add length of matched array to counterMatchedDir
+								allTerminalsDirCount[pid] += matched.length;
+							}
 						}
 
 						// iter += 1;
@@ -227,8 +255,9 @@ function activate(context) {
 
 						// allTerminalsData[pid] = globalStr of the terminal instance with pid
 						allTerminalsData[pid] += terminalData;
+						// console.log('allTerminalsData: ', pid, allTerminalsData[pid]);
 
-						if(checkThenCommit){
+						// if(checkThenCommit){
 							console.log('There are %s matched regex dir for pid %s', allTerminalsDirCount[pid], pid);
 
 							// if counter is >= 2, then we should have enough information to trim and find the output
@@ -248,20 +277,25 @@ function activate(context) {
 								let lastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]);
 
 								// find the first occurrence of "\r\n" after the second to last occurence of mac_regex_dir
-								let firstOccurenceOfNewLine = allTerminalsData[pid].indexOf("\r\n", secondToLastOccurence);
+								// let firstOccurenceOfNewLine = allTerminalsData[pid].indexOf("\r\n", secondToLastOccurence);
 
-								let output = allTerminalsData[pid].substring(firstOccurenceOfNewLine, lastOccurence);
+								let output = allTerminalsData[pid].substring(secondToLastOccurence, lastOccurence);
 
 								// clear residual \033]0; and \007 (ESC]0; and BEL)
 								output = output.replace(/\\033]0; | \\007/g, "");
 								output = output.trim();
 								output = removeBackspaces(output);
+						
+								// console.log('output: ', output);
 								
 								let outputUpdated = tracker.updateOutput(output);	
 								console.log('output.txt updated?', outputUpdated);
 
 								if(outputUpdated){
 									tracker.checkWebData();
+								} else {
+									// if output.txt is not updated, then we should revert the git add
+									tracker.gitReset();
 								}
 
 								// console.log('globalStr of %s before reset: ', pid, allTerminalsData[pid]);
@@ -273,7 +307,7 @@ function activate(context) {
 								allTerminalsDirCount[pid] = 1;
 								checkThenCommit = false;
 							}
-						}
+						// }
 					});
 				}
 			}
@@ -315,6 +349,14 @@ function activate(context) {
 				if(event.terminal.name == terminalName){
 					event.terminal.processId.then(pid => {
 						var terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+
+						if(typeof allTerminalsData[pid] === 'undefined'){
+							allTerminalsData[pid] = "";
+						}
+
+						if(typeof allTerminalsDirCount[pid] === 'undefined'){
+							allTerminalsDirCount[pid] = 0;
+						}
 						
 						// test if very_special_regex matches
 						if(very_special_regex.test(terminalData)){
@@ -330,8 +372,11 @@ function activate(context) {
 							var matched = terminalData.match(linux_regex_dir);
 							// console.log('matched: ', matched);
 							
-							// add length of matched array to counterMatchedDir
-							allTerminalsDirCount[pid] += matched.length;
+							//if matched.length is a number
+							if(matched.length){
+								// add length of matched array to counterMatchedDir
+								allTerminalsDirCount[pid] += matched.length;
+							}
 						}
 
 						// iter += 1;
@@ -340,8 +385,9 @@ function activate(context) {
 
 						// allTerminalsData[pid] = globalStr of the terminal instance with pid
 						allTerminalsData[pid] += terminalData;
+						// console.log('globalStr of %s: ', pid, allTerminalsData[pid]);
 
-						if(checkThenCommit){
+						// if(checkThenCommit){
 							console.log('There are %s matched regex dir for pid %s', allTerminalsDirCount[pid], pid);
 
 							// if counter is >= 2, then we should have enough information to trim and find the output
@@ -361,20 +407,25 @@ function activate(context) {
 								let lastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]);
 
 								// find the first occurrence of "\r\n" after the second to last occurence of linux_regex_dir
-								let firstOccurenceOfNewLine = allTerminalsData[pid].indexOf("\r\n", secondToLastOccurence);
+								// let firstOccurenceOfNewLine = allTerminalsData[pid].indexOf("\r\n", secondToLastOccurence);
 
-								let output = allTerminalsData[pid].substring(firstOccurenceOfNewLine, lastOccurence);
+								let output = allTerminalsData[pid].substring(secondToLastOccurence, lastOccurence);
 
 								// clear residual \033]0; and \007 (ESC]0; and BEL)
 								output = output.replace(/\\033]0; | \\007/g, "");
 								output = output.trim();
 								output = removeBackspaces(output);
+
+								// console.log('output: ', output);
 								
 								let outputUpdated = tracker.updateOutput(output);	
 								console.log('output.txt updated?', outputUpdated);
 
 								if(outputUpdated){
 									tracker.checkWebData();
+								} else {
+									// if output.txt is not updated, then we should revert the git add
+									tracker.gitReset();
 								}
 
 								// console.log('globalStr of %s before reset: ', pid, allTerminalsData[pid]);
@@ -386,7 +437,7 @@ function activate(context) {
 								allTerminalsDirCount[pid] = 1;
 								checkThenCommit = false;
 							}
-						}
+						// }
 					});
 				}
 			}
@@ -433,14 +484,8 @@ function activate(context) {
 			"terminal.integrated.defaultProfile.windows": "Git Bash",
 			"terminal.integrated.defaultProfile.osx": "bash",
 			"terminal.integrated.defaultProfile.linux": "bash",
-			"code-runner.runInTerminal": true,
-			"code-runner.ignoreSelection": true,
-			"code-runner.clearPreviousOutput": false,
 			"terminal.integrated.shellIntegration.enabled": false,
-			"python.terminal.activateEnvironment": false,
-			"code-runner.executorMap": {
-				"html": "python -m http.server 8080 --directory \"$workspaceRoot\"",
-			}
+			"python.terminal.activateEnvironment": false
 		}, null, 4);
 
 		if(!fs.existsSync(vscodePath)){
@@ -455,10 +500,24 @@ function activate(context) {
 			// add all files to git
 			tracker.gitAdd();
 
-			if(terminalName == "Python"){
-				vscode.commands.executeCommand('python.execInTerminal');
-			} else if(terminalName == "Code"){
-				vscode.commands.executeCommand('code-runner.run');
+			if(terminalName == "Code Histories"){
+				// get all existing terminal instances
+				var terminals = vscode.window.terminals;
+
+				// check if there are any existing terminals with the desired name
+				var existingTerminal = terminals.find(t => t.name === 'Code Histories');
+
+				// create a new terminal instance only if there are no existing terminals with the desired name
+				if (!existingTerminal) {
+					// create a new terminal instance with name terminalName
+					var codeHistoriesTerminal = new Terminal(terminalName, currentDir);
+					codeHistoriesTerminal.checkBashProfilePath();
+					codeHistoriesTerminal.show();
+					codeHistoriesTerminal.sendText(`source ~/.bash_profile`);
+				} else {
+					existingTerminal.show();
+					existingTerminal.sendText(cmdPrompt);
+				}
 			}
 
 			checkThenCommit = true;
@@ -473,21 +532,30 @@ function activate(context) {
 		}
 	});
 
+	let setNewCmd = vscode.commands.registerCommand('codeHistories.setNewCmd', function () {
+		vscode.window.showInputBox({
+			prompt: "Enter the new command",
+			placeHolder: "<command> [args]"
+		}).then(newCmd => {
+			if(newCmd){
+				cmdPrompt = "codehistories " + newCmd;
+			}
+		});
+	});
+
 	context.subscriptions.push(disposable);
 	context.subscriptions.push(executeCode);
 	context.subscriptions.push(selectGitRepo);
+	context.subscriptions.push(setNewCmd);
 }
 
-function countOccurrences(string, word) {
-	return string.split(word).length - 1;
-}
-
-// https://stackoverflow.com/questions/11891653/javascript-concat-string-with-backspace
 function removeBackspaces(str) {
+	var pattern = /[\u0000]|[\u0001]|[\u0002]|[\u0003]|[\u0004]|[\u0005]|[\u0006]|[\u0007]|[\u0008]|[\u000b]|[\u000c]|[\u000d]|[\u000e]|[\u000f]|[\u0010]|[\u0011]|[\u0012]|[\u0013]|[\u0014]|[\u0015]|[\u0016]|[\u0017]|[\u0018]|[\u0019]|[\u001a]|[\u001b]|[\u001c]|[\u001d]|[\u001e]|[\u001f]|[\u001c]|[\u007f]|[\u0040]/gm;
     while (str.indexOf("\b") != -1) {
         str = str.replace(/.?\x08/, ""); // 0x08 is the ASCII code for \b
     }
-    return str;
+	str = str.replace(pattern, "");	
+	return str;
 }
 
 function deactivate() {
