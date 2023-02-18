@@ -32,7 +32,7 @@ function activate(context) {
 	}
 
 	// check git init status
-	simpleGit().clean(simpleGit.CleanOptions.FORCE);
+	// simpleGit().clean(simpleGit.CleanOptions.FORCE);
 	var currentDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
 	tracker = new gitTracker(currentDir);
 	tracker.createGitFolders();
@@ -513,7 +513,7 @@ function activate(context) {
 					var codeHistoriesTerminal = new Terminal(terminalName, currentDir);
 					codeHistoriesTerminal.checkBashProfilePath();
 					codeHistoriesTerminal.show();
-					codeHistoriesTerminal.sendText(cmdPrompt);
+					codeHistoriesTerminal.sendText(`source ~/.bash_profile`);
 				} else {
 					existingTerminal.show();
 					existingTerminal.sendText(cmdPrompt);
