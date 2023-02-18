@@ -2,9 +2,9 @@
 
 A VS Code extension that aims to capture the information needed to generate usable code histories (capturing code state and output). This work remains a prototype for research purposes.
 
-## Demo
+## Setup demo
 
-https://user-images.githubusercontent.com/44308446/158084110-06305b2c-af13-4664-8041-ec044a58efff.mp4
+https://user-images.githubusercontent.com/44308446/219846324-bd156916-f2e0-4cd0-92b9-0481ced5a7f5.mp4
 
 ## Requirements
 
@@ -69,6 +69,8 @@ https://user-images.githubusercontent.com/44308446/158084110-06305b2c-af13-4664-
 3. Please don’t make changes while the code is running, as these may not be captured correctly. Also, if you do not want to commit changes because an execution was detected incorrectly, there is a confirmation box on the lower right of the screen that will appear after the codes were committed so you can undo and go back to the previous commit. In the case where the box has already disappeared, you can do ```git reset HEAD~1``` in the terminal to revert back to the previous correct commit.
 
 4. When starting up codeHistories extension, codeHistories.git will be created and set as default. The intention here is to have a git repo solely for codeHistories commits which would not interfere with the commonly known .git repo (that might contain more meaningful, containing larger changes commits, especially if user starts out with repos cloned online).The user can switch back and forth between .git and codeHistories.git using Ctrl + Shift + G (or CMD + Shift + G on Mac) or searching for Code Histories: Select git repo (from VS Code View tab -> Command Palette.. option).
+
+5. To use git commands that are related to codeHistories.git, you need to add ```--git-dir=codeHistories.git --work-tree=.``` between ```git``` and the command. For e.g. ```git --git-dir=codeHistories.git --work-tree=. log --pretty=oneline``` to view the codeHistories commits. Occasionally checking this would be a good idea since the files color change only corresponds to normal .git repo.
 
 ## Release Notes
 
