@@ -225,7 +225,9 @@ module.exports = class gitTracker {
         // this happens as soon as the user clicks on the checkAndCommit button
         // to avoid situation where user maybe changing files while committing (the commit will be based on the files at the time of clicking the button)
         if(this.isUsingCodeHistoriesGit) {
-            let addCmd = `git --git-dir=${this._currentDir}/codeHistories.git --work-tree=${this._currentDir} add .`;
+            let gitDir = path.join(this._currentDir, 'codeHistories.git');
+            let workTree = path.join(this._currentDir);
+            let addCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" add .`;
             cp.exec(addCmd, {cwd: this._currentDir}, (err, stdout, stderr) => {
                 if(err) {
                     console.log('Error adding all files to codeHistories.git');
@@ -248,7 +250,9 @@ module.exports = class gitTracker {
         // reset all files
         // this happens as soon as output.txt not updated
         if(this.isUsingCodeHistoriesGit) {
-            let resetCmd = `git --git-dir=${this._currentDir}/codeHistories.git --work-tree=${this._currentDir} reset`;
+            let gitDir = path.join(this._currentDir, 'codeHistories.git');
+            let workTree = path.join(this._currentDir);
+            let resetCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" reset`;
             cp.exec(resetCmd, {cwd: this._currentDir}, (err, stdout, stderr) => {
                 if(err) {
                     console.log('Error resetting all files in codeHistories.git');
@@ -273,7 +277,9 @@ module.exports = class gitTracker {
         var conversion = new Date(timeStamp).toLocaleString('en-US');
         var commitMessage = `[Commit time: ${conversion}]`;
         if(this.isUsingCodeHistoriesGit) {
-            let commitCmd = `git --git-dir=${this._currentDir}/codeHistories.git --work-tree=${this._currentDir} commit -m "${commitMessage}"`;
+            let gitDir = path.join(this._currentDir, 'codeHistories.git');
+            let workTree = path.join(this._currentDir);
+            let commitCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" commit -m "${commitMessage}"`;
             try {
                 await new Promise((resolve, reject) => {
                     cp.exec(commitCmd, {cwd: this._currentDir}, (error, stdout, stderr) => {
@@ -322,7 +328,9 @@ module.exports = class gitTracker {
             });
         }).then(() => {
             if(this.isUsingCodeHistoriesGit) {
-                let addWebDataCmd = `git --git-dir=${this._currentDir}/codeHistories.git --work-tree=${this._currentDir} add webData`;
+                let gitDir = path.join(this._currentDir, 'codeHistories.git');
+                let workTree = path.join(this._currentDir);
+                let addWebDataCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" add webData`;
                 cp.exec(addWebDataCmd, {cwd: this._currentDir}, (err, stdout, stderr) => {
                     if(err) {
                         console.log('Error adding webData to codeHistories.git');
@@ -350,7 +358,9 @@ module.exports = class gitTracker {
         }
         else if (choice === 'Undo commit') {
             if(this.isUsingCodeHistoriesGit) {
-                let undoCmd = `git --git-dir=${this._currentDir}/codeHistories.git --work-tree=${this._currentDir} reset HEAD~1`;
+                let gitDir = path.join(this._currentDir, 'codeHistories.git');
+                let workTree = path.join(this._currentDir);
+                let undoCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" reset HEAD~1`;
                 cp.exec(undoCmd, {cwd: this._currentDir}, (err, stdout, stderr) => {
                     if(err) {
                         console.log('Error undoing last commit for codeHistories.git');
@@ -414,7 +424,9 @@ module.exports = class gitTracker {
         }
 
         if(this.isUsingCodeHistoriesGit) {
-            let addOutputCmd = `git --git-dir=${this._currentDir}/codeHistories.git --work-tree=${this._currentDir} add output.txt`;
+            let gitDir = path.join(this._currentDir, 'codeHistories.git');
+            let workTree = path.join(this._currentDir);
+            let addOutputCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" add output.txt`;
             cp.exec(addOutputCmd, {cwd: this._currentDir}, (err, stdout, stderr) => {
                 if(err) {
                     console.log('Error adding output.txt to codeHistories.git');
