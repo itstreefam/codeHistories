@@ -321,7 +321,6 @@ module.exports = class gitTracker {
             try {
                 await exec(addWebDataCmd, { cwd: workTree });
                 console.log(`Added webData to codeHistories.git`);
-                await this.gitCommit();
             } catch (err) {
                 console.error(`Error adding webData to codeHistories.git: ${err}`);
             }
@@ -329,11 +328,11 @@ module.exports = class gitTracker {
             try {
                 await this.git.add('webData');
                 console.log(`Added webData to .git`);
-                await this.gitCommit();
             } catch (err) {
                 console.log(`Error adding webData to .git: ${err}`);
             }
         }
+        await this.gitCommit();
     }
 
     async keepOrUndoCommit(){
