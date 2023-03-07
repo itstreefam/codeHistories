@@ -144,6 +144,7 @@ function activate(context) {
 								console.log('output.txt updated?', outputUpdated);
 
 								if(outputUpdated){
+									tracker.gitAddOutput();
 									tracker.checkWebData();
 								} else {
 									// if output.txt is not updated, then we should revert the git add
@@ -292,6 +293,7 @@ function activate(context) {
 								console.log('output.txt updated?', outputUpdated);
 
 								if(outputUpdated){
+									tracker.gitAddOutput();
 									tracker.checkWebData();
 								} else {
 									// if output.txt is not updated, then we should revert the git add
@@ -422,6 +424,7 @@ function activate(context) {
 								console.log('output.txt updated?', outputUpdated);
 
 								if(outputUpdated){
+									tracker.gitAddOutput();
 									tracker.checkWebData();
 								} else {
 									// if output.txt is not updated, then we should revert the git add

@@ -3,6 +3,8 @@ const simpleGit = require('simple-git');
 const fs = require('fs');
 const cp = require('child_process');
 const path = require('path');
+const util = require('util');
+const exec = util.promisify(cp.exec);
 
 module.exports = class gitTracker {
     constructor(currentDir) {
@@ -220,7 +222,7 @@ module.exports = class gitTracker {
         }
     }
 
-    gitAdd(){
+    async gitAdd(){
         // add all files
         // this happens as soon as the user clicks on the checkAndCommit button
         // to avoid situation where user maybe changing files while committing (the commit will be based on the files at the time of clicking the button)
@@ -228,46 +230,42 @@ module.exports = class gitTracker {
             let gitDir = path.join(this._currentDir, 'codeHistories.git');
             let workTree = path.join(this._currentDir);
             let addCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" add .`;
-            cp.exec(addCmd, {cwd: this._currentDir}, (err, stdout, stderr) => {
-                if(err) {
-                    console.log('Error adding all files to codeHistories.git');
-                    console.log(err);
-                    return;
-                }
-                console.log('Added all files to codeHistories.git');
-            });
+            try {
+                await exec(addCmd, {cwd: workTree});
+                console.log(`Added all files to codeHistories.git`);
+            } catch (err) {
+                console.log(`Error adding all files to codeHistories.git: ${err}`);
+            }
         } else {
-            this.git.add('./*').then((success) => {
-                console.log('Added all files to .git');
-            }, (err) => {
-                console.log('Error adding all files to .git');
-                console.log(err);
-            });
+            try {
+                await this.git.add('./*');
+                console.log(`Added all files to .git`);
+            } catch (err) {
+                console.log(`Error adding all files to .git: ${err}`);
+            }
         }
     }
 
-    gitReset(){
+    async gitReset(){
         // reset all files
         // this happens as soon as output.txt not updated
         if(this.isUsingCodeHistoriesGit) {
             let gitDir = path.join(this._currentDir, 'codeHistories.git');
             let workTree = path.join(this._currentDir);
             let resetCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" reset`;
-            cp.exec(resetCmd, {cwd: this._currentDir}, (err, stdout, stderr) => {
-                if(err) {
-                    console.log('Error resetting all files in codeHistories.git');
-                    console.log(err);
-                    return;
-                }
-                console.log('Successfully reset all files in codeHistories.git');
-            });
+            try {
+                await exec(resetCmd, {cwd: workTree});
+                console.log(`Successfully reset all files in codeHistories.git`);
+            } catch (err) {
+                console.log(`Error resetting all files in codeHistories.git: ${err}`);
+            }
         } else {
-            this.git.reset(['./*']).then((success) => {
-                console.log('Successfully reset all files in .git');
-            }, (err) => {
-                console.log('Error resetting all files in .git');
-                console.log(err);
-            });
+            try {
+                await this.git.reset(['./*']);
+                console.log(`Successfully reset all files in .git`);
+            } catch (err) {
+                console.log(`Error resetting all files in .git: ${err}`);
+            }
         }
     }
 
@@ -281,74 +279,61 @@ module.exports = class gitTracker {
             let workTree = path.join(this._currentDir);
             let commitCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" commit -m "${commitMessage}"`;
             try {
-                await new Promise((resolve, reject) => {
-                    cp.exec(commitCmd, {cwd: this._currentDir}, (error, stdout, stderr) => {
-                        if (error) {
-                            console.error(`exec error: ${error}`);
-                            reject(error);
-                        } else {
-                            console.log('Committed to codeHistories.git');
-                            resolve();
-                        }
-                    });
-                });
-                this.keepOrUndoCommit();
-            } catch (error) {
-                vscode.window.showErrorMessage('Commit failed! Please try again.');
+                await exec(commitCmd, {cwd: workTree});
+                console.log(`Committed to codeHistories.git`);
+                await this.keepOrUndoCommit();
+            } catch (err) {
+                console.error(`Commit error: ${err}`);
+                vscode.window.showErrorMessage(`Commit failed! Please try again.`);
             }
         } else {
-            this.git.commit(commitMessage)
-                    .then(() => {
-                        console.log('Committed to .git');
-                        this.keepOrUndoCommit();
-                    })
-                    .catch((err) => {
-                        console.log(err);
-                        vscode.window.showErrorMessage('Commit failed! Please try again.');
-                    });
+            try {
+                await this.git.commit(commitMessage);
+                console.log(`Committed to .git`);
+                await this.keepOrUndoCommit();
+            } catch (err) {
+                console.log(`Commit error: ${err}`);
+                vscode.window.showErrorMessage(`Commit failed! Please try again.`);
+            }
         }
     }
 
-    checkWebData(){
+    async checkWebData(){
         // check if web data is being tracked
         if(!fs.existsSync(this._currentDir + '/webData')){
             vscode.window.showInformationMessage('Web data does not exist! Make sure to also use webActivities.');
         }
 
         // set timeout to make sure that webData is most updated
-        vscode.window.withProgress({
+        const sleep = util.promisify(setTimeout);
+        await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
             title: "Committing! Hang tight!",
             cancellable: false
-        }, (progress, token) => {
-            return new Promise((resolve, reject) => {
-                setTimeout(() => {
-                    resolve(); 
-                }, 4000);
-            });
-        }).then(() => {
-            if(this.isUsingCodeHistoriesGit) {
-                let gitDir = path.join(this._currentDir, 'codeHistories.git');
-                let workTree = path.join(this._currentDir);
-                let addWebDataCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" add webData`;
-                cp.exec(addWebDataCmd, {cwd: this._currentDir}, (err, stdout, stderr) => {
-                    if(err) {
-                        console.log('Error adding webData to codeHistories.git');
-                        console.log(err);
-                        return;
-                    }
-                    console.log('Added webData to codeHistories.git');
-                });
-            } else {
-                this.git.add('webData').then((success) => {
-                    console.log('Added webData to .git');
-                }, (err) => {
-                    console.log('Error adding webData to .git');
-                    console.log(err);
-                });
+        }, async (progress, token) => {
+            await sleep(4000);
+        });
+        
+        if(this.isUsingCodeHistoriesGit) {
+            let gitDir = path.join(this._currentDir, 'codeHistories.git');
+            let workTree = path.join(this._currentDir);
+            let addWebDataCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" add webData`;
+            try {
+                await exec(addWebDataCmd, { cwd: workTree });
+                console.log(`Added webData to codeHistories.git`);
+                await this.gitCommit();
+            } catch (err) {
+                console.error(`Error adding webData to codeHistories.git: ${err}`);
             }
-            this.gitCommit();
-        }); 
+        } else {
+            try {
+                await this.git.add('webData');
+                console.log(`Added webData to .git`);
+                await this.gitCommit();
+            } catch (err) {
+                console.log(`Error adding webData to .git: ${err}`);
+            }
+        }
     }
 
     async keepOrUndoCommit(){
@@ -361,22 +346,40 @@ module.exports = class gitTracker {
                 let gitDir = path.join(this._currentDir, 'codeHistories.git');
                 let workTree = path.join(this._currentDir);
                 let undoCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" reset HEAD~1`;
-                cp.exec(undoCmd, {cwd: this._currentDir}, (err, stdout, stderr) => {
-                    if(err) {
-                        console.log('Error undoing last commit for codeHistories.git');
-                        console.log(err);
-                        return;
-                    }
-                    console.log('Successfully undone commit for codeHistories.git');
-                });
+                try {
+                    await exec(undoCmd, { cwd: workTree });
+                    console.log(`Successfully undone commit for codeHistories.git`);
+                } catch (err) {
+                    console.error(`Error undoing last commit for codeHistories.git: ${err}`);
+                }
             } else {
-                console.log("undoing commit for .git");
-                this.git.reset(['HEAD~1']).then((success) => {
-                    console.log("Successfully undone commit for .git");
-                }, (err) => {
-                    console.log('Error undoing commit for .git');
-                    console.log(err);
-                });
+                try {
+                    await this.git.reset(['HEAD~1']);
+                    console.log(`Successfully undone commit for .git`);
+                } catch (err) {
+                    console.error(`Error undoing last commit for .git: ${err}`);
+                }
+            }
+        }
+    }
+
+    async gitAddOutput(){
+        if(this.isUsingCodeHistoriesGit) {
+            let gitDir = path.join(this._currentDir, 'codeHistories.git');
+            let workTree = path.join(this._currentDir);
+            let addOutputCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" add output.txt`;
+            try {
+                await exec(addOutputCmd, { cwd: workTree });
+                console.log(`Added output.txt to codeHistories.git`);
+            } catch (err) {
+                console.error(`Error adding output.txt to codeHistories.git: ${err}`);
+            }
+        } else {
+            try {
+                await this.git.add('output.txt');
+                console.log(`Added output.txt to .git`);
+            } catch (err) {
+                console.error(`Error adding output.txt to .git: ${err}`);
             }
         }
     }
@@ -423,26 +426,6 @@ module.exports = class gitTracker {
             });   
         }
 
-        if(this.isUsingCodeHistoriesGit) {
-            let gitDir = path.join(this._currentDir, 'codeHistories.git');
-            let workTree = path.join(this._currentDir);
-            let addOutputCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" add output.txt`;
-            cp.exec(addOutputCmd, {cwd: this._currentDir}, (err, stdout, stderr) => {
-                if(err) {
-                    console.log('Error adding output.txt to codeHistories.git');
-                    console.log(err);
-                    return;
-                }
-                console.log('Added output.txt to codeHistories.git');
-            });
-        } else {
-            this.git.add('output.txt').then((success) => {
-                console.log('Added output.txt to .git');
-            }, (err) => {
-                console.log('Error adding output.txt to .git');
-                console.log(err);
-            });
-        }
         return true;
     }
 
