@@ -572,12 +572,25 @@ function activate(context) {
 
 			// look for server.log in the current workspace
 			let workspacePath = vscode.workspace.workspaceFolders[0].uri.fsPath;
-			const serverLogPath = findServerLog(workspacePath);
+			const serverLogs = findServerLogs(workspacePath);
+			console.log(serverLogs);
 
-			// if server.log exists
-			if(fs.existsSync(serverLogPath)){
+			// if there are multiple server.log files
+			if(serverLogs.length > 1){
+				// get content of all server.log files
+				let serverLogsContent = new Array();
+				for(let i = 0; i < serverLogs.length; i++){
+					let content = fs.readFileSync(serverLogs[i], 'utf8');
+					serverLogsContent.push(content);
+				}
+				// combine all server.log files
+				let combinedServerLogs = serverLogsContent.join('\n## end of a log ##\n');
+				let filePath = document.fileName;
+				let fileContent = document.getText();
+				tracker.updateWebDevOutput(filePath, timeStamp, fileContent, combinedServerLogs);
+			} else if (fs.existsSync(serverLogs[0])){
 				// read server.log
-				let output = fs.readFileSync(serverLogPath, 'utf8');
+				let output = fs.readFileSync(serverLogs[0], 'utf8');
 				let filePath = document.fileName;
 				let fileContent = document.getText();
 				tracker.updateWebDevOutput(filePath, timeStamp, fileContent, output);
@@ -633,24 +646,25 @@ function removeBackspaces(str) {
 	return str;
 }
 
-function findServerLog(directory) {
-	try {
-		const files = fs.readdirSync(directory);
-		for (let file of files) {
-		const filePath = path.join(directory, file);
-		const stats = fs.statSync(filePath);
-		if (stats.isDirectory() && file !== 'node_modules') {
-			const result = findServerLog(filePath);
-			if (result) {
-			return result;
+function findServerLogs(dir) {
+	try{
+		let logs = [];
+		const files = fs.readdirSync(dir);
+	
+		for (const file of files) {
+			const filePath = path.join(dir, file);
+			const stat = fs.statSync(filePath);
+		
+			if (stat.isDirectory() && file !== 'node_modules') {
+				logs.push(...findServerLogs(filePath));
+			} else if (file === 'server.log') {
+				logs.push(filePath);
 			}
-		} else if (file === 'server.log') {
-			return filePath;
 		}
-		}
-		return '';
-	} catch (err) {
-		return '';
+	
+		return logs;
+	} catch (error) {
+		return [];
 	}
 }
 
