@@ -237,7 +237,7 @@ function activate(context) {
 							terminalData = terminalData.replace(matched, "");
 						}
 
-						// see if terminalData contains linux_regex_dir
+						// see if terminalData contains mac_regex_dir
 						if(mac_regex_dir.test(terminalData) && !returned_mac_regex_dir.test(terminalData)){
 							// get the matched string
 							var matched = terminalData.match(mac_regex_dir);
@@ -495,6 +495,13 @@ function activate(context) {
 			fs.mkdirSync(vscodePath);
 			fs.writeFileSync(settingsPath, settings);
 		}
+
+		// make a file .env.development in the current workspace
+		let envPath = path.join(workspacePath, ".env.development");
+		// add BROWSER=chrome to .env.development
+		if(!fs.existsSync(envPath)){
+			fs.writeFileSync(envPath, "BROWSER=chrome");
+		}
 	});
 
 	let executeCode = vscode.commands.registerCommand('codeHistories.checkAndCommit', function () {
@@ -550,6 +557,71 @@ function activate(context) {
 	context.subscriptions.push(executeCode);
 	context.subscriptions.push(selectGitRepo);
 	context.subscriptions.push(setNewCmd);
+
+	let webDevFileExtensions = ['.html', '.htm', '.css', '.scss', '.sass', '.less', '.js', '.mjs', '.json', '.ts', '.yml', '.yaml', '.xml'];
+
+	const saveDisposable = vscode.workspace.onDidSaveTextDocument(async (document) => {
+		try {
+			// get timestamp in seconds
+			let timeStamp = Math.floor(Date.now() / 1000);
+
+			// if document is a web dev file and document is not inside node_modules
+			if(!webDevFileExtensions.includes(path.extname(document.fileName)) || document.fileName.includes('node_modules')){
+				return;
+			}
+
+			// look for server.log in the current workspace
+			let workspacePath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+			const serverLogPath = findServerLog(workspacePath);
+
+			// if server.log exists
+			if(fs.existsSync(serverLogPath)){
+				// read server.log
+				let output = fs.readFileSync(serverLogPath, 'utf8');
+				let filePath = document.fileName;
+				let fileContent = document.getText();
+				tracker.updateWebDevOutput(filePath, timeStamp, fileContent, output);
+			} else {
+				// if server.log does not exist
+				let filePath = document.fileName;
+				let fileContent = document.getText();
+				tracker.updateWebDevOutput(filePath, timeStamp, fileContent, '');
+			}
+
+			// check data of current active terminal
+			// let activeTerminal = vscode.window.activeTerminal;
+			// if(activeTerminal){
+			// 	if(activeTerminal.name == terminalName){
+			// 		activeTerminal.processId.then(pid => {
+			// 			let matched = allTerminalsData[pid].match(mac_regex_dir) || allTerminalsData[pid].match(returned_mac_regex_dir);
+
+			// 			if(process.platform == 'win32'){
+			// 				matched = allTerminalsData[pid].match(win_regex_dir);
+			// 			}
+
+			// 			if(process.platform == 'linux'){
+			// 				matched = allTerminalsData[pid].match(linux_regex_dir) || allTerminalsData[pid].match(returned_linux_regex_dir);
+			// 			}
+
+			// 			// grab the last occurrence of the current directory
+			// 			let lastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]);
+			// 			// forward everything from the last occurrence of the current directory to the end of the string to output.txt
+			// 			let output = allTerminalsData[pid].substring(lastOccurence);
+			// 			console.log('webDevOutput: ', output);
+
+			// 			let filePath = document.fileName;
+			// 			let fileContent = document.getText();
+			// 			tracker.updateWebDevOutput(filePath, timeStamp, fileContent, output);
+			// 		});
+			// 	}
+			// }
+		} catch (error) {
+			console.error('Error occurred while processing the onDidSaveTextDocument event:', error);
+		}
+	});
+	
+	// Don't forget to dispose the listener when it's no longer needed
+	context.subscriptions.push(saveDisposable);
 }
 
 function removeBackspaces(str) {
@@ -559,6 +631,27 @@ function removeBackspaces(str) {
     }
 	str = str.replace(pattern, "");	
 	return str;
+}
+
+function findServerLog(directory) {
+	try {
+		const files = fs.readdirSync(directory);
+		for (let file of files) {
+		const filePath = path.join(directory, file);
+		const stats = fs.statSync(filePath);
+		if (stats.isDirectory() && file !== 'node_modules') {
+			const result = findServerLog(filePath);
+			if (result) {
+			return result;
+			}
+		} else if (file === 'server.log') {
+			return filePath;
+		}
+		}
+		return '';
+	} catch (err) {
+		return '';
+	}
 }
 
 function deactivate() {
