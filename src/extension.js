@@ -560,10 +560,11 @@ function activate(context) {
 
 	let webDevFileExtensions = ['.html', '.htm', '.css', '.scss', '.sass', '.less', '.js', '.mjs', '.json', '.ts', '.yml', '.yaml', '.xml'];
 
-	const saveDisposable = vscode.workspace.onDidSaveTextDocument(async (document) => {
+	const saveDisposable = vscode.workspace.onDidSaveTextDocument((document) => {
 		try {
 			// get timestamp in seconds
 			let timeStamp = Math.floor(Date.now() / 1000);
+			// console.log(`timestamp of ${document.fileName}: ${timeStamp}`);
 
 			// if document is a web dev file and document is not inside node_modules
 			if(!webDevFileExtensions.includes(path.extname(document.fileName)) || document.fileName.includes('node_modules')){
@@ -571,16 +572,15 @@ function activate(context) {
 			}
 
 			// look for server.log in the current workspace
-			let workspacePath = vscode.workspace.workspaceFolders[0].uri.fsPath;
-			const serverLogs = findServerLogs(workspacePath);
-			console.log(serverLogs);
+			/*let workspacePath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+			let serverLogs = findServerLogs(workspacePath, timeStamp);
 
-			// if there are multiple server.log files
-			if(serverLogs.length > 1){
+			setTimeout(() => {
+			if (Object.keys(serverLogs).length > 1) {
 				// get content of all server.log files
 				let serverLogsContent = new Array();
-				for(let i = 0; i < serverLogs.length; i++){
-					let content = fs.readFileSync(serverLogs[i], 'utf8');
+				for (let key of Object.keys(serverLogs)) {
+					let content = fs.readFileSync(key, 'utf8');
 					serverLogsContent.push(content);
 				}
 				// combine all server.log files
@@ -588,46 +588,57 @@ function activate(context) {
 				let filePath = document.fileName;
 				let fileContent = document.getText();
 				tracker.updateWebDevOutput(filePath, timeStamp, fileContent, combinedServerLogs);
-			} else if (fs.existsSync(serverLogs[0])){
+				console.log('combined server logs', serverLogs);
+			} else if (fs.existsSync(Object.keys(serverLogs)[0])) {
 				// read server.log
-				let output = fs.readFileSync(serverLogs[0], 'utf8');
+				let output = fs.readFileSync(Object.keys(serverLogs)[0], 'utf8');
 				let filePath = document.fileName;
 				let fileContent = document.getText();
 				tracker.updateWebDevOutput(filePath, timeStamp, fileContent, output);
+				console.log('single server log', serverLogs);
 			} else {
 				// if server.log does not exist
 				let filePath = document.fileName;
 				let fileContent = document.getText();
 				tracker.updateWebDevOutput(filePath, timeStamp, fileContent, '');
+				console.log('no server log');
 			}
+			}, 3000);*/
 
 			// check data of current active terminal
-			// let activeTerminal = vscode.window.activeTerminal;
-			// if(activeTerminal){
-			// 	if(activeTerminal.name == terminalName){
-			// 		activeTerminal.processId.then(pid => {
-			// 			let matched = allTerminalsData[pid].match(mac_regex_dir) || allTerminalsData[pid].match(returned_mac_regex_dir);
+			let activeTerminal = vscode.window.activeTerminal;
+			if(activeTerminal){
+				if(activeTerminal.name == terminalName){
+					activeTerminal.processId.then(pid => {
+						let matched = allTerminalsData[pid].match(mac_regex_dir) || allTerminalsData[pid].match(returned_mac_regex_dir);
 
-			// 			if(process.platform == 'win32'){
-			// 				matched = allTerminalsData[pid].match(win_regex_dir);
-			// 			}
+						if(process.platform == 'win32'){
+							matched = allTerminalsData[pid].match(win_regex_dir);
+						}
 
-			// 			if(process.platform == 'linux'){
-			// 				matched = allTerminalsData[pid].match(linux_regex_dir) || allTerminalsData[pid].match(returned_linux_regex_dir);
-			// 			}
+						if(process.platform == 'linux'){
+							matched = allTerminalsData[pid].match(linux_regex_dir) || allTerminalsData[pid].match(returned_linux_regex_dir);
+						}
 
-			// 			// grab the last occurrence of the current directory
-			// 			let lastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]);
-			// 			// forward everything from the last occurrence of the current directory to the end of the string to output.txt
-			// 			let output = allTerminalsData[pid].substring(lastOccurence);
-			// 			console.log('webDevOutput: ', output);
+						// grab the last occurrence of the current directory
+						let lastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]);
 
-			// 			let filePath = document.fileName;
-			// 			let fileContent = document.getText();
-			// 			tracker.updateWebDevOutput(filePath, timeStamp, fileContent, output);
-			// 		});
-			// 	}
-			// }
+						// wait for a few seconds to make sure output is most updated
+						setTimeout(() => {
+							let output = allTerminalsData[pid].substring(lastOccurence);
+							// console.log('webDevOutput: ', output);
+
+							let filePath = document.fileName;
+							let fileContent = document.getText();
+							tracker.updateWebDevOutput(filePath, timeStamp, fileContent, output);
+						}, 3000);
+					});
+				} else {
+					let filePath = document.fileName;
+					let fileContent = document.getText();
+					tracker.updateWebDevOutput(filePath, timeStamp, fileContent, '');
+				}
+			}
 		} catch (error) {
 			console.error('Error occurred while processing the onDidSaveTextDocument event:', error);
 		}
@@ -646,9 +657,9 @@ function removeBackspaces(str) {
 	return str;
 }
 
-function findServerLogs(dir) {
+function findServerLogs(dir, timeStamp) {
 	try{
-		let logs = [];
+		let logs = {};
 		const files = fs.readdirSync(dir);
 	
 		for (const file of files) {
@@ -656,15 +667,20 @@ function findServerLogs(dir) {
 			const stat = fs.statSync(filePath);
 		
 			if (stat.isDirectory() && file !== 'node_modules') {
-				logs.push(...findServerLogs(filePath));
+				Object.assign(logs, findServerLogs(filePath, timeStamp));
 			} else if (file === 'server.log') {
-				logs.push(filePath);
+				let modifiedTime = stat.mtime.getTime() / 1000;
+				// console.log(`modified time of ${filePath}: ${modifiedTime}`);
+				if (modifiedTime >= timeStamp - 5 && modifiedTime <= timeStamp + 5) {
+					// console.log(`found server.log: ${filePath}`);
+					logs[filePath] = modifiedTime;
+				}
 			}
 		}
 	
 		return logs;
 	} catch (error) {
-		return [];
+		return {};
 	}
 }
 
