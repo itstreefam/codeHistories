@@ -558,7 +558,7 @@ function activate(context) {
 	context.subscriptions.push(selectGitRepo);
 	context.subscriptions.push(setNewCmd);
 
-	let webDevFileExtensions = ['.html', '.htm', '.css', '.scss', '.sass', '.less', '.js', '.jsx', '.mjs', '.json', '.ts', '.yml', '.yaml', '.xml'];
+	let webDevFileExtensions = ['.html', '.htm', '.css', '.scss', '.sass', '.less', '.js', '.mjs', '.json', '.ts', '.yml', '.yaml', '.xml'];
 
 	const saveDisposable = vscode.workspace.onDidSaveTextDocument((document) => {
 		try {
@@ -576,27 +576,33 @@ function activate(context) {
 			let serverLogs = findServerLogs(workspacePath, timeStamp);
 
 			setTimeout(() => {
-				if (Object.keys(serverLogs).length > 1) {
-					// get content of all server.log files
-					let serverLogsContent = new Array();
-					for (let key of Object.keys(serverLogs)) {
-						let content = fs.readFileSync(key, 'utf8');
-						serverLogsContent.push(content);
-					}
-					// combine all server.log files
-					let combinedServerLogs = serverLogsContent.join('\n## end of a log ##\n');
-					let filePath = document.fileName;
-					let fileContent = document.getText();
-					tracker.updateWebDevOutput(filePath, timeStamp, fileContent, combinedServerLogs);
-					console.log('combined server logs', serverLogs);
-				} else if (fs.existsSync(Object.keys(serverLogs)[0])) {
-					// read server.log
-					let output = fs.readFileSync(Object.keys(serverLogs)[0], 'utf8');
-					let filePath = document.fileName;
-					let fileContent = document.getText();
-					tracker.updateWebDevOutput(filePath, timeStamp, fileContent, output);
-					console.log('single server log', serverLogs);
+			if (Object.keys(serverLogs).length > 1) {
+				// get content of all server.log files
+				let serverLogsContent = new Array();
+				for (let key of Object.keys(serverLogs)) {
+					let content = fs.readFileSync(key, 'utf8');
+					serverLogsContent.push(content);
 				}
+				// combine all server.log files
+				let combinedServerLogs = serverLogsContent.join('\n## end of a log ##\n');
+				let filePath = document.fileName;
+				let fileContent = document.getText();
+				tracker.updateWebDevOutput(filePath, timeStamp, fileContent, combinedServerLogs);
+				console.log('combined server logs', serverLogs);
+			} else if (fs.existsSync(Object.keys(serverLogs)[0])) {
+				// read server.log
+				let output = fs.readFileSync(Object.keys(serverLogs)[0], 'utf8');
+				let filePath = document.fileName;
+				let fileContent = document.getText();
+				tracker.updateWebDevOutput(filePath, timeStamp, fileContent, output);
+				console.log('single server log', serverLogs);
+			} else {
+				// if server.log does not exist
+				let filePath = document.fileName;
+				let fileContent = document.getText();
+				tracker.updateWebDevOutput(filePath, timeStamp, fileContent, '');
+				console.log('no server log');
+			}
 			}, 3000);*/
 
 			// check data of current active terminal
@@ -625,54 +631,21 @@ function activate(context) {
 							let filePath = document.fileName;
 							let fileContent = document.getText();
 							tracker.updateWebDevOutput(filePath, timeStamp, fileContent, output);
-							tracker.updateDirtyChanges(filePath, timeStamp, fileContent, 'Saved');
 						}, 3000);
 					});
 				} else {
 					let filePath = document.fileName;
 					let fileContent = document.getText();
 					tracker.updateWebDevOutput(filePath, timeStamp, fileContent, '');
-					tracker.updateDirtyChanges(filePath, timeStamp, fileContent, 'Saved');
 				}
 			}
 		} catch (error) {
 			console.error('Error occurred while processing the onDidSaveTextDocument event:', error);
 		}
 	});
-
-	let excludeList = ['node_modules', '.git', '.vscode', '.idea', '.env.development', 'venv', 'output.txt', 'webData', 'webDevOutput.txt', 'dirtyChanges.txt']
-	const changeDisposable = vscode.workspace.onDidChangeTextDocument((event) => {
-		try {
-			// get timestamp in seconds
-			let timeStamp = Math.floor(Date.now() / 1000);
-			let filePath = event.document.fileName;
-
-			// if event.document.fileName is in excludeList
-			for(let i = 0; i < excludeList.length; i++){
-				if(filePath.includes(excludeList[i])){
-					return;	
-				}
-			}
-
-			let fileContent = event.document.getText();
-
-			for(let change of event.contentChanges){
-				dirtyChange = change.text;
-
-				// console.log('dirtyChange: ', JSON.stringify(dirtyChange));
-				if(!dirtyChange.startsWith('\n') && dirtyChange !== "" && dirtyChange !== " " && dirtyChange !== "    "){
-					tracker.updateDirtyChanges(filePath, timeStamp, fileContent, dirtyChange);
-				}
-			}
-		} catch (error) {
-			// console.error('Error occurred while processing the onDidChangeTextDocument event:', error);
-			return;
-		}
-	});
 	
 	// Don't forget to dispose the listener when it's no longer needed
 	context.subscriptions.push(saveDisposable);
-	context.subscriptions.push(changeDisposable);
 }
 
 function removeBackspaces(str) {
@@ -698,7 +671,7 @@ function findServerLogs(dir, timeStamp) {
 			} else if (file === 'server.log') {
 				let modifiedTime = stat.mtime.getTime() / 1000;
 				// console.log(`modified time of ${filePath}: ${modifiedTime}`);
-				if (modifiedTime >= timeStamp - 3 && modifiedTime <= timeStamp + 3) {
+				if (modifiedTime >= timeStamp - 5 && modifiedTime <= timeStamp + 5) {
 					// console.log(`found server.log: ${filePath}`);
 					logs[filePath] = modifiedTime;
 				}
