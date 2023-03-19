@@ -558,7 +558,7 @@ function activate(context) {
 	context.subscriptions.push(selectGitRepo);
 	context.subscriptions.push(setNewCmd);
 
-	let webDevFileExtensions = ['.html', '.htm', '.css', '.scss', '.sass', '.less', '.js', '.mjs', '.json', '.ts', '.yml', '.yaml', '.xml'];
+	let webDevFileExtensions = ['.html', '.htm', '.css', '.scss', '.sass', '.less', '.js', '.jsx', '.mjs', '.json', '.ts', '.yml', '.yaml', '.xml'];
 
 	const saveDisposable = vscode.workspace.onDidSaveTextDocument((document) => {
 		try {
@@ -576,76 +576,131 @@ function activate(context) {
 			let serverLogs = findServerLogs(workspacePath, timeStamp);
 
 			setTimeout(() => {
-			if (Object.keys(serverLogs).length > 1) {
-				// get content of all server.log files
-				let serverLogsContent = new Array();
-				for (let key of Object.keys(serverLogs)) {
-					let content = fs.readFileSync(key, 'utf8');
-					serverLogsContent.push(content);
+				if (Object.keys(serverLogs).length > 1) {
+					// get content of all server.log files
+					let serverLogsContent = new Array();
+					for (let key of Object.keys(serverLogs)) {
+						let content = fs.readFileSync(key, 'utf8');
+						serverLogsContent.push(content);
+					}
+					// combine all server.log files
+					let combinedServerLogs = serverLogsContent.join('\n## end of a log ##\n');
+					let filePath = document.fileName;
+					let fileContent = document.getText();
+					tracker.updateWebDevOutput(filePath, timeStamp, fileContent, combinedServerLogs);
+					console.log('combined server logs', serverLogs);
+				} else if (fs.existsSync(Object.keys(serverLogs)[0])) {
+					// read server.log
+					let output = fs.readFileSync(Object.keys(serverLogs)[0], 'utf8');
+					let filePath = document.fileName;
+					let fileContent = document.getText();
+					tracker.updateWebDevOutput(filePath, timeStamp, fileContent, output);
+					console.log('single server log', serverLogs);
 				}
-				// combine all server.log files
-				let combinedServerLogs = serverLogsContent.join('\n## end of a log ##\n');
-				let filePath = document.fileName;
-				let fileContent = document.getText();
-				tracker.updateWebDevOutput(filePath, timeStamp, fileContent, combinedServerLogs);
-				console.log('combined server logs', serverLogs);
-			} else if (fs.existsSync(Object.keys(serverLogs)[0])) {
-				// read server.log
-				let output = fs.readFileSync(Object.keys(serverLogs)[0], 'utf8');
-				let filePath = document.fileName;
-				let fileContent = document.getText();
-				tracker.updateWebDevOutput(filePath, timeStamp, fileContent, output);
-				console.log('single server log', serverLogs);
-			} else {
-				// if server.log does not exist
-				let filePath = document.fileName;
-				let fileContent = document.getText();
-				tracker.updateWebDevOutput(filePath, timeStamp, fileContent, '');
-				console.log('no server log');
-			}
 			}, 3000);*/
 
 			// check data of current active terminal
 			let activeTerminal = vscode.window.activeTerminal;
-			if(activeTerminal){
-				if(activeTerminal.name == terminalName){
-					activeTerminal.processId.then(pid => {
-						let matched = allTerminalsData[pid].match(mac_regex_dir) || allTerminalsData[pid].match(returned_mac_regex_dir);
 
-						if(process.platform == 'win32'){
-							matched = allTerminalsData[pid].match(win_regex_dir);
-						}
+			if(!activeTerminal || activeTerminal.name !== terminalName){
+				let filePath = document.fileName;
+				let fileContent = document.getText();
+				tracker.updateWebDevOutput(filePath, timeStamp, fileContent, '');
+				tracker.updateDirtyChanges(filePath, timeStamp, fileContent, 'Saved');
+				return;
+			}
 
-						if(process.platform == 'linux'){
-							matched = allTerminalsData[pid].match(linux_regex_dir) || allTerminalsData[pid].match(returned_linux_regex_dir);
-						}
+			activeTerminal.processId.then(pid => {
+				let matched = allTerminalsData[pid].match(mac_regex_dir) || allTerminalsData[pid].match(returned_mac_regex_dir);
 
-						// grab the last occurrence of the current directory
-						let lastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]);
+				if(process.platform == 'win32'){
+					matched = allTerminalsData[pid].match(win_regex_dir);
+				}
 
-						// wait for a few seconds to make sure output is most updated
-						setTimeout(() => {
-							let output = allTerminalsData[pid].substring(lastOccurence);
-							// console.log('webDevOutput: ', output);
+				if(process.platform == 'linux'){
+					matched = allTerminalsData[pid].match(linux_regex_dir) || allTerminalsData[pid].match(returned_linux_regex_dir);
+				}
 
-							let filePath = document.fileName;
-							let fileContent = document.getText();
-							tracker.updateWebDevOutput(filePath, timeStamp, fileContent, output);
-						}, 3000);
-					});
-				} else {
+				// grab the last occurrence of the current directory
+				let lastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]);
+
+				// wait for a few seconds to make sure output is most updated
+				setTimeout(() => {
+					let output = allTerminalsData[pid].substring(lastOccurence);
+					console.log('webDevOutput: ', output);
+
 					let filePath = document.fileName;
 					let fileContent = document.getText();
-					tracker.updateWebDevOutput(filePath, timeStamp, fileContent, '');
-				}
-			}
+					tracker.updateWebDevOutput(filePath, timeStamp, fileContent, output);
+					tracker.updateDirtyChanges(filePath, timeStamp, fileContent, 'Saved');
+				}, 3000);
+			});
 		} catch (error) {
 			console.error('Error occurred while processing the onDidSaveTextDocument event:', error);
 		}
 	});
+
+	let excludeList = ['node_modules', '.git', '.vscode', '.idea', '.env.development', 'venv', 'output.txt', 'webData', 'webDevOutput.txt', 'dirtyChanges.txt'];
+	var dirtyDocumentChanges = new Object();
+
+	const changeDisposable = vscode.workspace.onDidChangeTextDocument((event) => {
+		try{
+			let filePath = event.document.fileName;
+			let timeStamp = Math.floor(Date.now() / 1000);
+
+			// if event.document.fileName is in excludeList
+			for(let i = 0; i < excludeList.length; i++){
+				if(filePath.includes(excludeList[i])){
+					return;	
+				}
+			}
+			
+			// Check if the dirtyDocumentChanges object already has an array of changes for this document
+			if(!dirtyDocumentChanges.hasOwnProperty(filePath)){
+				// If not, create an array of changes for this document
+				dirtyDocumentChanges[filePath] = new Object();
+				dirtyDocumentChanges[filePath]["timeStamp"] = timeStamp;
+				dirtyDocumentChanges[filePath]["changes"] = new Array();
+			} else {
+				// update the timestamp
+				dirtyDocumentChanges[filePath]["timeStamp"] = timeStamp;
+			}
+		
+			// Get the array of changes for this document
+			let documentChanges = dirtyDocumentChanges[filePath]["changes"];
+		
+			// Add the changes from this event to the array of changes for this document
+			for(let change of event.contentChanges){
+				let dirtyChange = JSON.stringify(change.text);
+				documentChanges.push(dirtyChange);
+			}
+		} catch (error) {
+			return;
+		}
+	});
+
+	// Keep track of the dirty changes every 20 seconds
+	// Instead of every time a change is made
+	setInterval(() => {
+		// Get an array of all currently opened documents in the workspace
+		let documents = vscode.workspace.textDocuments;
+
+		// Iterate over the documents array to check if any documents are dirty
+		for (let document of documents) {
+			if (document.isDirty) {
+				let filePath = document.fileName;
+				let fileContent = document.getText();
+				if(dirtyDocumentChanges[filePath]["changes"].length > 0){
+					tracker.updateDirtyChanges(filePath, dirtyDocumentChanges[filePath]["timeStamp"], fileContent, dirtyDocumentChanges[filePath]["changes"]);
+					dirtyDocumentChanges[filePath]["changes"] = new Array();
+				}
+			}
+		}
+	}, 20000);
 	
 	// Don't forget to dispose the listener when it's no longer needed
 	context.subscriptions.push(saveDisposable);
+	context.subscriptions.push(changeDisposable);
 }
 
 function removeBackspaces(str) {

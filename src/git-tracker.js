@@ -24,7 +24,7 @@ module.exports = class gitTracker {
     }
 
     initGitingore() {
-        let itemsToAdd = ['codeHistories.git', '.vscode', '.env.development', 'venv'];
+        let itemsToAdd = ['codeHistories.git', '.vscode', '.env.development', 'venv', 'node_modules', 'webDevOutput.txt', 'dirtyChanges.txt'];
         let gitignorePath = this._currentDir + '/.gitignore';
 
         let data = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, 'utf8') : '';
@@ -441,6 +441,31 @@ module.exports = class gitTracker {
         
         let output = log_delimiter + filePath + "\n" + timeStamp + "\n" + fileContent + "\nTerminal data\n" + webDevTerminalData + "\n" + log_delim_end;
         let outputFilePath = this._currentDir + '/webDevOutput.txt';
+
+        if (fs.existsSync(outputFilePath)) {
+            fs.appendFileSync(outputFilePath, output, function (err) {
+                if (err) {
+                    console.log(err);
+                    return false;
+                }
+            });
+        } else {
+            fs.writeFileSync(outputFilePath, output, function (err) {
+                if (err) {
+                    console.log(err);
+                    return false;
+                }
+            });
+        }
+    }
+
+    updateDirtyChanges(filePath, timeStamp, fileContent, dirtyChanges){
+        // unique string not likely to be in any code
+        let log_delimiter = "~%$#@*(#^&&*@#$&*^&---------------------     BEGIN     -----------------------LAFAFJL7358267)\n";
+        let log_delim_end = "*(&*#@(()*$#@*((*@#---------------------     END     -------------------------236FHAJFFFASF))\n";
+        
+        let output = log_delimiter + filePath + "\n" + timeStamp + "\n" + fileContent + "\nDirty changes\n" + dirtyChanges + "\n" + log_delim_end;
+        let outputFilePath = this._currentDir + '/dirtyChanges.txt';
 
         if (fs.existsSync(outputFilePath)) {
             fs.appendFileSync(outputFilePath, output, function (err) {
