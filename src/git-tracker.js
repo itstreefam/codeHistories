@@ -24,16 +24,15 @@ module.exports = class gitTracker {
     }
 
     initGitingore() {
-        // create .gitignore file
-        if(!fs.existsSync(this._currentDir + '/.gitignore')) {
-            fs.writeFileSync(this._currentDir + '/.gitignore', 'codeHistories.git');
-        } else {
-            // check if codeHistories.git is in .gitignore
-            var data = fs.readFileSync(this._currentDir + '/.gitignore', 'utf8');
-            if(!data.includes('codeHistories.git')) {
-                fs.appendFileSync(this._currentDir + '/.gitignore', 'codeHistories.git');
+        let itemsToAdd = ['codeHistories.git', '.vscode', '.env.development', 'venv', 'node_modules', 'webDevOutput.txt', 'dirtyChanges.txt'];
+        let gitignorePath = this._currentDir + '/.gitignore';
+
+        let data = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, 'utf8') : '';
+        itemsToAdd.forEach(item => {
+            if (!data.includes(item)) {
+                fs.appendFileSync(gitignorePath, `${item}\n`);
             }
-        }
+        });
     }
 
     listGitRepos() {
@@ -394,10 +393,12 @@ module.exports = class gitTracker {
             return false;
         }
 
-        if (fs.existsSync(this._currentDir + '/output.txt')) {
+        let outputFilePath = this._currentDir + '/output.txt';
+
+        if (fs.existsSync(outputFilePath)) {
             // if file is empty
-            if (fs.statSync(this._currentDir + '/output.txt').size == 0) {
-                fs.appendFileSync(this._currentDir + '/output.txt', output, function (err) {
+            if (fs.statSync(outputFilePath).size == 0) {
+                fs.appendFileSync(outputFilePath, output, function (err) {
                     if (err) {
                         console.log(err);
                         return false;
@@ -406,8 +407,8 @@ module.exports = class gitTracker {
             }
             else{
                 // delete everything in the file
-                fs.truncateSync(this._currentDir + '/output.txt', 0);
-                fs.appendFileSync(this._currentDir + '/output.txt', output, function (err) {
+                fs.truncateSync(outputFilePath, 0);
+                fs.appendFileSync(outputFilePath, output, function (err) {
                     if (err) {
                         console.log(err);
                         return false;
@@ -417,7 +418,7 @@ module.exports = class gitTracker {
         }
         // if file does not exist, create and write output to it
         else {
-            fs.writeFileSync(this._currentDir + '/output.txt', output, function (err) {
+            fs.writeFileSync(outputFilePath, output, function (err) {
                 if (err) {
                     console.log(err);
                     return false;
@@ -426,6 +427,61 @@ module.exports = class gitTracker {
         }
 
         return true;
+    }
+
+    updateWebDevOutput(filePath, timeStamp, fileContent, webDevTerminalData){
+        // if(!this.checkEdgeCases(webDevTerminalData)){
+        //     console.log("Edge case detected!", webDevTerminalData);
+        //     return;
+        // }
+
+        // unique string not likely to be in any code
+        let log_delimiter = "~%$#@*(#^&&*@#$&*^&---------------------     BEGIN     -----------------------LAFAFJL7358267)\n";
+        let log_delim_end = "*(&*#@(()*$#@*((*@#---------------------     END     -------------------------236FHAJFFFASF))\n";
+        
+        let output = log_delimiter + filePath + "\n" + timeStamp + "\n" + fileContent + "\nTerminal data\n" + webDevTerminalData + "\n" + log_delim_end;
+        let outputFilePath = this._currentDir + '/webDevOutput.txt';
+
+        if (fs.existsSync(outputFilePath)) {
+            fs.appendFileSync(outputFilePath, output, function (err) {
+                if (err) {
+                    console.log(err);
+                    return false;
+                }
+            });
+        } else {
+            fs.writeFileSync(outputFilePath, output, function (err) {
+                if (err) {
+                    console.log(err);
+                    return false;
+                }
+            });
+        }
+    }
+
+    updateDirtyChanges(filePath, timeStamp, fileContent, dirtyChanges){
+        // unique string not likely to be in any code
+        let log_delimiter = "~%$#@*(#^&&*@#$&*^&---------------------     BEGIN     -----------------------LAFAFJL7358267)\n";
+        let log_delim_end = "*(&*#@(()*$#@*((*@#---------------------     END     -------------------------236FHAJFFFASF))\n";
+        
+        let output = log_delimiter + filePath + "\n" + timeStamp + "\n" + fileContent + "\nDirty changes\n" + dirtyChanges + "\n" + log_delim_end;
+        let outputFilePath = this._currentDir + '/dirtyChanges.txt';
+
+        if (fs.existsSync(outputFilePath)) {
+            fs.appendFileSync(outputFilePath, output, function (err) {
+                if (err) {
+                    console.log(err);
+                    return false;
+                }
+            });
+        } else {
+            fs.writeFileSync(outputFilePath, output, function (err) {
+                if (err) {
+                    console.log(err);
+                    return false;
+                }
+            });
+        }
     }
 
     checkEdgeCases(str){
