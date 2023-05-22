@@ -384,7 +384,7 @@ module.exports = class gitTracker {
 
     updateOutput(output){
         // stage everything before updating output.txt
-        this.gitAdd();
+        // this.gitAdd();
 
         // store output of current terminal to a new file
         // if file already exists, append to it
