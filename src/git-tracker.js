@@ -383,9 +383,6 @@ module.exports = class gitTracker {
     }
 
     updateOutput(output){
-        // stage everything before updating output.txt
-        // this.gitAdd();
-
         // store output of current terminal to a new file
         // if file already exists, append to it
         if(!this.checkEdgeCases(output)){
@@ -395,10 +392,15 @@ module.exports = class gitTracker {
 
         let outputFilePath = this._currentDir + '/output.txt';
 
+        // add timestamp to output can be used to detect if user rerun the same program without much changes
+        const timestamp = this.timestamp();
+        let conversion = new Date(timestamp).toLocaleString('en-US');
+        let timestampedOutput = `[${conversion}]\n${output}`;
+
         if (fs.existsSync(outputFilePath)) {
             // if file is empty
             if (fs.statSync(outputFilePath).size == 0) {
-                fs.appendFileSync(outputFilePath, output, function (err) {
+                fs.appendFileSync(outputFilePath, timestampedOutput, function (err) {
                     if (err) {
                         console.log(err);
                         return false;
@@ -408,7 +410,7 @@ module.exports = class gitTracker {
             else{
                 // delete everything in the file
                 fs.truncateSync(outputFilePath, 0);
-                fs.appendFileSync(outputFilePath, output, function (err) {
+                fs.appendFileSync(outputFilePath, timestampedOutput, function (err) {
                     if (err) {
                         console.log(err);
                         return false;
@@ -418,7 +420,7 @@ module.exports = class gitTracker {
         }
         // if file does not exist, create and write output to it
         else {
-            fs.writeFileSync(outputFilePath, output, function (err) {
+            fs.writeFileSync(outputFilePath, timestampedOutput, function (err) {
                 if (err) {
                     console.log(err);
                     return false;
