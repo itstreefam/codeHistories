@@ -334,6 +334,32 @@ module.exports = class gitTracker {
         await this.gitCommit();
     }
 
+    // this function will add to webData information if user switch to Chrome or to VSCode
+    async recordAppSwitch(info, timestamp) {
+        let file = this._currentDir + '/webData';
+        let appSwitchData = [{
+            "action": info,
+            "curTabId": -1,
+            "curTitle": "",
+            "curUrl": "",
+            "prevTabId": -1,
+            "prevUrl": "",
+            "time": timestamp
+        }];
+
+        if (fs.existsSync(file)) {
+            if (fs.readFileSync(file).length === 0) {
+                fs.writeFileSync(file, data);
+            } else {
+                let data = JSON.parse(fs.readFileSync(file, 'utf8'));
+                let newData = data.concat(appSwitchData);
+                fs.writeFileSync(file, JSON.stringify(newData, undefined, 4));
+            }
+        } else {
+            fs.writeFileSync(file, JSON.stringify(appSwitchData, undefined, 4));
+        }
+    }
+
     async keepOrUndoCommit(){
         const choice = await vscode.window.showWarningMessage('Recently committed! Do you want to keep or undo?', 'Keep commit', 'Undo commit');
         if (choice === 'Keep commit') {

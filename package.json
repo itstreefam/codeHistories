@@ -37,7 +37,7 @@
         "title": "Code Histories: Set new command"
       }
     ],
-    "keybindings":[
+    "keybindings": [
       {
         "command": "codeHistories.selectGitRepo",
         "key": "Ctrl+Shift+G",
@@ -58,7 +58,6 @@
       ]
     }
   },
-  
   "scripts": {
     "lint": "eslint .",
     "pretest": "npm run lint",
@@ -76,6 +75,7 @@
     "typescript": "^4.5.4"
   },
   "dependencies": {
+    "active-win": "^8.1.0",
     "simple-git": "^3.5.0"
   }
 }

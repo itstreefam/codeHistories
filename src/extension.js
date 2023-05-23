@@ -7,6 +7,7 @@ const os = require('os');
 const fs = require('fs');
 const path = require('path');
 const Terminal = require('./terminal');
+const activeWindow = require('active-win');
 
 var tracker = null;
 var iter = 0;
@@ -18,6 +19,10 @@ var terminalName = "Code Histories";
 var allTerminalsData = new Object();
 var allTerminalsDirCount = new Object();
 var cmdPrompt = `source ~/.bash_profile`;
+var previousAppName = '';
+var timeSwitchedToChrome = 0;
+var timeSwitchedToCode = 0;
+var timeWebDevFileSaved = 0;
 
 /**
  * @param {vscode.ExtensionContext} context
@@ -585,46 +590,20 @@ function activate(context) {
 	context.subscriptions.push(selectGitRepo);
 	context.subscriptions.push(setNewCmd);
 
-	let webDevFileExtensions = ['.html', '.htm', '.css', '.scss', '.sass', '.less', '.js', '.jsx', '.mjs', '.json', '.ts', '.yml', '.yaml', '.xml'];
+	let webDevFileExtensions = ['.html', '.htm', '.css', '.scss', '.sass', '.less', '.js', '.jsx', '.mjs', '.json', '.ts', '.yml', '.yaml', '.xml', '.php'];
 
 	const saveDisposable = vscode.workspace.onDidSaveTextDocument((document) => {
 		try {
 			// get timestamp in seconds
 			let timeStamp = Math.floor(Date.now() / 1000);
+			timeWebDevFileSaved = timeStamp;
+
 			// console.log(`timestamp of ${document.fileName}: ${timeStamp}`);
 
 			// if document is a web dev file and document is not inside node_modules
 			if(!webDevFileExtensions.includes(path.extname(document.fileName)) || document.fileName.includes('node_modules')){
 				return;
 			}
-
-			// look for server.log in the current workspace
-			/*let workspacePath = vscode.workspace.workspaceFolders[0].uri.fsPath;
-			let serverLogs = findServerLogs(workspacePath, timeStamp);
-
-			setTimeout(() => {
-				if (Object.keys(serverLogs).length > 1) {
-					// get content of all server.log files
-					let serverLogsContent = new Array();
-					for (let key of Object.keys(serverLogs)) {
-						let content = fs.readFileSync(key, 'utf8');
-						serverLogsContent.push(content);
-					}
-					// combine all server.log files
-					let combinedServerLogs = serverLogsContent.join('\n## end of a log ##\n');
-					let filePath = document.fileName;
-					let fileContent = document.getText();
-					tracker.updateWebDevOutput(filePath, timeStamp, fileContent, combinedServerLogs);
-					console.log('combined server logs', serverLogs);
-				} else if (fs.existsSync(Object.keys(serverLogs)[0])) {
-					// read server.log
-					let output = fs.readFileSync(Object.keys(serverLogs)[0], 'utf8');
-					let filePath = document.fileName;
-					let fileContent = document.getText();
-					tracker.updateWebDevOutput(filePath, timeStamp, fileContent, output);
-					console.log('single server log', serverLogs);
-				}
-			}, 3000);*/
 
 			// check data of current active terminal
 			let activeTerminal = vscode.window.activeTerminal;
@@ -666,6 +645,51 @@ function activate(context) {
 			console.error('Error occurred while processing the onDidSaveTextDocument event:', error);
 		}
 	});
+
+	// codehistories npm start | while IFS= read -r line; do echo "[$(date '+%m/%d/%Y, %I:%M:%S %p')] $line"; done | tee -a server.log
+	// this command will run npm start and pipe the output to a file server.log in user's working project directory (.e.g. /home/tri/Desktop/react-app)
+	/* E.g. 
+		[05/23/2023, 01:32:29 PM]
+		[05/23/2023, 01:32:29 PM] > my-app@0.1.0 start
+		[05/23/2023, 01:32:29 PM] > react-scripts start
+		[05/23/2023, 01:32:29 PM]
+		...
+		[05/23/2023, 01:32:31 PM] Compiled successfully!
+	*/
+
+	// if user also has another server running, we can have a separate external terminal which runs that server and pipe the output to a file server2.log in user's working project directory
+	// npm start -- --port 8000| while IFS= read -r line; do echo "[$(date '+%m/%d/%Y, %I:%M:%S %p')] $line"; done | tee -a /home/tri/Desktop/react-app/server2.log
+	// python -m http.server 8000 | while IFS= read -r line; do echo "[$(date '+%m/%d/%Y, %I:%M:%S %p')] $line"; done | tee -a /home/tri/Desktop/react-app/server2.log
+
+	// once the web dev file is saved, and then user switch to chrome browser to test their web app, this extension will auto commit the changes to git
+	// app switch detection is recorded in webData (refer to recordAppSwitch function in tracker.js)
+
+	setInterval(async () => {
+		const activeApp = await activeWindow();
+		// console.log(activeApp);
+	  
+		if (activeApp && activeApp.owner && activeApp.owner.name) {
+			const currentAppName = activeApp.owner.name.toLowerCase();
+			// console.log(currentAppName);
+		
+			if (currentAppName.includes('chrome') && previousAppName !== 'chrome') {
+				previousAppName = 'chrome';
+				timeSwitchedToChrome = Math.floor(Date.now() / 1000);
+				let timeDiff = timeSwitchedToChrome - timeWebDevFileSaved;
+				if(timeDiff < 10 && timeDiff > 0){
+					console.log('Switched to Chrome within 10 seconds of saving web dev file');
+					await tracker.recordAppSwitch('Switched to Chrome within 10 seconds of saving web dev file', timeSwitchedToChrome);
+					await tracker.gitAdd();
+					await tracker.checkWebData();
+				}
+			} else if (currentAppName.includes('code') && previousAppName !== 'vscode') {
+				console.log('Switched to VS Code');
+				previousAppName = 'vscode';
+				// timeSwitchedToCode = Math.floor(Date.now() / 1000);
+				// await tracker.recordAppSwitch('Switched to VS Code', timeSwitchedToCode);
+			}
+		}
+	}, 500);
 
 	let excludeList = ['node_modules', '.git', '.vscode', '.idea', '.env.development', 'venv', 'output.txt', 'webData', 'webDevOutput.txt', 'dirtyChanges.txt'];
 	var dirtyDocumentChanges = new Object();
@@ -737,33 +761,6 @@ function removeBackspaces(str) {
     }
 	str = str.replace(pattern, "");	
 	return str;
-}
-
-function findServerLogs(dir, timeStamp) {
-	try{
-		let logs = {};
-		const files = fs.readdirSync(dir);
-	
-		for (const file of files) {
-			const filePath = path.join(dir, file);
-			const stat = fs.statSync(filePath);
-		
-			if (stat.isDirectory() && file !== 'node_modules') {
-				Object.assign(logs, findServerLogs(filePath, timeStamp));
-			} else if (file === 'server.log') {
-				let modifiedTime = stat.mtime.getTime() / 1000;
-				// console.log(`modified time of ${filePath}: ${modifiedTime}`);
-				if (modifiedTime >= timeStamp - 5 && modifiedTime <= timeStamp + 5) {
-					// console.log(`found server.log: ${filePath}`);
-					logs[filePath] = modifiedTime;
-				}
-			}
-		}
-	
-		return logs;
-	} catch (error) {
-		return {};
-	}
 }
 
 function deactivate() {
