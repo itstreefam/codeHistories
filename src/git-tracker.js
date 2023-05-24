@@ -331,12 +331,11 @@ module.exports = class gitTracker {
                 console.log(`Error adding webData to .git: ${err}`);
             }
         }
-        await this.gitCommit();
     }
 
-    // this function will add to webData information if user switch to Chrome or to VSCode
+    // this function will write to a new file the additional information if user switch to Chrome for web development testing
     async recordAppSwitch(info, timestamp) {
-        let file = this._currentDir + '/webData';
+        let file = this._currentDir + '/appSwitchData';
         let appSwitchData = [{
             "action": info,
             "curTabId": -1,
@@ -351,9 +350,10 @@ module.exports = class gitTracker {
             if (fs.readFileSync(file).length === 0) {
                 fs.writeFileSync(file, data);
             } else {
-                let data = JSON.parse(fs.readFileSync(file, 'utf8'));
-                let newData = data.concat(appSwitchData);
-                fs.writeFileSync(file, JSON.stringify(newData, undefined, 4));
+                let data = fs.readFileSync(file);
+                let parsedData = JSON.parse(data);
+                parsedData.push(appSwitchData[0]);
+                fs.writeFileSync(file, JSON.stringify(parsedData, undefined, 4));
             }
         } else {
             fs.writeFileSync(file, JSON.stringify(appSwitchData, undefined, 4));

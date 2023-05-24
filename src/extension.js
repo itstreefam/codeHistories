@@ -155,6 +155,7 @@ function activate(context) {
 								if(outputUpdated){
 									await tracker.gitAddOutput();
 									await tracker.checkWebData();
+									await tracker.gitCommit();
 								} else {
 									// if output.txt is not updated, then we should revert the git add
 									await tracker.gitReset();
@@ -313,6 +314,7 @@ function activate(context) {
 								if(outputUpdated){
 									await tracker.gitAddOutput();
 									await tracker.checkWebData();
+									await tracker.gitCommit();
 								} else {
 									// if output.txt is not updated, then we should revert the git add
 									await tracker.gitReset();
@@ -453,6 +455,7 @@ function activate(context) {
 								if(outputUpdated){
 									await tracker.gitAddOutput();
 									await tracker.checkWebData();
+									await tracker.gitCommit();
 								} else {
 									// if output.txt is not updated, then we should revert the git add
 									await tracker.gitReset();
@@ -681,12 +684,16 @@ function activate(context) {
 					await tracker.recordAppSwitch('Switched to Chrome within 10 seconds of saving web dev file', timeSwitchedToChrome);
 					await tracker.gitAdd();
 					await tracker.checkWebData();
+					await tracker.gitCommit();
+				} else {
+					console.log('Switched to Chrome');
+					await tracker.recordAppSwitch('Switched to Chrome', timeSwitchedToChrome);
 				}
 			} else if (currentAppName.includes('code') && previousAppName !== 'vscode') {
 				console.log('Switched to VS Code');
 				previousAppName = 'vscode';
-				// timeSwitchedToCode = Math.floor(Date.now() / 1000);
-				// await tracker.recordAppSwitch('Switched to VS Code', timeSwitchedToCode);
+				timeSwitchedToCode = Math.floor(Date.now() / 1000);
+				await tracker.recordAppSwitch('Switched to VS Code', timeSwitchedToCode);
 			}
 		}
 	}, 500);
