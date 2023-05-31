@@ -22,7 +22,7 @@ var cmdPrompt = `source ~/.bash_profile`;
 var previousAppName = '';
 var timeSwitchedToChrome = 0;
 var timeSwitchedToCode = 0;
-var timeWebDevFileSaved = 0;
+var gitActionsPerformed = false;
 
 /**
  * @param {vscode.ExtensionContext} context
@@ -664,39 +664,68 @@ function activate(context) {
 	// npm start -- --port 8000| while IFS= read -r line; do echo "[$(date '+%m/%d/%Y, %I:%M:%S %p')] $line"; done | tee -a /home/tri/Desktop/react-app/server2.log
 	// python -m http.server 8000 | while IFS= read -r line; do echo "[$(date '+%m/%d/%Y, %I:%M:%S %p')] $line"; done | tee -a /home/tri/Desktop/react-app/server2.log
 
-	// once the web dev file is saved, and then user switch to chrome browser to test their web app, this extension will auto commit the changes to git
-	// app switch detection is recorded in webData (refer to recordAppSwitch function in tracker.js)
+	// check the interval the user is gone from vs code to visit chrome
+	// and if they visit localhost to test their program (require that they do reload the page so that it is recorded as an event in webData)
+	try{
+		let intervalId;
 
-	setInterval(async () => {
-		const activeApp = await activeWindow();
-		// console.log(activeApp);
-	  
-		if (activeApp && activeApp.owner && activeApp.owner.name) {
-			const currentAppName = activeApp.owner.name.toLowerCase();
-			// console.log(currentAppName);
+		const checkAppSwitch = async () => {
+			const activeApp = await activeWindow();
+			// console.log(activeApp);
 		
-			if (currentAppName.includes('chrome') && previousAppName !== 'chrome') {
-				previousAppName = 'chrome';
-				timeSwitchedToChrome = Math.floor(Date.now() / 1000);
-				let timeDiff = timeSwitchedToChrome - timeWebDevFileSaved;
-				if(timeDiff < 10 && timeDiff > 0){
-					console.log('Switched to Chrome within 10 seconds of saving web dev file');
-					await tracker.recordAppSwitch('Switched to Chrome within 10 seconds of saving web dev file', timeSwitchedToChrome);
-					await tracker.gitAdd();
-					await tracker.checkWebData();
-					await tracker.gitCommit();
-				} else {
-					console.log('Switched to Chrome');
-					await tracker.recordAppSwitch('Switched to Chrome', timeSwitchedToChrome);
+			if (activeApp && activeApp.owner && activeApp.owner.name) {
+				const currentAppName = activeApp.owner.name.toLowerCase();
+				// console.log(currentAppName);
+
+				if (previousAppName.includes('code') && currentAppName.includes('chrome')) {
+					console.log('Switched to from VS Code to Chrome');
+					timeSwitchedToChrome = Math.floor(Date.now() / 1000);
+					// console.log('timeSwitchedToChrome: ', timeSwitchedToChrome);
+
+					// Reset the flag when switching to Chrome
+					gitActionsPerformed = false;
+				} else if (previousAppName.includes('chrome') && currentAppName.includes('code')) {
+					console.log('Switched to from Chrome to VS Code');
+					timeSwitchedToCode = Math.floor(Date.now() / 1000);
+
+					// Check if git actions have already been performed
+					if (!gitActionsPerformed) {
+						// search between timeSwitchedToChrome and timeSwitchedToCode in webData
+						let webData = fs.readFileSync(path.join(currentDir, 'webData'), 'utf8');
+						let webDataArray = JSON.parse(webData);
+
+						let webDataArrayFiltered = webDataArray.filter(obj => obj.time >= timeSwitchedToChrome && obj.time <= timeSwitchedToCode);
+						
+						if(webDataArrayFiltered.length > 0){
+							// check if webDataArrayFiltered contains a visit to localhost or 127.0.0.1
+							let webDataArrayFilteredContainsLocalhost = webDataArrayFiltered.filter(obj => obj.curUrl.includes('localhost') || obj.curUrl.includes('127.0.0.1'));
+							
+							if(webDataArrayFilteredContainsLocalhost.length > 0){
+								await tracker.gitAdd();
+								await tracker.checkWebData();
+								await tracker.gitCommit();
+								// let curTime = Math.floor(Date.now() / 1000);
+								// console.log('Commit at ', curTime);
+								gitActionsPerformed = true;
+							}
+						}
+						// console.log('timeSwitchedToCode: ', timeSwitchedToCode);
+						// console.log('webDataArrayFiltered: ', webDataArrayFiltered);
+					}
 				}
-			} else if (currentAppName.includes('code') && previousAppName !== 'vscode') {
-				console.log('Switched to VS Code');
-				previousAppName = 'vscode';
-				timeSwitchedToCode = Math.floor(Date.now() / 1000);
-				await tracker.recordAppSwitch('Switched to VS Code', timeSwitchedToCode);
+
+				previousAppName = currentAppName;
 			}
-		}
-	}, 500);
+
+			// Set the next interval after processing the current one
+			intervalId = setTimeout(checkAppSwitch, 1000);
+		};
+
+		// Start the first interval
+		intervalId = setTimeout(checkAppSwitch, 1000);
+	} catch(err){
+		console.log("Error in checking app switch: ", err);
+	}
 
 	let excludeList = ['node_modules', '.git', '.vscode', '.idea', '.env.development', 'venv', 'output.txt', 'webData', 'webDevOutput.txt', 'dirtyChanges.txt'];
 	var dirtyDocumentChanges = new Object();
