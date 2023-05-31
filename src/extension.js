@@ -727,7 +727,7 @@ function activate(context) {
 		console.log("Error in checking app switch: ", err);
 	}
 
-	let excludeList = ['node_modules', '.git', '.vscode', '.idea', '.env.development', 'venv', 'output.txt', 'webData', 'webDevOutput.txt', 'dirtyChanges.txt'];
+	/*let excludeList = ['node_modules', '.git', '.vscode', '.idea', '.env.development', 'venv', 'output.txt', 'webData', 'webDevOutput.txt', 'dirtyChanges.txt'];
 	var dirtyDocumentChanges = new Object();
 
 	const changeDisposable = vscode.workspace.onDidChangeTextDocument((event) => {
@@ -783,11 +783,11 @@ function activate(context) {
 				}
 			}
 		}
-	}, 20000);
+	}, 20000);*/
 	
 	// Don't forget to dispose the listener when it's no longer needed
 	context.subscriptions.push(saveDisposable);
-	context.subscriptions.push(changeDisposable);
+	// context.subscriptions.push(changeDisposable);
 }
 
 function removeBackspaces(str) {
