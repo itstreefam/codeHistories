@@ -593,7 +593,7 @@ function activate(context) {
 	context.subscriptions.push(selectGitRepo);
 	context.subscriptions.push(setNewCmd);
 
-	let webDevFileExtensions = ['.html', '.htm', '.css', '.scss', '.sass', '.less', '.js', '.jsx', '.mjs', '.json', '.ts', '.yml', '.yaml', '.xml', '.php'];
+	/*let webDevFileExtensions = ['.html', '.htm', '.css', '.scss', '.sass', '.less', '.js', '.jsx', '.mjs', '.json', '.ts', '.yml', '.yaml', '.xml', '.php'];
 
 	const saveDisposable = vscode.workspace.onDidSaveTextDocument((document) => {
 		try {
@@ -615,7 +615,7 @@ function activate(context) {
 				let filePath = document.fileName;
 				let fileContent = document.getText();
 				tracker.updateWebDevOutput(filePath, timeStamp, fileContent, '');
-				tracker.updateDirtyChanges(filePath, timeStamp, fileContent, 'Saved');
+				// tracker.updateDirtyChanges(filePath, timeStamp, fileContent, 'Saved');
 				return;
 			}
 
@@ -636,18 +636,18 @@ function activate(context) {
 				// wait for a few seconds to make sure output is most updated
 				setTimeout(() => {
 					let output = allTerminalsData[pid].substring(lastOccurence);
-					console.log('webDevOutput: ', output);
+					// console.log('webDevOutput: ', output);
 
 					let filePath = document.fileName;
 					let fileContent = document.getText();
 					tracker.updateWebDevOutput(filePath, timeStamp, fileContent, output);
-					tracker.updateDirtyChanges(filePath, timeStamp, fileContent, 'Saved');
+					// tracker.updateDirtyChanges(filePath, timeStamp, fileContent, 'Saved');
 				}, 3000);
 			});
 		} catch (error) {
 			console.error('Error occurred while processing the onDidSaveTextDocument event:', error);
 		}
-	});
+	});*/
 
 	// codehistories npm start | while IFS= read -r line; do echo "[$(date '+%m/%d/%Y, %I:%M:%S %p')] $line"; done | tee -a server.log
 	// this command will run npm start and pipe the output to a file server.log in user's working project directory (.e.g. /home/tri/Desktop/react-app)
@@ -666,10 +666,11 @@ function activate(context) {
 
 	// check the interval the user is gone from vs code to visit chrome
 	// and if they visit localhost to test their program (require that they do reload the page so that it is recorded as an event in webData)
-	try{
-		let intervalId;
+
+		var intervalId;
 
 		const checkAppSwitch = async () => {
+			try {
 			const activeApp = await activeWindow();
 			// console.log(activeApp);
 		
@@ -680,52 +681,62 @@ function activate(context) {
 				if (previousAppName.includes('code') && currentAppName.includes('chrome')) {
 					console.log('Switched to from VS Code to Chrome');
 					timeSwitchedToChrome = Math.floor(Date.now() / 1000);
-					// console.log('timeSwitchedToChrome: ', timeSwitchedToChrome);
+					console.log('timeSwitchedToChrome: ', timeSwitchedToChrome);
 
 					// Reset the flag when switching to Chrome
 					gitActionsPerformed = false;
 				} else if (previousAppName.includes('chrome') && currentAppName.includes('code')) {
 					console.log('Switched to from Chrome to VS Code');
 					timeSwitchedToCode = Math.floor(Date.now() / 1000);
+					console.log('timeSwitchedToCode: ', timeSwitchedToCode);
 
 					// Check if git actions have already been performed
 					if (!gitActionsPerformed) {
-						// search between timeSwitchedToChrome and timeSwitchedToCode in webData
-						let webData = fs.readFileSync(path.join(currentDir, 'webData'), 'utf8');
-						let webDataArray = JSON.parse(webData);
-
-						let webDataArrayFiltered = webDataArray.filter(obj => obj.time >= timeSwitchedToChrome && obj.time <= timeSwitchedToCode);
-						
-						if(webDataArrayFiltered.length > 0){
-							// check if webDataArrayFiltered contains a visit to localhost or 127.0.0.1
-							let webDataArrayFilteredContainsLocalhost = webDataArrayFiltered.filter(obj => obj.curUrl.includes('localhost') || obj.curUrl.includes('127.0.0.1'));
-							
-							if(webDataArrayFilteredContainsLocalhost.length > 0){
-								await tracker.gitAdd();
-								await tracker.checkWebData();
-								await tracker.gitCommit();
-								// let curTime = Math.floor(Date.now() / 1000);
-								// console.log('Commit at ', curTime);
-								gitActionsPerformed = true;
-							}
-						}
-						// console.log('timeSwitchedToCode: ', timeSwitchedToCode);
-						// console.log('webDataArrayFiltered: ', webDataArrayFiltered);
+						await performGitActions();
+						gitActionsPerformed = true;
 					}
 				}
-
 				previousAppName = currentAppName;
 			}
 
 			// Set the next interval after processing the current one
-			intervalId = setTimeout(checkAppSwitch, 1000);
+			intervalId = setTimeout(checkAppSwitch, 500);
+			} catch (error) {
+				console.error('Error occurred while checking for app switch:', error);
+			}
 		};
 
+		const performGitActions = async () => {
+			try {
+			// search between timeSwitchedToChrome and timeSwitchedToCode in webData
+			let webData = fs.readFileSync(path.join(currentDir, 'webData'), 'utf8');
+			let webDataArray = JSON.parse(webData);
+
+			let webDataArrayFiltered = webDataArray.filter(obj => obj.time >= timeSwitchedToChrome && obj.time <= timeSwitchedToCode);
+
+			// console.log('webDataArrayFiltered: ', webDataArrayFiltered);
+			
+			if(webDataArrayFiltered.length > 0){
+				// check if webDataArrayFiltered contains a visit to localhost or 127.0.0.1
+				let webDataArrayFilteredContainsLocalhost = webDataArrayFiltered.filter(obj => obj.curUrl.includes('localhost') || obj.curUrl.includes('127.0.0.1'));
+				
+				if(webDataArrayFilteredContainsLocalhost.length > 0){
+					await tracker.gitAdd();
+					await tracker.checkWebData();
+					await tracker.gitCommit();
+					// let currentTime = Math.floor(Date.now() / 1000);
+					// console.log('currentTime: ', currentTime);
+				}
+			}
+			} catch (error) {
+				console.log('Error performing Git actions:', error);
+			}
+		};
+
+
 		// Start the first interval
-		intervalId = setTimeout(checkAppSwitch, 1000);
-	} catch(err){
-		console.log("Error in checking app switch: ", err);
-	}
+		intervalId = setTimeout(checkAppSwitch, 500);
+
 
 	/*let excludeList = ['node_modules', '.git', '.vscode', '.idea', '.env.development', 'venv', 'output.txt', 'webData', 'webDevOutput.txt', 'dirtyChanges.txt'];
 	var dirtyDocumentChanges = new Object();
@@ -786,7 +797,7 @@ function activate(context) {
 	}, 20000);*/
 	
 	// Don't forget to dispose the listener when it's no longer needed
-	context.subscriptions.push(saveDisposable);
+	// context.subscriptions.push(saveDisposable);
 	// context.subscriptions.push(changeDisposable);
 }
 

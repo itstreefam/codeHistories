@@ -129,6 +129,7 @@ module.exports = class gitTracker {
                     console.log("Fetched");
                 }
                 , (failure) => {
+                    console.log(failure);
                     console.log("Failed to fetch");
                 });
             });
@@ -357,6 +358,8 @@ module.exports = class gitTracker {
                     console.error(`Error undoing last commit for .git: ${err}`);
                 }
             }
+        } else if(choice === undefined) {
+            console.log('No choice made');
         }
     }
 
@@ -490,6 +493,8 @@ module.exports = class gitTracker {
         if(vscode.window.activeTerminal.name === "Code Histories"){
             // only returns true if str contains codehistories
             if(str.includes("codehistories") && this.countOccurrences(str, "codehistories") == 1){
+                return true;
+            } else if(str === ""){
                 return true;
             }
             return false;
