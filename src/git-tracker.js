@@ -24,7 +24,7 @@ module.exports = class gitTracker {
     }
 
     initGitingore() {
-        let itemsToAdd = ['codeHistories.git', '.vscode', '.env.development', 'venv', 'node_modules', 'webDevOutput.txt', 'dirtyChanges.txt'];
+        let itemsToAdd = ['codeHistories.git', '.vscode', '.env.development', 'venv', 'node_modules'];
         let gitignorePath = this._currentDir + '/.gitignore';
 
         let data = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, 'utf8') : '';
@@ -281,7 +281,7 @@ module.exports = class gitTracker {
             try {
                 await exec(commitCmd, {cwd: workTree});
                 console.log(`Committed to codeHistories.git`);
-                await this.keepOrUndoCommit();
+                // await this.keepOrUndoCommit();
             } catch (err) {
                 console.error(`Commit error: ${err}`);
                 vscode.window.showErrorMessage(`Commit failed! Please try again.`);
@@ -290,12 +290,23 @@ module.exports = class gitTracker {
             try {
                 await this.git.commit(commitMessage);
                 console.log(`Committed to .git`);
-                await this.keepOrUndoCommit();
+                // await this.keepOrUndoCommit();
             } catch (err) {
                 console.log(`Commit error: ${err}`);
                 vscode.window.showErrorMessage(`Commit failed! Please try again.`);
             }
         }
+
+        // set timeout to make sure that webData is most updated
+        const sleep = util.promisify(setTimeout);
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `COMMITTED!`,
+            cancellable: false
+        }, async (progress, token) => {
+            progress.report({ increment: 0 });
+            await sleep(4000);
+        });
     }
 
     async checkWebData(){
@@ -311,9 +322,10 @@ module.exports = class gitTracker {
             title: "Committing! Hang tight!",
             cancellable: false
         }, async (progress, token) => {
-            await sleep(4000);
+            progress.report({ increment: 0 });
+            await sleep(3000);
         });
-        
+
         if(this.isUsingCodeHistoriesGit) {
             let gitDir = path.join(this._currentDir, 'codeHistories.git');
             let workTree = path.join(this._currentDir);
@@ -360,6 +372,27 @@ module.exports = class gitTracker {
             }
         } else if(choice === undefined) {
             console.log('No choice made');
+        }
+    }
+
+    async undoCommit(){
+        if(this.isUsingCodeHistoriesGit) {
+            let gitDir = path.join(this._currentDir, 'codeHistories.git');
+            let workTree = path.join(this._currentDir);
+            let undoCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" reset HEAD~1`;
+            try {
+                await exec(undoCmd, { cwd: workTree });
+                console.log(`Successfully undone commit for codeHistories.git`);
+            } catch (err) {
+                console.error(`Error undoing last commit for codeHistories.git: ${err}`);
+            }
+        } else {
+            try {
+                await this.git.reset(['HEAD~1']);
+                console.log(`Successfully undone commit for .git`);
+            } catch (err) {
+                console.error(`Error undoing last commit for .git: ${err}`);
+            }
         }
     }
 
@@ -431,61 +464,6 @@ module.exports = class gitTracker {
         }
 
         return true;
-    }
-
-    updateWebDevOutput(filePath, timeStamp, fileContent, webDevTerminalData){
-        // if(!this.checkEdgeCases(webDevTerminalData)){
-        //     console.log("Edge case detected!", webDevTerminalData);
-        //     return;
-        // }
-
-        // unique string not likely to be in any code
-        let log_delimiter = "~%$#@*(#^&&*@#$&*^&---------------------     BEGIN     -----------------------LAFAFJL7358267)\n";
-        let log_delim_end = "*(&*#@(()*$#@*((*@#---------------------     END     -------------------------236FHAJFFFASF))\n";
-        
-        let output = log_delimiter + filePath + "\n" + timeStamp + "\n" + fileContent + "\nTerminal data\n" + webDevTerminalData + "\n" + log_delim_end;
-        let outputFilePath = this._currentDir + '/webDevOutput.txt';
-
-        if (fs.existsSync(outputFilePath)) {
-            fs.appendFileSync(outputFilePath, output, function (err) {
-                if (err) {
-                    console.log(err);
-                    return false;
-                }
-            });
-        } else {
-            fs.writeFileSync(outputFilePath, output, function (err) {
-                if (err) {
-                    console.log(err);
-                    return false;
-                }
-            });
-        }
-    }
-
-    updateDirtyChanges(filePath, timeStamp, fileContent, dirtyChanges){
-        // unique string not likely to be in any code
-        let log_delimiter = "~%$#@*(#^&&*@#$&*^&---------------------     BEGIN     -----------------------LAFAFJL7358267)\n";
-        let log_delim_end = "*(&*#@(()*$#@*((*@#---------------------     END     -------------------------236FHAJFFFASF))\n";
-        
-        let output = log_delimiter + filePath + "\n" + timeStamp + "\n" + fileContent + "\nDirty changes\n" + dirtyChanges + "\n" + log_delim_end;
-        let outputFilePath = this._currentDir + '/dirtyChanges.txt';
-
-        if (fs.existsSync(outputFilePath)) {
-            fs.appendFileSync(outputFilePath, output, function (err) {
-                if (err) {
-                    console.log(err);
-                    return false;
-                }
-            });
-        } else {
-            fs.writeFileSync(outputFilePath, output, function (err) {
-                if (err) {
-                    console.log(err);
-                    return false;
-                }
-            });
-        }
     }
 
     checkEdgeCases(str){

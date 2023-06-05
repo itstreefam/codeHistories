@@ -29,6 +29,11 @@
         "icon": "$(run-all)"
       },
       {
+        "command": "codeHistories.undoCommit",
+        "title": "Undo Code Histories commit",
+        "icon": "$(clock)"
+      },
+      {
         "command": "codeHistories.selectGitRepo",
         "title": "Code Histories: Select git repo"
       },
@@ -52,8 +57,12 @@
     "menus": {
       "editor/title": [
         {
+          "command": "codeHistories.undoCommit",
+          "group": "navigation@0"
+        },
+        {
           "command": "codeHistories.checkAndCommit",
-          "group": "navigation"
+          "group": "navigation@1"
         }
       ]
     }

@@ -23,6 +23,7 @@ var previousAppName = '';
 var timeSwitchedToChrome = 0;
 var timeSwitchedToCode = 0;
 var gitActionsPerformed = false;
+var extensionActivated = false;
 
 /**
  * @param {vscode.ExtensionContext} context
@@ -502,7 +503,7 @@ function activate(context) {
 		});
 	}
 
-	let disposable = vscode.commands.registerCommand('codeHistories.codeHistories', function () {
+	let activateCodeHistories = vscode.commands.registerCommand('codeHistories.codeHistories', function () {
 		vscode.window.showInformationMessage('Code histories activated!');
 
 		// clear data
@@ -537,117 +538,89 @@ function activate(context) {
 		if(!fs.existsSync(envPath)){
 			fs.writeFileSync(envPath, "BROWSER=chrome");
 		}
+
+		// Store a flag in the extension context to indicate activation
+		extensionActivated = true;
 	});
 
 	let executeCode = vscode.commands.registerCommand('codeHistories.checkAndCommit', function () {
-		// save all files
-		vscode.commands.executeCommand("workbench.action.files.saveAll").then(() => {
-			// add all files to git
-			tracker.gitAdd();
+		if(!extensionActivated){
+			vscode.window.showErrorMessage('Code histories not activated. Ctrl(or Cmd)+Shift+P -> Code Histories');
+		} else {
+			// save all files
+			vscode.commands.executeCommand("workbench.action.files.saveAll").then(() => {
+				// add all files to git
+				tracker.gitAdd();
 
-			if(terminalName == "Code Histories"){
-				// get all existing terminal instances
-				var terminals = vscode.window.terminals;
+				if(terminalName == "Code Histories"){
+					// get all existing terminal instances
+					var terminals = vscode.window.terminals;
 
-				// check if there are any existing terminals with the desired name
-				var existingTerminal = terminals.find(t => t.name === 'Code Histories');
+					// check if there are any existing terminals with the desired name
+					var existingTerminal = terminals.find(t => t.name === 'Code Histories');
 
-				// create a new terminal instance only if there are no existing terminals with the desired name
-				if (!existingTerminal) {
-					// create a new terminal instance with name terminalName
-					var codeHistoriesTerminal = new Terminal(terminalName, currentDir);
-					codeHistoriesTerminal.checkBashProfilePath();
-					codeHistoriesTerminal.show();
-					codeHistoriesTerminal.sendText(`source ~/.bash_profile`);
-				} else {
-					existingTerminal.show();
-					existingTerminal.sendText(cmdPrompt);
+					// create a new terminal instance only if there are no existing terminals with the desired name
+					if (!existingTerminal) {
+						// create a new terminal instance with name terminalName
+						var codeHistoriesTerminal = new Terminal(terminalName, currentDir);
+						codeHistoriesTerminal.checkBashProfilePath();
+						codeHistoriesTerminal.show();
+						codeHistoriesTerminal.sendText(`source ~/.bash_profile`);
+					} else {
+						existingTerminal.show();
+						existingTerminal.sendText(cmdPrompt);
+					}
 				}
-			}
 
-			checkThenCommit = true;
-		});
+				checkThenCommit = true;
+			});
+		}
 	});
 
 	let selectGitRepo = vscode.commands.registerCommand('codeHistories.selectGitRepo', function () {
-		if(!tracker){
-			vscode.window.showErrorMessage('Code histories is not activated!');
+		if(!extensionActivated){
+			vscode.window.showErrorMessage('Code histories not activated. Ctrl(or Cmd)+Shift+P -> Code Histories');
 		} else {
-			tracker.presentGitRepos();
+			if(!tracker){
+				vscode.window.showErrorMessage('Code histories not activated. Ctrl(or Cmd)+Shift+P -> Code Histories');
+			} else {
+				tracker.presentGitRepos();
+			}
 		}
 	});
 
 	let setNewCmd = vscode.commands.registerCommand('codeHistories.setNewCmd', function () {
-		vscode.window.showInputBox({
-			prompt: "Enter the new command",
-			placeHolder: "<command> [args]"
-		}).then(newCmd => {
-			if(newCmd){
-				cmdPrompt = "codehistories " + newCmd;
-			}
-		});
+		if(!extensionActivated){
+			vscode.window.showErrorMessage('Code histories not activated. Ctrl(or Cmd)+Shift+P -> Code Histories');
+		} else {
+			vscode.window.showInputBox({
+				prompt: "Enter the new command",
+				placeHolder: "<command> [args]"
+			}).then(newCmd => {
+				if(newCmd){
+					cmdPrompt = "codehistories " + newCmd;
+				}
+			});
+		}
 	});
 
-	context.subscriptions.push(disposable);
+	let undoCommit = vscode.commands.registerCommand('codeHistories.undoCommit', function () {
+		if (!extensionActivated) {
+			vscode.window.showErrorMessage('Code histories not activated. Ctrl(or Cmd)+Shift+P -> Code Histories');
+		} else {
+			if(!tracker){
+				vscode.window.showErrorMessage('Code histories not activated. Ctrl(or Cmd)+Shift+P -> Code Histories');
+			} else {
+				tracker.undoCommit();
+			}
+		}
+	});
+
+	context.subscriptions.push(activateCodeHistories);
 	context.subscriptions.push(executeCode);
 	context.subscriptions.push(selectGitRepo);
 	context.subscriptions.push(setNewCmd);
-
-	/*let webDevFileExtensions = ['.html', '.htm', '.css', '.scss', '.sass', '.less', '.js', '.jsx', '.mjs', '.json', '.ts', '.yml', '.yaml', '.xml', '.php'];
-
-	const saveDisposable = vscode.workspace.onDidSaveTextDocument((document) => {
-		try {
-			// get timestamp in seconds
-			let timeStamp = Math.floor(Date.now() / 1000);
-			timeWebDevFileSaved = timeStamp;
-
-			// console.log(`timestamp of ${document.fileName}: ${timeStamp}`);
-
-			// if document is a web dev file and document is not inside node_modules
-			if(!webDevFileExtensions.includes(path.extname(document.fileName)) || document.fileName.includes('node_modules')){
-				return;
-			}
-
-			// check data of current active terminal
-			let activeTerminal = vscode.window.activeTerminal;
-
-			if(!activeTerminal || activeTerminal.name !== terminalName){
-				let filePath = document.fileName;
-				let fileContent = document.getText();
-				tracker.updateWebDevOutput(filePath, timeStamp, fileContent, '');
-				// tracker.updateDirtyChanges(filePath, timeStamp, fileContent, 'Saved');
-				return;
-			}
-
-			activeTerminal.processId.then(pid => {
-				let matched = allTerminalsData[pid].match(mac_regex_dir) || allTerminalsData[pid].match(returned_mac_regex_dir);
-
-				if(process.platform == 'win32'){
-					matched = allTerminalsData[pid].match(win_regex_dir);
-				}
-
-				if(process.platform == 'linux'){
-					matched = allTerminalsData[pid].match(linux_regex_dir) || allTerminalsData[pid].match(returned_linux_regex_dir);
-				}
-
-				// grab the last occurrence of the current directory
-				let lastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]);
-
-				// wait for a few seconds to make sure output is most updated
-				setTimeout(() => {
-					let output = allTerminalsData[pid].substring(lastOccurence);
-					// console.log('webDevOutput: ', output);
-
-					let filePath = document.fileName;
-					let fileContent = document.getText();
-					tracker.updateWebDevOutput(filePath, timeStamp, fileContent, output);
-					// tracker.updateDirtyChanges(filePath, timeStamp, fileContent, 'Saved');
-				}, 3000);
-			});
-		} catch (error) {
-			console.error('Error occurred while processing the onDidSaveTextDocument event:', error);
-		}
-	});*/
+	context.subscriptions.push(undoCommit);
 
 	// codehistories npm start | while IFS= read -r line; do echo "[$(date '+%m/%d/%Y, %I:%M:%S %p')] $line"; done | tee -a server.log
 	// this command will run npm start and pipe the output to a file server.log in user's working project directory (.e.g. /home/tri/Desktop/react-app)
@@ -661,144 +634,93 @@ function activate(context) {
 	*/
 
 	// if user also has another server running, we can have a separate external terminal which runs that server and pipe the output to a file server2.log in user's working project directory
-	// npm start -- --port 8000| while IFS= read -r line; do echo "[$(date '+%m/%d/%Y, %I:%M:%S %p')] $line"; done | tee -a /home/tri/Desktop/react-app/server2.log
-	// python -m http.server 8000 | while IFS= read -r line; do echo "[$(date '+%m/%d/%Y, %I:%M:%S %p')] $line"; done | tee -a /home/tri/Desktop/react-app/server2.log
+	// npm start -- --port 3000| while IFS= read -r line; do echo "[$(date '+%m/%d/%Y, %I:%M:%S %p')] $line"; done | tee -a /home/tri/Desktop/react-app/server2.log
+	// python -u -m http.server 8000 2>&1 | tee >(awk '{ print $0; fflush(); }' >> server2.log)
 
 	// check the interval the user is gone from vs code to visit chrome
 	// and if they visit localhost to test their program (require that they do reload the page so that it is recorded as an event in webData)
 
-		var intervalId;
+	var intervalId;
 
-		const checkAppSwitch = async () => {
-			try {
-			const activeApp = await activeWindow();
-			// console.log(activeApp);
-		
-			if (activeApp && activeApp.owner && activeApp.owner.name) {
-				const currentAppName = activeApp.owner.name.toLowerCase();
-				// console.log(currentAppName);
-
-				if (previousAppName.includes('code') && currentAppName.includes('chrome')) {
-					console.log('Switched to from VS Code to Chrome');
-					timeSwitchedToChrome = Math.floor(Date.now() / 1000);
-					console.log('timeSwitchedToChrome: ', timeSwitchedToChrome);
-
-					// Reset the flag when switching to Chrome
-					gitActionsPerformed = false;
-				} else if (previousAppName.includes('chrome') && currentAppName.includes('code')) {
-					console.log('Switched to from Chrome to VS Code');
-					timeSwitchedToCode = Math.floor(Date.now() / 1000);
-					console.log('timeSwitchedToCode: ', timeSwitchedToCode);
-
-					// Check if git actions have already been performed
-					if (!gitActionsPerformed) {
-						await performGitActions();
-						gitActionsPerformed = true;
-					}
-				}
-				previousAppName = currentAppName;
-			}
-
-			// Set the next interval after processing the current one
-			intervalId = setTimeout(checkAppSwitch, 500);
-			} catch (error) {
-				console.error('Error occurred while checking for app switch:', error);
-			}
-		};
-
-		const performGitActions = async () => {
-			try {
-			// search between timeSwitchedToChrome and timeSwitchedToCode in webData
-			let webData = fs.readFileSync(path.join(currentDir, 'webData'), 'utf8');
-			let webDataArray = JSON.parse(webData);
-
-			let webDataArrayFiltered = webDataArray.filter(obj => obj.time >= timeSwitchedToChrome && obj.time <= timeSwitchedToCode);
-
-			// console.log('webDataArrayFiltered: ', webDataArrayFiltered);
-			
-			if(webDataArrayFiltered.length > 0){
-				// check if webDataArrayFiltered contains a visit to localhost or 127.0.0.1
-				let webDataArrayFilteredContainsLocalhost = webDataArrayFiltered.filter(obj => obj.curUrl.includes('localhost') || obj.curUrl.includes('127.0.0.1'));
-				
-				if(webDataArrayFilteredContainsLocalhost.length > 0){
-					await tracker.gitAdd();
-					await tracker.checkWebData();
-					await tracker.gitCommit();
-					// let currentTime = Math.floor(Date.now() / 1000);
-					// console.log('currentTime: ', currentTime);
-				}
-			}
-			} catch (error) {
-				console.log('Error performing Git actions:', error);
-			}
-		};
-
-
-		// Start the first interval
-		intervalId = setTimeout(checkAppSwitch, 500);
-
-
-	/*let excludeList = ['node_modules', '.git', '.vscode', '.idea', '.env.development', 'venv', 'output.txt', 'webData', 'webDevOutput.txt', 'dirtyChanges.txt'];
-	var dirtyDocumentChanges = new Object();
-
-	const changeDisposable = vscode.workspace.onDidChangeTextDocument((event) => {
-		try{
-			let filePath = event.document.fileName;
-			let timeStamp = Math.floor(Date.now() / 1000);
-
-			// if event.document.fileName is in excludeList
-			for(let i = 0; i < excludeList.length; i++){
-				if(filePath.includes(excludeList[i])){
-					return;	
-				}
-			}
-			
-			// Check if the dirtyDocumentChanges object already has an array of changes for this document
-			if(!dirtyDocumentChanges.hasOwnProperty(filePath)){
-				// If not, create an array of changes for this document
-				dirtyDocumentChanges[filePath] = new Object();
-				dirtyDocumentChanges[filePath]["timeStamp"] = timeStamp;
-				dirtyDocumentChanges[filePath]["changes"] = new Array();
-			} else {
-				// update the timestamp
-				dirtyDocumentChanges[filePath]["timeStamp"] = timeStamp;
-			}
-		
-			// Get the array of changes for this document
-			let documentChanges = dirtyDocumentChanges[filePath]["changes"];
-		
-			// Add the changes from this event to the array of changes for this document
-			for(let change of event.contentChanges){
-				let dirtyChange = JSON.stringify(change.text);
-				documentChanges.push(dirtyChange);
-			}
-		} catch (error) {
-			return;
-		}
-	});
-
-	// Keep track of the dirty changes every 20 seconds
-	// Instead of every time a change is made
-	setInterval(() => {
-		// Get an array of all currently opened documents in the workspace
-		let documents = vscode.workspace.textDocuments;
-
-		// Iterate over the documents array to check if any documents are dirty
-		for (let document of documents) {
-			if (document.isDirty) {
-				let filePath = document.fileName;
-				let fileContent = document.getText();
-				if(dirtyDocumentChanges[filePath]["changes"].length > 0){
-					tracker.updateDirtyChanges(filePath, dirtyDocumentChanges[filePath]["timeStamp"], fileContent, dirtyDocumentChanges[filePath]["changes"]);
-					dirtyDocumentChanges[filePath]["changes"] = new Array();
-				}
-			}
-		}
-	}, 20000);*/
+	const checkAppSwitch = async () => {
+		try {
+		const activeApp = await activeWindow();
+		// console.log(activeApp);
 	
-	// Don't forget to dispose the listener when it's no longer needed
-	// context.subscriptions.push(saveDisposable);
-	// context.subscriptions.push(changeDisposable);
+		if (activeApp && activeApp.owner && activeApp.owner.name) {
+			const currentAppName = activeApp.owner.name.toLowerCase();
+			// console.log(currentAppName);
+
+			if (previousAppName.includes('code') && currentAppName.includes('chrome')) {
+				console.log('Switched to from VS Code to Chrome');
+				timeSwitchedToChrome = Math.floor(Date.now() / 1000);
+				console.log('timeSwitchedToChrome: ', timeSwitchedToChrome);
+
+				// Reset the flag when switching to Chrome
+				gitActionsPerformed = false;
+			} else if (previousAppName.includes('chrome') && currentAppName.includes('code')) {
+				console.log('Switched to from Chrome to VS Code');
+				timeSwitchedToCode = Math.floor(Date.now() / 1000);
+				console.log('timeSwitchedToCode: ', timeSwitchedToCode);
+
+				// Check if git actions have already been performed
+				if (!gitActionsPerformed) {
+					await performGitActions();
+					gitActionsPerformed = true;
+				}
+			}
+			previousAppName = currentAppName;
+		}
+
+		// Set the next interval after processing the current one
+		intervalId = setTimeout(checkAppSwitch, 500);
+		} catch (error) {
+			console.error('Error occurred while checking for app switch:', error);
+			intervalId = setTimeout(checkAppSwitch, 500);
+		}
+	};
+
+	const performGitActions = async () => {
+		try {
+		// search between timeSwitchedToChrome and timeSwitchedToCode in webData
+		let webData = fs.readFileSync(path.join(currentDir, 'webData'), 'utf8');
+		let webDataArray = JSON.parse(webData);
+
+		let webDataArrayFiltered = [];
+		let startTime = timeSwitchedToChrome;
+		let endTime = timeSwitchedToCode;
+
+		for (let i = webDataArray.length - 1; i >= 0; i--) {
+			let obj = webDataArray[i];
+			if(obj.time < startTime){
+				break;
+			}
+			if (obj.time >= startTime && obj.time <= endTime) {
+				webDataArrayFiltered.unshift(obj);
+			}
+		}
+
+		// console.log('webDataArrayFiltered: ', webDataArrayFiltered);
+		
+		if(webDataArrayFiltered.length > 0){
+			// check if webDataArrayFiltered contains a visit to localhost or 127.0.0.1
+			let webDataArrayFilteredContainsLocalhost = webDataArrayFiltered.filter(obj => obj.curUrl.includes('localhost') || obj.curUrl.includes('127.0.0.1'));
+			
+			if(webDataArrayFilteredContainsLocalhost.length > 0){
+				await tracker.gitAdd();
+				await tracker.checkWebData();
+				await tracker.gitCommit();
+				// let currentTime = Math.floor(Date.now() / 1000);
+				// console.log('currentTime: ', currentTime);
+			}
+		}
+		} catch (error) {
+			console.log('Error performing Git actions:', error);
+		}
+	};
+
+	// Start the first interval
+	intervalId = setTimeout(checkAppSwitch, 500);
 }
 
 function removeBackspaces(str) {
