@@ -29,6 +29,11 @@
         "icon": "$(run-all)"
       },
       {
+        "command": "codeHistories.undoCommit",
+        "title": "Undo Code Histories commit",
+        "icon": "$(clock)"
+      },
+      {
         "command": "codeHistories.selectGitRepo",
         "title": "Code Histories: Select git repo"
       },
@@ -37,7 +42,7 @@
         "title": "Code Histories: Set new command"
       }
     ],
-    "keybindings":[
+    "keybindings": [
       {
         "command": "codeHistories.selectGitRepo",
         "key": "Ctrl+Shift+G",
@@ -52,13 +57,16 @@
     "menus": {
       "editor/title": [
         {
+          "command": "codeHistories.undoCommit",
+          "group": "navigation@0"
+        },
+        {
           "command": "codeHistories.checkAndCommit",
-          "group": "navigation"
+          "group": "navigation@1"
         }
       ]
     }
   },
-  
   "scripts": {
     "lint": "eslint .",
     "pretest": "npm run lint",
@@ -76,6 +84,7 @@
     "typescript": "^4.5.4"
   },
   "dependencies": {
+    "active-win": "^8.1.0",
     "simple-git": "^3.5.0"
   }
 }
