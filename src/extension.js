@@ -24,6 +24,7 @@ var timeSwitchedToChrome = 0;
 var timeSwitchedToCode = 0;
 var gitActionsPerformed = false;
 var extensionActivated = false;
+var rationaleInfoRequest = false;
 
 /**
  * @param {vscode.ExtensionContext} context
@@ -721,6 +722,68 @@ function activate(context) {
 
 	// Start the first interval
 	intervalId = setTimeout(checkAppSwitch, 500);
+
+	let rationaleInfo = vscode.commands.registerCommand('codeHistories.rationaleInfo', function () {
+		const panel = vscode.window.createWebviewPanel(
+			'rationaleInfo',
+			'Rationale Description',
+			vscode.ViewColumn.One,
+			{
+				enableScripts: true
+			}
+		);
+
+		panel.webview.html = getWebviewContent();
+
+		let savedRationaleInfo = '';
+
+		// Handle messages from the webview
+		panel.webview.onDidReceiveMessage(
+			message => {
+				switch (message.command) {
+					case 'saveRationaleInfo':
+						savedRationaleInfo = message.text;
+						// console.log('savedRationaleInfo: ', savedRationaleInfo);
+
+						// Write the rationale info to a file
+						let timestamp = new Date().toLocaleString();
+						// check if the file exists
+						if (fs.existsSync(path.join(currentDir, 'rationaleInfo.txt'))) {
+							// if it exists, append to it
+							fs.appendFileSync(path.join(currentDir, 'rationaleInfo.txt'), '\n' + timestamp + '\n' + savedRationaleInfo + '\n');
+						} else {
+							// if it doesn't exist, create it
+							fs.writeFileSync(path.join(currentDir, 'rationaleInfo.txt'), timestamp + '\n' + savedRationaleInfo + '\n');
+						}
+						return;
+					case 'noRationaleInfo':
+						vscode.window.showWarningMessage('Please enter some text in the rationale description box.');
+						return;
+				}
+			},
+			undefined,
+			context.subscriptions
+		);
+
+		panel.onDidDispose(
+			() => {
+				rationaleInfoRequest = false;
+			},
+			null,
+			context.subscriptions
+		);
+	});
+
+	context.subscriptions.push(rationaleInfo);
+
+	// trigger rationaleInfo every 15 minutes
+	setInterval(() => {
+		if(!rationaleInfoRequest){
+			rationaleInfoRequest = true;
+			vscode.commands.executeCommand('codeHistories.rationaleInfo');
+		}
+	}, 900000);
+
 }
 
 function removeBackspaces(str) {
@@ -740,6 +803,106 @@ function deactivate() {
 	allTerminalsDirCount = new Object();
 	terminalDimChanged = new Object();
 	terminalOpenedFirstTime = new Object();
+}
+
+function getWebviewContent() {
+	return `<!DOCTYPE html>
+			<html lang="en">
+			<head>
+				<meta charset="UTF-8">
+				<meta name="viewport" content="width=device-width, initial-scale=1.0">
+				<title>Cat Coding</title>
+				<style>
+					textarea {
+						width: 100%;
+						height: 200px;
+						resize: vertical;
+						font-family: Arial, sans-serif;
+						font-size: 14px;
+						line-height: 1.5;
+					}
+
+					#submitButton {
+						background-color: #4CAF50;
+						color: white;
+						padding: 12px 20px;
+						border: none;
+						border-radius: 4px;
+						cursor: pointer;
+					}
+
+					#submitButton:hover {
+						background-color: #45a049;
+					}
+
+					#clearButton {
+						background-color: #f44336;
+						color: white;
+						padding: 12px 20px;
+						border: none;
+						border-radius: 4px;
+						cursor: pointer;
+					}
+
+					#clearButton:hover {
+						background-color: #da190b;
+					}
+
+				</style>
+			</head>
+			<body align="center">
+				<form>
+					<h1>Briefly enter what you have been working on in the last 15 minutes:</h1>
+					<br>
+					<textarea id="inputTextarea"></textarea>
+					<br>
+					<button id="submitButton">Submit</button>
+					<button id="clearButton">Clear</button>
+				</form>
+
+				<script>
+					const vscode = acquireVsCodeApi();
+					const textarea = document.getElementById('inputTextarea');
+
+					// Check if we have an old state to restore from
+					const previousState = vscode.getState();
+					const inputValue = previousState ? previousState.inputValue : '';
+					textarea.value = inputValue;
+
+					const submitButton = document.getElementById('submitButton');
+					submitButton.addEventListener('click', function(event){
+						event.preventDefault();
+						const inputValue = textarea.value;
+
+						if (inputValue === '') {
+							vscode.postMessage({ command: 'noRationaleInfo' });
+							return;
+						}
+
+						const description = {
+							command: 'saveRationaleInfo',
+							text: inputValue
+						}
+
+						vscode.postMessage(description);
+					});
+
+					const clearButton = document.getElementById('clearButton');
+					clearButton.addEventListener('click', function(event){
+						event.preventDefault();
+						textarea.value = '';
+						vscode.setState({ inputValue: '' });
+					});
+
+					// Update the saved state when the textarea input changes
+					textarea.addEventListener('input', () => {
+						const inputValue = textarea.value;
+						vscode.setState({ inputValue });
+					});
+				</script>
+
+			</body>
+			</html>`;
 }
 
 module.exports = {

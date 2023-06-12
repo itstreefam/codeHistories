@@ -40,6 +40,10 @@
       {
         "command": "codeHistories.setNewCmd",
         "title": "Code Histories: Set new command"
+      },
+      {
+        "command": "codeHistories.rationaleInfo",
+        "title": "Code Histories: Request rationale info"
       }
     ],
     "keybindings": [
