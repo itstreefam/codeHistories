@@ -650,27 +650,29 @@ function activate(context) {
 	
 		if (activeApp && activeApp.owner && activeApp.owner.name) {
 			const currentAppName = activeApp.owner.name.toLowerCase();
-			// console.log(currentAppName);
+			console.log(currentAppName);
 
-			if (previousAppName.includes('code') && currentAppName.includes('chrome')) {
-				console.log('Switched to from VS Code to Chrome');
-				timeSwitchedToChrome = Math.floor(Date.now() / 1000);
-				console.log('timeSwitchedToChrome: ', timeSwitchedToChrome);
+			if(currentAppName !== "windows explorer"){ // special case for windows
+				if (previousAppName.includes('code') && currentAppName.includes('chrome')) {
+					console.log('Switched to from VS Code to Chrome');
+					timeSwitchedToChrome = Math.floor(Date.now() / 1000);
+					console.log('timeSwitchedToChrome: ', timeSwitchedToChrome);
 
-				// Reset the flag when switching to Chrome
-				gitActionsPerformed = false;
-			} else if (previousAppName.includes('chrome') && currentAppName.includes('code')) {
-				console.log('Switched to from Chrome to VS Code');
-				timeSwitchedToCode = Math.floor(Date.now() / 1000);
-				console.log('timeSwitchedToCode: ', timeSwitchedToCode);
+					// Reset the flag when switching to Chrome
+					gitActionsPerformed = false;
+				} else if (previousAppName.includes('chrome') && currentAppName.includes('code')) {
+					console.log('Switched to from Chrome to VS Code');
+					timeSwitchedToCode = Math.floor(Date.now() / 1000);
+					console.log('timeSwitchedToCode: ', timeSwitchedToCode);
 
-				// Check if git actions have already been performed
-				if (!gitActionsPerformed) {
-					await performGitActions();
-					gitActionsPerformed = true;
+					// Check if git actions have already been performed
+					if (!gitActionsPerformed) {
+						await performGitActions();
+						gitActionsPerformed = true;
+					}
 				}
+				previousAppName = currentAppName;
 			}
-			previousAppName = currentAppName;
 		}
 
 		// Set the next interval after processing the current one
@@ -710,9 +712,9 @@ function activate(context) {
 			if(webDataArrayFilteredContainsLocalhost.length > 0){
 				await tracker.gitAdd();
 				await tracker.checkWebData();
-				await tracker.gitCommit();
-				// let currentTime = Math.floor(Date.now() / 1000);
-				// console.log('currentTime: ', currentTime);
+				// await tracker.gitCommit();
+				let currentTime = Math.floor(Date.now() / 1000);
+				console.log('currentTime: ', currentTime);
 			}
 		}
 		} catch (error) {
