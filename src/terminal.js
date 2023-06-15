@@ -7,7 +7,15 @@ class Terminal {
   constructor(name, cwd) {
     this.name = name;
     this.cwd = cwd;
-    this.terminalShellPath = os.platform() === 'win32' ? 'C:\\Program Files\\Git\\bin\\bash.exe' : '/bin/bash';
+
+    let wslPath = 'C:\\Windows\\System32\\wsl.exe';
+    let gitBashPath = 'C:\\Program Files\\Git\\bin\\bash.exe';
+    if (fs.existsSync(wslPath)) {
+      this.terminalShellPath = os.platform() === 'win32' ? wslPath : '/bin/bash';
+    } else {
+      this.terminalShellPath = os.platform() === 'win32' ? gitBashPath : '/bin/bash';
+    }
+
     this.terminal = vscode.window.createTerminal({
       name: this.name,
       cwd: this.cwd,
@@ -41,7 +49,7 @@ class Terminal {
   }
 
   checkBashProfilePath(){
-    const bashProfilePath = `${os.homedir()}/.bash_profile`;
+    const bashProfilePath = `${this.cwd}/.bash_profile`;
     const content = `
 codehistories() {
   if [ "$#" -eq 0 ]; then
