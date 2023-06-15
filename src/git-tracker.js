@@ -24,7 +24,7 @@ module.exports = class gitTracker {
     }
 
     initGitingore() {
-        let itemsToAdd = ['codeHistories.git', '.vscode', '.env.development', 'venv', 'node_modules'];
+        let itemsToAdd = ['codeHistories.git', '.vscode', '.env.development', 'venv', 'node_modules', '.bash_profile'];
         let gitignorePath = this._currentDir + '/.gitignore';
 
         let data = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, 'utf8') : '';
@@ -313,6 +313,7 @@ module.exports = class gitTracker {
         // check if web data is being tracked
         if(!fs.existsSync(this._currentDir + '/webData')){
             vscode.window.showInformationMessage('Web data does not exist! Make sure to also use webActivities.');
+            return;
         }
 
         // set timeout to make sure that webData is most updated

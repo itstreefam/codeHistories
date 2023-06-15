@@ -10,7 +10,8 @@ https://user-images.githubusercontent.com/44308446/219846324-bd156916-f2e0-4cd0-
 
 * VS Code Insiders version (https://code.visualstudio.com/insiders/) to use their proposed API
 * Node JS + simple-git (https://github.com/steveukx/git-js) to incorporate git in the output tracking process
-* Git Bash installed for Windows user
+* active-win (https://github.com/sindresorhus/active-win) to detect application switch between VS Code and Chrome
+* Windows Subsystem for Linux installed for Windows user (https://ubuntu.com/tutorials/install-ubuntu-on-wsl2-on-windows-11-with-gui-support#1-overview)
 
 ## Extension Setup
 
@@ -30,12 +31,7 @@ https://user-images.githubusercontent.com/44308446/219846324-bd156916-f2e0-4cd0-
 
         ```
         {
-            "terminal.integrated.profiles.windows": {
-                "Git Bash": {
-                    "source": "Git Bash"
-                }
-            },
-            "terminal.integrated.defaultProfile.windows": "Git Bash",
+            "terminal.integrated.defaultProfile.windows": "Ubuntu (WSL)",
             "terminal.integrated.defaultProfile.osx": "bash",
             "terminal.integrated.defaultProfile.linux": "bash",
             "terminal.integrated.shellIntegration.enabled": false,
@@ -45,11 +41,11 @@ https://user-images.githubusercontent.com/44308446/219846324-bd156916-f2e0-4cd0-
 
 9.  You should see a “Code Histories activated.” message on the bottom right of the screen when it is running.
 
-10. Press on the multi-play button (which says “Code Histories commit” if you hover over it) the first time to enter Code Histories terminal and load in .bash_profile.
+10. Press on the multi-play button (which says “Code Histories commit” if you hover over it) the first time to enter Code Histories terminal; .bash_profile should be automatically created and loaded so that you can use "codehistories" prefix to trigger auto-commit mechanism. 
 
 ## Important notes
 
-1. When the extension starts, it will automatically create .bash_profile in your root folder (~) and add the following information:
+1. When the extension starts, it will automatically create .bash_profile in your project's folder and add the following information:
     
     ```
     codehistories() {
@@ -66,11 +62,13 @@ https://user-images.githubusercontent.com/44308446/219846324-bd156916-f2e0-4cd0-
 
 2. In case you don't want to type out full execution command every time, you use Ctrl + Shift + C (or CMD + Shift + C on Mac) to update the command for the subsequent executions. Then you can press the multi-play button to run the updated execution. For e.g. if you want to run an http server, you set the command to ```python -m http.server 8080```. Note that this command will be updated for all future executions until you change it again.
 
-3. Please don’t make changes while the code is running, as these may not be captured correctly. Also, if you do not want to commit changes because an execution was detected incorrectly, there is a confirmation box on the lower right of the screen that will appear after the codes were committed so you can undo and go back to the previous commit. In the case where the box has already disappeared, you can do ```git reset HEAD~1``` in the terminal to revert back to the previous correct commit.
+3. Please don’t make changes while the code is running, as these may not be captured correctly. Also, if you feel that a commit was incorrectly triggered, there is the "Undo Code Histories commit" button that looks like a clock with back arrow to the left of the multi-play button so you can undo and go back to the previous commit.
 
 4. When starting up codeHistories extension, codeHistories.git will be created and set as default. The intention here is to have a git repo solely for codeHistories commits which would not interfere with the commonly known .git repo (that might contain more meaningful, containing larger changes commits, especially if user starts out with repos cloned online).The user can switch back and forth between .git and codeHistories.git using Ctrl + Shift + G (or CMD + Shift + G on Mac) or searching for Code Histories: Select git repo (from VS Code View tab -> Command Palette.. option).
 
 5. To use git commands that are related to codeHistories.git, you need to add ```--git-dir=codeHistories.git --work-tree=.``` between ```git``` and the command. For e.g. ```git --git-dir=codeHistories.git --work-tree=. log --pretty=oneline``` to view the codeHistories commits. Occasionally checking this would be a good idea since the files color change only corresponds to normal .git repo.
+
+6. For complex web project example, refer to line 359-375 in src/extension.
 
 ## Release Notes
 
@@ -93,6 +91,10 @@ Added support for Linux. A custom "Code Histories commit" button is added to enf
 ### V3
 
 Removed the need for code-runner extension. Using ```codehistories``` as a prefix in commands serves as a important keyword trigger for the tool to capture the code state and output. Currently safe to interact directly with the "Code Histories" terminal. Similar to code-runner, the user can use a run button to execute the code, but they would need to update the command using Ctrl + Shift + C (or CMD + Shift + C on Mac) before pressing the run button (Code Histories commit). The added pseudogit feature allows the user to keep various small commits related to codeHistories separate from .git.
+
+### V3.x
+
+Added application switch checking to help with web dev heuristic when user is gone from vs code to visit chrome and if they load localhost to test their program. Added rationale info check every 15 minutes in the editor view to ask for user free response on their goals and what they have been working on in the past 15 minutes. Undo commit button is now a standalone button placed to the left of the commit button. Git Bash seems to be running slow on Windows so WSL is preferred.
 
 ## Contact
 
