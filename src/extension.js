@@ -540,6 +540,18 @@ function activate(context) {
 	});
 
 	context.subscriptions.push(enterGoal);
+
+	let quickAutoCommit = vscode.commands.registerCommand('codeHistories.quickAutoCommit', async () => {
+		if (!extensionActivated) {
+			vscode.window.showErrorMessage('Code histories not activated. Ctrl(or Cmd)+Shift+P -> Code Histories');
+		} else {
+			await tracker.gitAdd();
+			await tracker.checkWebData();
+			await tracker.gitCommit();	
+		}
+	});
+
+	context.subscriptions.push(quickAutoCommit);
 }
 
 function unixLikeTerminalProcess(platform_regex_dir) {

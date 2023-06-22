@@ -48,6 +48,10 @@
       {
         "command": "codeHistories.enterGoal",
         "title": "Code Histories: Enter goal/subgoal"
+      },
+      {
+        "command": "codeHistories.quickAutoCommit",
+        "title": "Code Histories: Quick auto commit"
       }
     ],
     "keybindings": [
@@ -77,6 +81,11 @@
         {
           "command": "codeHistories.enterGoal",
           "title": "Enter goal/subgoal",
+          "group": "navigation"
+        },
+        {
+          "command": "codeHistories.quickAutoCommit",
+          "title": "Quick auto commit",
           "group": "navigation"
         }
       ]

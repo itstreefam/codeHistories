@@ -281,7 +281,16 @@ module.exports = class gitTracker {
             try {
                 await exec(commitCmd, {cwd: workTree});
                 console.log(`Committed to codeHistories.git`);
-                // await this.keepOrUndoCommit();
+                
+                const sleep = util.promisify(setTimeout);
+                await vscode.window.withProgress({
+                    location: vscode.ProgressLocation.Notification,
+                    title: `COMMITTED!`,
+                    cancellable: false
+                }, async (progress, token) => {
+                    progress.report({ increment: 0 });
+                    await sleep(4000);
+                });
             } catch (err) {
                 console.error(`Commit error: ${err}`);
                 vscode.window.showErrorMessage(`Commit failed! Please try again.`);
@@ -290,22 +299,11 @@ module.exports = class gitTracker {
             try {
                 await this.git.commit(commitMessage);
                 console.log(`Committed to .git`);
-                // await this.keepOrUndoCommit();
             } catch (err) {
                 console.log(`Commit error: ${err}`);
                 vscode.window.showErrorMessage(`Commit failed! Please try again.`);
             }
         }
-
-        const sleep = util.promisify(setTimeout);
-        await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: `COMMITTED!`,
-            cancellable: false
-        }, async (progress, token) => {
-            progress.report({ increment: 0 });
-            await sleep(4000);
-        });
     }
 
     async checkWebData(){
@@ -343,35 +341,6 @@ module.exports = class gitTracker {
             } catch (err) {
                 console.log(`Error adding webData to .git: ${err}`);
             }
-        }
-    }
-
-    async keepOrUndoCommit(){
-        const choice = await vscode.window.showWarningMessage('Recently committed! Do you want to keep or undo?', 'Keep commit', 'Undo commit');
-        if (choice === 'Keep commit') {
-            // do nothing, message dismissed
-        }
-        else if (choice === 'Undo commit') {
-            if(this.isUsingCodeHistoriesGit) {
-                let gitDir = path.join(this._currentDir, 'codeHistories.git');
-                let workTree = path.join(this._currentDir);
-                let undoCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" reset HEAD~1`;
-                try {
-                    await exec(undoCmd, { cwd: workTree });
-                    console.log(`Successfully undone commit for codeHistories.git`);
-                } catch (err) {
-                    console.error(`Error undoing last commit for codeHistories.git: ${err}`);
-                }
-            } else {
-                try {
-                    await this.git.reset(['HEAD~1']);
-                    console.log(`Successfully undone commit for .git`);
-                } catch (err) {
-                    console.error(`Error undoing last commit for .git: ${err}`);
-                }
-            }
-        } else if(choice === undefined) {
-            console.log('No choice made');
         }
     }
 
