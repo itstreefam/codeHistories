@@ -44,6 +44,10 @@
       {
         "command": "codeHistories.rationaleInfo",
         "title": "Code Histories: Request rationale info"
+      },
+      {
+        "command": "codeHistories.enterGoal",
+        "title": "Code Histories: Enter goal/subgoal"
       }
     ],
     "keybindings": [
@@ -67,6 +71,13 @@
         {
           "command": "codeHistories.checkAndCommit",
           "group": "navigation@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "codeHistories.enterGoal",
+          "title": "Enter goal/subgoal",
+          "group": "navigation"
         }
       ]
     }

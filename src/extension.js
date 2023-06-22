@@ -512,13 +512,34 @@ function activate(context) {
 	context.subscriptions.push(rationaleInfo);
 
 	// trigger rationaleInfo every 15 minutes
-	setInterval(() => {
-		if(!rationaleInfoRequest){
-			rationaleInfoRequest = true;
-			vscode.commands.executeCommand('codeHistories.rationaleInfo');
-		}
-	}, 900000);
+	// setInterval(() => {
+	// 	if(!rationaleInfoRequest){
+	// 		rationaleInfoRequest = true;
+	// 		vscode.commands.executeCommand('codeHistories.rationaleInfo');
+	// 	}
+	// }, 900000);
 
+	let enterGoal = vscode.commands.registerCommand('codeHistories.enterGoal', async () => {
+		const goal = await vscode.window.showInputBox({
+						placeHolder: 'Enter your goal or subgoal',
+						prompt: 'Please enter the text for your goal or subgoal',
+					});
+		
+		if(goal){
+			// Write the goal to a file
+			let timestamp = new Date().toLocaleString();
+			// check if the file exists
+			if (fs.existsSync(path.join(currentDir, 'goals.txt'))) {
+				// if it exists, append to it
+				fs.appendFileSync(path.join(currentDir, 'goals.txt'), '\n' + timestamp + '\n' + goal + '\n');
+			} else {
+				// if it doesn't exist, create it
+				fs.writeFileSync(path.join(currentDir, 'goals.txt'), timestamp + '\n' + goal + '\n');
+			}
+		}
+	});
+
+	context.subscriptions.push(enterGoal);
 }
 
 function unixLikeTerminalProcess(platform_regex_dir) {
