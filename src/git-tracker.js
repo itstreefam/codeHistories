@@ -297,7 +297,6 @@ module.exports = class gitTracker {
             }
         }
 
-        // set timeout to make sure that webData is most updated
         const sleep = util.promisify(setTimeout);
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
@@ -395,6 +394,16 @@ module.exports = class gitTracker {
                 console.error(`Error undoing last commit for .git: ${err}`);
             }
         }
+
+        const sleep = util.promisify(setTimeout);
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Reverted to previous commit!`,
+            cancellable: false
+        }, async (progress, token) => {
+            progress.report({ increment: 0 });
+            await sleep(4000);
+        });
     }
 
     async gitAddOutput(){
