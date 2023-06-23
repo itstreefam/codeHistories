@@ -44,6 +44,14 @@
       {
         "command": "codeHistories.rationaleInfo",
         "title": "Code Histories: Request rationale info"
+      },
+      {
+        "command": "codeHistories.enterGoal",
+        "title": "Code Histories: Enter goal/subgoal"
+      },
+      {
+        "command": "codeHistories.quickAutoCommit",
+        "title": "Code Histories: Quick auto commit"
       }
     ],
     "keybindings": [
@@ -67,6 +75,18 @@
         {
           "command": "codeHistories.checkAndCommit",
           "group": "navigation@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "codeHistories.enterGoal",
+          "title": "Enter goal/subgoal",
+          "group": "navigation"
+        },
+        {
+          "command": "codeHistories.quickAutoCommit",
+          "title": "Quick auto commit",
+          "group": "navigation"
         }
       ]
     }

@@ -1,7 +1,6 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 const vscode = require('vscode');
-const simpleGit = require('simple-git');
 const gitTracker = require('./git-tracker');
 const os = require('os');
 const fs = require('fs');
@@ -24,7 +23,6 @@ var timeSwitchedToChrome = 0;
 var timeSwitchedToCode = 0;
 var gitActionsPerformed = false;
 var extensionActivated = false;
-var rationaleInfoRequest = false;
 // make a regex that match everything between \033]0; and \007
 var very_special_regex = new RegExp("\033]0;(.*)\007", "g");
 
@@ -315,11 +313,7 @@ function activate(context) {
 		if(!extensionActivated){
 			vscode.window.showErrorMessage('Code histories not activated. Ctrl(or Cmd)+Shift+P -> Code Histories');
 		} else {
-			if(!tracker){
-				vscode.window.showErrorMessage('Code histories not activated. Ctrl(or Cmd)+Shift+P -> Code Histories');
-			} else {
-				tracker.presentGitRepos();
-			}
+			tracker.presentGitRepos();
 		}
 	});
 
@@ -350,14 +344,52 @@ function activate(context) {
 		}
 	});
 
+	let enterGoal = vscode.commands.registerCommand('codeHistories.enterGoal', async () => {
+		const goal = await vscode.window.showInputBox({
+						placeHolder: 'Enter your goal or subgoal',
+						prompt: 'Please enter the text for your goal or subgoal',
+					});
+		
+		if(goal){
+			// Write the goal to a file
+			let timestamp = new Date().toLocaleString();
+			// check if the file exists
+			if (fs.existsSync(path.join(currentDir, 'goals.txt'))) {
+				// if it exists, append to it
+				fs.appendFileSync(path.join(currentDir, 'goals.txt'), '\n' + timestamp + '\n' + goal + '\n');
+			} else {
+				// if it doesn't exist, create it
+				fs.writeFileSync(path.join(currentDir, 'goals.txt'), timestamp + '\n' + goal + '\n');
+			}
+		}
+	});
+
+	let quickAutoCommit = vscode.commands.registerCommand('codeHistories.quickAutoCommit', async () => {
+		if (!extensionActivated) {
+			vscode.window.showErrorMessage('Code histories not activated. Ctrl(or Cmd)+Shift+P -> Code Histories');
+		} else {
+			await tracker.gitAdd();
+			await tracker.checkWebData();
+			await tracker.gitCommit();	
+		}
+	});
+
 	context.subscriptions.push(activateCodeHistories);
 	context.subscriptions.push(executeCode);
 	context.subscriptions.push(selectGitRepo);
 	context.subscriptions.push(setNewCmd);
 	context.subscriptions.push(undoCommit);
+	context.subscriptions.push(enterGoal);
+	context.subscriptions.push(quickAutoCommit);
 
-	// codehistories npm start | while IFS= read -r line; do echo "[$(date '+%m/%d/%Y, %I:%M:%S %p')] $line"; done | tee -a server.log
-	// this command will run npm start and pipe the output to a file server.log in user's working project directory (.e.g. /home/tri/Desktop/react-app)
+	// this is for web dev heuristics
+	// if user saves a file in the workspace, then they visit chrome to test their program on localhost (require that they do reload the page so that it is recorded as an event in webData)
+	// an automatic commit should be made when they return to vscode
+
+	// no need to have codehistories prefix, can run command in an external terminal
+	// change directory to the workspace directory (.e.g. /home/tri/Desktop/react-app)
+	// npm start | while IFS= read -r line; do echo "[$(date '+%m/%d/%Y, %I:%M:%S %p')] $line"; done | tee -a server.txt
+	// this command will run npm start and pipe the output to a file server.txt in user's working project directory 
 	/* E.g. 
 		[05/23/2023, 01:32:29 PM]
 		[05/23/2023, 01:32:29 PM] > my-app@0.1.0 start
@@ -367,12 +399,10 @@ function activate(context) {
 		[05/23/2023, 01:32:31 PM] Compiled successfully!
 	*/
 
-	// if user also has another server running, we can have a separate external terminal which runs that server and pipe the output to a file server2.log in user's working project directory
-	// npm start -- --port 3000| while IFS= read -r line; do echo "[$(date '+%m/%d/%Y, %I:%M:%S %p')] $line"; done | tee -a /home/tri/Desktop/react-app/server2.log
-	// python -u -m http.server 8000 2>&1 | tee >(awk '{ print $0; fflush(); }' >> server2.log)
-
-	// check the interval the user is gone from vs code to visit chrome
-	// and if they visit localhost to test their program (require that they do reload the page so that it is recorded as an event in webData)
+	// if user also has another server running, we can have a separate external terminal which runs that server and pipe the output to a file server2.txt in user's working project directory
+	// change directory to the workspace directory
+	// npm start -- --port 3000| while IFS= read -r line; do echo "[$(date '+%m/%d/%Y, %I:%M:%S %p')] $line"; done | tee -a server2.txt
+	// python -u -m http.server 8000 2>&1 | tee >(awk '{ print $0; fflush(); }' >> server2.txt)
 
 	var intervalId;
 
@@ -418,38 +448,37 @@ function activate(context) {
 
 	const performGitActions = async () => {
 		try {
-		// search between timeSwitchedToChrome and timeSwitchedToCode in webData
-		let webData = fs.readFileSync(path.join(currentDir, 'webData'), 'utf8');
-		let webDataArray = JSON.parse(webData);
+			// search between timeSwitchedToChrome and timeSwitchedToCode in webData
+			let webData = fs.readFileSync(path.join(currentDir, 'webData'), 'utf8');
+			let webDataArray = JSON.parse(webData);
 
-		let webDataArrayFiltered = [];
-		let startTime = timeSwitchedToChrome;
-		let endTime = timeSwitchedToCode;
+			let webDataArrayFiltered = [];
+			let startTime = timeSwitchedToChrome;
+			let endTime = timeSwitchedToCode;
 
-		for (let i = webDataArray.length - 1; i >= 0; i--) {
-			let obj = webDataArray[i];
-			if(obj.time < startTime){
-				break;
+			for (let i = webDataArray.length - 1; i >= 0; i--) {
+				let obj = webDataArray[i];
+				if(obj.time < startTime){
+					break;
+				}
+				if (obj.time >= startTime && obj.time <= endTime) {
+					webDataArrayFiltered.unshift(obj);
+				}
 			}
-			if (obj.time >= startTime && obj.time <= endTime) {
-				webDataArrayFiltered.unshift(obj);
-			}
-		}
 
-		// console.log('webDataArrayFiltered: ', webDataArrayFiltered);
-		
-		if(webDataArrayFiltered.length > 0){
-			// check if webDataArrayFiltered contains a visit to localhost or 127.0.0.1
-			let webDataArrayFilteredContainsLocalhost = webDataArrayFiltered.filter(obj => obj.curUrl.includes('localhost') || obj.curUrl.includes('127.0.0.1'));
-			
-			if(webDataArrayFilteredContainsLocalhost.length > 0){
-				await tracker.gitAdd();
-				await tracker.checkWebData();
-				await tracker.gitCommit();
-				// let currentTime = Math.floor(Date.now() / 1000);
-				// console.log('currentTime: ', currentTime);
+			// console.log('webDataArrayFiltered: ', webDataArrayFiltered);
+			if(webDataArrayFiltered.length > 0){
+				// check if webDataArrayFiltered contains a visit to localhost or 127.0.0.1
+				let webDataArrayFilteredContainsLocalhost = webDataArrayFiltered.filter(obj => obj.curUrl.includes('localhost') || obj.curUrl.includes('127.0.0.1'));
+				
+				if(webDataArrayFilteredContainsLocalhost.length > 0){
+					await tracker.gitAdd();
+					await tracker.checkWebData();
+					await tracker.gitCommit();
+					// let currentTime = Math.floor(Date.now() / 1000);
+					// console.log('currentTime: ', currentTime);
+				}
 			}
-		}
 		} catch (error) {
 			console.log('Error performing Git actions:', error);
 		}
@@ -457,68 +486,6 @@ function activate(context) {
 
 	// Start the first interval
 	intervalId = setTimeout(checkAppSwitch, 500);
-
-	let rationaleInfo = vscode.commands.registerCommand('codeHistories.rationaleInfo', function () {
-		const panel = vscode.window.createWebviewPanel(
-			'rationaleInfo',
-			'Rationale Description',
-			vscode.ViewColumn.One,
-			{
-				enableScripts: true
-			}
-		);
-
-		panel.webview.html = getWebviewContent();
-
-		let savedRationaleInfo = '';
-
-		// Handle messages from the webview
-		panel.webview.onDidReceiveMessage(
-			message => {
-				switch (message.command) {
-					case 'saveRationaleInfo':
-						savedRationaleInfo = message.text;
-						// console.log('savedRationaleInfo: ', savedRationaleInfo);
-
-						// Write the rationale info to a file
-						let timestamp = new Date().toLocaleString();
-						// check if the file exists
-						if (fs.existsSync(path.join(currentDir, 'rationaleInfo.txt'))) {
-							// if it exists, append to it
-							fs.appendFileSync(path.join(currentDir, 'rationaleInfo.txt'), '\n' + timestamp + '\n' + savedRationaleInfo + '\n');
-						} else {
-							// if it doesn't exist, create it
-							fs.writeFileSync(path.join(currentDir, 'rationaleInfo.txt'), timestamp + '\n' + savedRationaleInfo + '\n');
-						}
-						return;
-					case 'noRationaleInfo':
-						vscode.window.showWarningMessage('Please enter some text in the rationale description box.');
-						return;
-				}
-			},
-			undefined,
-			context.subscriptions
-		);
-
-		panel.onDidDispose(
-			() => {
-				rationaleInfoRequest = false;
-			},
-			null,
-			context.subscriptions
-		);
-	});
-
-	context.subscriptions.push(rationaleInfo);
-
-	// trigger rationaleInfo every 15 minutes
-	setInterval(() => {
-		if(!rationaleInfoRequest){
-			rationaleInfoRequest = true;
-			vscode.commands.executeCommand('codeHistories.rationaleInfo');
-		}
-	}, 900000);
-
 }
 
 function unixLikeTerminalProcess(platform_regex_dir) {
@@ -675,106 +642,6 @@ function deactivate() {
 	allTerminalsDirCount = new Object();
 	terminalDimChanged = new Object();
 	terminalOpenedFirstTime = new Object();
-}
-
-function getWebviewContent() {
-	return `<!DOCTYPE html>
-			<html lang="en">
-			<head>
-				<meta charset="UTF-8">
-				<meta name="viewport" content="width=device-width, initial-scale=1.0">
-				<title>Cat Coding</title>
-				<style>
-					textarea {
-						width: 100%;
-						height: 200px;
-						resize: vertical;
-						font-family: Arial, sans-serif;
-						font-size: 14px;
-						line-height: 1.5;
-					}
-
-					#submitButton {
-						background-color: #4CAF50;
-						color: white;
-						padding: 12px 20px;
-						border: none;
-						border-radius: 4px;
-						cursor: pointer;
-					}
-
-					#submitButton:hover {
-						background-color: #45a049;
-					}
-
-					#clearButton {
-						background-color: #f44336;
-						color: white;
-						padding: 12px 20px;
-						border: none;
-						border-radius: 4px;
-						cursor: pointer;
-					}
-
-					#clearButton:hover {
-						background-color: #da190b;
-					}
-
-				</style>
-			</head>
-			<body align="center">
-				<form>
-					<h1>Briefly enter what you have been working on in the last 15 minutes:</h1>
-					<br>
-					<textarea id="inputTextarea"></textarea>
-					<br>
-					<button id="submitButton">Submit</button>
-					<button id="clearButton">Clear</button>
-				</form>
-
-				<script>
-					const vscode = acquireVsCodeApi();
-					const textarea = document.getElementById('inputTextarea');
-
-					// Check if we have an old state to restore from
-					const previousState = vscode.getState();
-					const inputValue = previousState ? previousState.inputValue : '';
-					textarea.value = inputValue;
-
-					const submitButton = document.getElementById('submitButton');
-					submitButton.addEventListener('click', function(event){
-						event.preventDefault();
-						const inputValue = textarea.value;
-
-						if (inputValue === '') {
-							vscode.postMessage({ command: 'noRationaleInfo' });
-							return;
-						}
-
-						const description = {
-							command: 'saveRationaleInfo',
-							text: inputValue
-						}
-
-						vscode.postMessage(description);
-					});
-
-					const clearButton = document.getElementById('clearButton');
-					clearButton.addEventListener('click', function(event){
-						event.preventDefault();
-						textarea.value = '';
-						vscode.setState({ inputValue: '' });
-					});
-
-					// Update the saved state when the textarea input changes
-					textarea.addEventListener('input', () => {
-						const inputValue = textarea.value;
-						vscode.setState({ inputValue });
-					});
-				</script>
-
-			</body>
-			</html>`;
 }
 
 module.exports = {
