@@ -8,13 +8,8 @@ class Terminal {
     this.name = name;
     this.cwd = cwd;
 
-    let wslPath = 'C:\\Windows\\System32\\wsl.exe';
     let gitBashPath = 'C:\\Program Files\\Git\\bin\\bash.exe';
-    if (fs.existsSync(wslPath)) {
-      this.terminalShellPath = os.platform() === 'win32' ? wslPath : '/bin/bash';
-    } else {
-      this.terminalShellPath = os.platform() === 'win32' ? gitBashPath : '/bin/bash';
-    }
+    this.terminalShellPath = os.platform() === 'win32' ? gitBashPath : '/bin/bash';
 
     this.terminal = vscode.window.createTerminal({
       name: this.name,

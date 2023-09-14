@@ -24,7 +24,7 @@ module.exports = class gitTracker {
     }
 
     initGitingore() {
-        let itemsToAdd = ['codeHistories.git', '.vscode', '.env.development', 'venv', 'node_modules', '.bash_profile'];
+        let itemsToAdd = ['codeHistories.git', '.vscode', 'venv', 'node_modules', '.bash_profile'];
         let gitignorePath = this._currentDir + '/.gitignore';
 
         let data = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, 'utf8') : '';

@@ -70,161 +70,152 @@ function activate(context) {
 	}
 
 	if(process.platform === 'win32'){
-		// prioritize wsl over git bash
-		// make sure to install and set up wsl through Microsoft Store
-		let wslPath = 'C:\\Windows\\System32\\wsl.exe';
-		if (fs.existsSync(wslPath)) {
-			// e.g. tri@DESKTOP-XXXXXXX:/mnt/c/Users/thien/Desktop/test-folder$
-			var win_regex_dir = new RegExp("(\(.*\))?" + "@" + hostname + ".*\\${1}", "g");
-			unixLikeTerminalProcess(win_regex_dir);
-		} else {
-			// e.g. tri@DESKTOP-XXXXXXX MINGW64 ~/Desktop/test-folder (master)
-			var win_regex_dir = new RegExp(user + "@" + hostname + "(\(.*\))?", "g");
-		
-			// on did write to terminal
-			vscode.window.onDidWriteTerminalData(async event => {
-				activeTerminal = vscode.window.activeTerminal;
-				if (activeTerminal == event.terminal) {
-					if(event.terminal.name == terminalName){
-						const pid = await event.terminal.processId;
-						
-						var terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
-						// console.log('terminalData: ', terminalData);
-
-						if(terminalDimChanged[pid]){
-							terminalData = "";
-							terminalDimChanged[pid] = false;
-						}
-
-						if(typeof allTerminalsData[pid] === 'undefined'){
-							allTerminalsData[pid] = "";
-						}
-
-						if(typeof allTerminalsDirCount[pid] === 'undefined'){
-							allTerminalsDirCount[pid] = 0;
-						}
-						
-						// test if very_special_regex matches
-						if(very_special_regex.test(terminalData)){
-							// get the matched string
-							var specialMatched = terminalData.match(very_special_regex);
-							// remove the matched from the terminalData
-							terminalData = terminalData.replace(specialMatched, "");
-						}
-
-						// see if terminalData contains win_regex_dir
-						if(win_regex_dir.test(terminalData.trim())){
-							// get the matched string
-							var matched = terminalData.match(win_regex_dir);
-							console.log('matched: ', matched);
-
-							//if matched.length is a number
-							if(matched.length){
-								// add length of matched array to counterMatchedDir
-								allTerminalsDirCount[pid] += matched.length;
-							}
-						}
-
-						// iter += 1;
-						// eventData[iter] = terminalData;
-						// console.log(eventData);
-
-						// allTerminalsData[pid] = globalStr of the terminal instance with pid
-						allTerminalsData[pid] += terminalData;
-						// console.log('allTerminalsData: ', allTerminalsData[pid]);
-
-						// if(checkThenCommit){
-							console.log('There are %s matched regex dir for pid %s', allTerminalsDirCount[pid], pid);
-
-							// if counter is >= 2, then we should have enough information to trim and find the output
-							if(allTerminalsDirCount[pid] >= 2){
-								// grab everything between second to last occurence of win_regex_dir and the last occurence of win_regex_dir
-								let secondToLastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1], allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]) - 1);
-								let lastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]);
-
-								// find the first occurrence of "\r\n" after the second to last occurence of win_regex_dir
-								// let firstOccurenceOfNewLine = allTerminalsData[pid].indexOf("\r\n", secondToLastOccurence);
-
-								let output = allTerminalsData[pid].substring(secondToLastOccurence, lastOccurence);
-
-								output = output.trim();
-								output = removeBackspaces(output);
-
-								// console.log('output: ', output);
-								
-								try{
-									await tracker.gitAdd();
-									
-									let outputUpdated = await tracker.updateOutput(output);	
-									console.log('output.txt updated?', outputUpdated);
-
-									if(outputUpdated){
-										await tracker.gitAddOutput();
-										await tracker.checkWebData();
-										await tracker.gitCommit();
-									} else {
-										// if output.txt is not updated, then we should revert the git add
-										await tracker.gitReset();
-									}
-								} catch(error){
-									console.log("Error occurred:", error);
-									await tracker.gitReset();
-									await vscode.window.showInformationMessage('Error committing to git. Please wait a few seconds and try again.');
-								}
-
-								// console.log('globalStr of %s before reset: ', pid, allTerminalsData[pid]);
-								
-								// reset globalStr of pid to contain only the matched dir string
-								allTerminalsData[pid] = allTerminalsData[pid].substring(lastOccurence);
-								// console.log('globalStr of %s after reset: ', pid, allTerminalsData[pid]);
-								
-								allTerminalsDirCount[pid] = 1;
-								checkThenCommit = false;
-							}
-						// }
-						
-					}
-				}
-			});
-
-			// on did open terminal
-			vscode.window.onDidOpenTerminal(event => {
-				if(event.name == terminalName){
-					event.processId.then(pid => {
-						allTerminalsData[pid] = "";
-						allTerminalsDirCount[pid] = 0;
-						terminalDimChanged[pid] = false;
-						terminalOpenedFirstTime[pid] = true;
-					});
-				}
-			});
-
-			// on did close terminal
-			vscode.window.onDidCloseTerminal(event => {
-				if(event.name == terminalName){
-					event.processId.then(pid => {
-						delete allTerminalsData[pid];
-						delete allTerminalsDirCount[pid];
-						delete terminalDimChanged[pid];
-						delete terminalOpenedFirstTime[pid];
-					});
-				}
-			});
-
-			// on did change terminal size
-			vscode.window.onDidChangeTerminalDimensions(event => {
+		// e.g. tri@DESKTOP-XXXXXXX MINGW64 ~/Desktop/test-folder (master)
+		var win_regex_dir = new RegExp(user + "@" + hostname + "(\(.*\))?", "g");
+	
+		// on did write to terminal
+		vscode.window.onDidWriteTerminalData(async event => {
+			activeTerminal = vscode.window.activeTerminal;
+			if (activeTerminal == event.terminal) {
 				if(event.terminal.name == terminalName){
-					event.terminal.processId.then(pid => {
-						if(terminalOpenedFirstTime[pid]){
-							terminalDimChanged[pid] = false;
-							terminalOpenedFirstTime[pid] = false;
-						}else if(allTerminalsData[pid]){
-							terminalDimChanged[pid] = true;
+					const pid = await event.terminal.processId;
+					
+					var terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+					// console.log('terminalData: ', terminalData);
+
+					if(terminalDimChanged[pid]){
+						terminalData = "";
+						terminalDimChanged[pid] = false;
+					}
+
+					if(typeof allTerminalsData[pid] === 'undefined'){
+						allTerminalsData[pid] = "";
+					}
+
+					if(typeof allTerminalsDirCount[pid] === 'undefined'){
+						allTerminalsDirCount[pid] = 0;
+					}
+					
+					// test if very_special_regex matches
+					if(very_special_regex.test(terminalData)){
+						// get the matched string
+						var specialMatched = terminalData.match(very_special_regex);
+						// remove the matched from the terminalData
+						terminalData = terminalData.replace(specialMatched, "");
+					}
+
+					// see if terminalData contains win_regex_dir
+					if(win_regex_dir.test(terminalData.trim())){
+						// get the matched string
+						var matched = terminalData.match(win_regex_dir);
+						console.log('matched: ', matched);
+
+						//if matched.length is a number
+						if(matched.length){
+							// add length of matched array to counterMatchedDir
+							allTerminalsDirCount[pid] += matched.length;
 						}
-					});
+					}
+
+					// iter += 1;
+					// eventData[iter] = terminalData;
+					// console.log(eventData);
+
+					// allTerminalsData[pid] = globalStr of the terminal instance with pid
+					allTerminalsData[pid] += terminalData;
+					// console.log('allTerminalsData: ', allTerminalsData[pid]);
+
+					// if(checkThenCommit){
+						console.log('There are %s matched regex dir for pid %s', allTerminalsDirCount[pid], pid);
+
+						// if counter is >= 2, then we should have enough information to trim and find the output
+						if(allTerminalsDirCount[pid] >= 2){
+							// grab everything between second to last occurence of win_regex_dir and the last occurence of win_regex_dir
+							let secondToLastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1], allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]) - 1);
+							let lastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]);
+
+							// find the first occurrence of "\r\n" after the second to last occurence of win_regex_dir
+							// let firstOccurenceOfNewLine = allTerminalsData[pid].indexOf("\r\n", secondToLastOccurence);
+
+							let output = allTerminalsData[pid].substring(secondToLastOccurence, lastOccurence);
+
+							output = output.trim();
+							output = removeBackspaces(output);
+
+							// console.log('output: ', output);
+							
+							try{
+								await tracker.gitAdd();
+								
+								let outputUpdated = await tracker.updateOutput(output);	
+								console.log('output.txt updated?', outputUpdated);
+
+								if(outputUpdated){
+									await tracker.gitAddOutput();
+									await tracker.checkWebData();
+									await tracker.gitCommit();
+								} else {
+									// if output.txt is not updated, then we should revert the git add
+									await tracker.gitReset();
+								}
+							} catch(error){
+								console.log("Error occurred:", error);
+								await tracker.gitReset();
+								await vscode.window.showInformationMessage('Error committing to git. Please wait a few seconds and try again.');
+							}
+
+							// console.log('globalStr of %s before reset: ', pid, allTerminalsData[pid]);
+							
+							// reset globalStr of pid to contain only the matched dir string
+							allTerminalsData[pid] = allTerminalsData[pid].substring(lastOccurence);
+							// console.log('globalStr of %s after reset: ', pid, allTerminalsData[pid]);
+							
+							allTerminalsDirCount[pid] = 1;
+							checkThenCommit = false;
+						}
+					// }
+					
 				}
-			});
-		}
+			}
+		});
+
+		// on did open terminal
+		vscode.window.onDidOpenTerminal(event => {
+			if(event.name == terminalName){
+				event.processId.then(pid => {
+					allTerminalsData[pid] = "";
+					allTerminalsDirCount[pid] = 0;
+					terminalDimChanged[pid] = false;
+					terminalOpenedFirstTime[pid] = true;
+				});
+			}
+		});
+
+		// on did close terminal
+		vscode.window.onDidCloseTerminal(event => {
+			if(event.name == terminalName){
+				event.processId.then(pid => {
+					delete allTerminalsData[pid];
+					delete allTerminalsDirCount[pid];
+					delete terminalDimChanged[pid];
+					delete terminalOpenedFirstTime[pid];
+				});
+			}
+		});
+
+		// on did change terminal size
+		vscode.window.onDidChangeTerminalDimensions(event => {
+			if(event.terminal.name == terminalName){
+				event.terminal.processId.then(pid => {
+					if(terminalOpenedFirstTime[pid]){
+						terminalDimChanged[pid] = false;
+						terminalOpenedFirstTime[pid] = false;
+					}else if(allTerminalsData[pid]){
+						terminalDimChanged[pid] = true;
+					}
+				});
+			}
+		});
 	}
 
 	if(process.platform === "darwin"){
@@ -252,7 +243,7 @@ function activate(context) {
 		let vscodePath = path.join(workspacePath, ".vscode");
 		let settingsPath = path.join(vscodePath, "settings.json");
 		let settings = JSON.stringify({
-			"terminal.integrated.defaultProfile.windows": "Ubuntu (WSL)",
+			"terminal.integrated.defaultProfile.windows": "Git Bash",
 			"terminal.integrated.defaultProfile.osx": "bash",
 			"terminal.integrated.defaultProfile.linux": "bash",
 			"terminal.integrated.shellIntegration.enabled": false,
@@ -262,13 +253,6 @@ function activate(context) {
 		if(!fs.existsSync(vscodePath)){
 			fs.mkdirSync(vscodePath);
 			fs.writeFileSync(settingsPath, settings);
-		}
-
-		// make a file .env.development in the current workspace
-		let envPath = path.join(workspacePath, ".env.development");
-		// add BROWSER=chrome to .env.development
-		if(!fs.existsSync(envPath)){
-			fs.writeFileSync(envPath, "BROWSER=chrome");
 		}
 
 		// Store a flag in the extension context to indicate activation
