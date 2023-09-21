@@ -52,10 +52,13 @@ codehistories() {
     return
   fi
   cmd="$*"
-  
+
   # Get current date and time in the format [M/D/YYYY, HH:MM:SS AM/PM]
   timestamp=$(date +"[%-m/%-d/%Y, %I:%M:%S %p]")
 
+  # Print a newline to output.txt
+  echo "\n" | tee -a output.txt
+  
   # Print the timestamp to output.txt
   echo "Execution Time: $timestamp" | tee -a output.txt
 
