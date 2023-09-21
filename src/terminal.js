@@ -51,9 +51,16 @@ codehistories() {
     echo "Usage: codehistories <command> [args]"
     return
   fi
-  cmd="$1"
-  shift
-  eval "$cmd" "$@"
+  cmd="$*"
+  
+  # Get current date and time in the format [M/D/YYYY, HH:MM:SS AM/PM]
+  timestamp=$(date +"[%-m/%-d/%Y, %I:%M:%S %p]")
+
+  # Print the timestamp to output.txt
+  echo "Execution Time: $timestamp" | tee -a output.txt
+
+  # Execute the command and append the output
+  eval "$cmd" 2>&1 | tee -a output.txt
 }`;
     if (!fs.existsSync(bashProfilePath)) {
       // create the file and add these lines
