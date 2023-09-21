@@ -1,6 +1,6 @@
 # codeHistories
 
-A VS Code extension that aims to capture the information needed to generate usable code histories (capturing code state and output). This work remains a prototype for research purposes.
+A VS Code extension that aims to capture the information needed to generate usable code histories (capturing code state and output). This work remains a prototype as the tool is utilizing VS Code Proposed APIs.
 
 ## Setup demo
 
@@ -11,7 +11,7 @@ https://user-images.githubusercontent.com/44308446/219846324-bd156916-f2e0-4cd0-
 * VS Code Insiders version (https://code.visualstudio.com/insiders/) to use their proposed API
 * Node JS + simple-git (https://github.com/steveukx/git-js) to incorporate git in the output tracking process
 * active-win (https://github.com/sindresorhus/active-win) to detect application switch between VS Code and Chrome
-* Windows Subsystem for Linux installed for Windows user (https://ubuntu.com/tutorials/install-ubuntu-on-wsl2-on-windows-11-with-gui-support#1-overview)
+* Git Bash for Windows user
 
 ## Extension Setup
 
@@ -22,7 +22,7 @@ https://user-images.githubusercontent.com/44308446/219846324-bd156916-f2e0-4cd0-
 5.  From the main directory of the code histories repository, run ```npm i``` to install all dependencies.
 6.  Back in VSCode, press f5 (fn + F5 for Mac) to enter debug mode. This will open a new VScode window which has "[Extension Development Host]" in its name. This is where you should set up the code that you want to be tracked.
 7.  Open the repository or folder that you want to work in using VSCode.
-8.  CTRL-SHIFT-P should start the extension (CMD-SHIFT-P for Mac). That will bring up a menu of options. Look for and choose Code Histories. Note: When this runs, it should automatically create the settings that are needed for the extension. But, if that fails to happen (which would manifest as an error on CTRL-SHIFT-P) you can do the following:
+8.  CTRL-SHIFT-P should start the extension (CMD-SHIFT-P for Mac). That will bring up a menu of options. Look for and choose "Code Histories". Note: When this runs, it should automatically create the settings that are needed for the extension. But, if that fails to happen (which would manifest as an error on CTRL-SHIFT-P) you can do the following:
     -   Open the directory in a file browser
 
     -   Make .vscode directory
@@ -31,7 +31,7 @@ https://user-images.githubusercontent.com/44308446/219846324-bd156916-f2e0-4cd0-
 
         ```
         {
-            "terminal.integrated.defaultProfile.windows": "Ubuntu (WSL)",
+            "terminal.integrated.defaultProfile.windows": "Git Bash",
             "terminal.integrated.defaultProfile.osx": "bash",
             "terminal.integrated.defaultProfile.linux": "bash",
             "terminal.integrated.shellIntegration.enabled": false,
@@ -49,16 +49,26 @@ https://user-images.githubusercontent.com/44308446/219846324-bd156916-f2e0-4cd0-
     
     ```
     codehistories() {
-        if [ "$#" -eq 0 ]; then
-            echo "Usage: codehistories <command> [args]"
-            return
-        fi
-        cmd="$1"
-        shift
-        eval "$cmd" "$@"
+    if [ "$#" -eq 0 ]; then
+        echo "Usage: codehistories <command> [args]"
+        return
+    fi
+    cmd="$*"
+
+    # Get current date and time in the format [M/D/YYYY, HH:MM:SS AM/PM]
+    timestamp=$(date +"[%-m/%-d/%Y, %I:%M:%S %p]")
+
+    # Print a newline to output.txt
+    echo "\n" | tee -a output.txt
+    
+    # Print the timestamp to output.txt
+    echo "Execution Time: $timestamp" | tee -a output.txt
+
+    # Execute the command and append the output
+    eval "$cmd" 2>&1 | tee -a output.txt
     }
     ```
-    This is to make sure that when you run ```codehistories <cmd> [args]```, the bash terminal can understand and capture the execution's output. You need to always run your code with ```codehistories``` as prefix since it is an important keyword for the tool to capture the code state and output.
+    This is to make sure that when you run ```codehistories <cmd> [args]```, the bash terminal can understand and capture the execution's output. You need to always run your code with ```codehistories``` as prefix since it is an important keyword for the tool to capture both the output and the code state.
 
 2. In case you don't want to type out full execution command every time, you use Ctrl + Shift + C (or CMD + Shift + C on Mac) to update the command for the subsequent executions. Then you can press the multi-play button to run the updated execution. For e.g. if you want to run a python file, you set the command to ```python main.py```. Note that this command will be updated for all future executions until you change it again.
 
@@ -68,7 +78,7 @@ https://user-images.githubusercontent.com/44308446/219846324-bd156916-f2e0-4cd0-
 
 5. To use git commands that are related to codeHistories.git, you need to add ```--git-dir=codeHistories.git --work-tree=.``` between ```git``` and the command. For e.g. ```git --git-dir=codeHistories.git --work-tree=. log --pretty=oneline``` to view the codeHistories commits. Occasionally checking this would be a good idea since the files color change only corresponds to normal .git repo.
 
-6. For complex web project example, refer to line 385-405 in src/extension. In general, for execution run, add ```codehistories``` prefix to the command. For web dev run, no need to really use ```codehistories``` prefix. Instead, make use of tee command to log output continuously while the capturing mechanism happens when user moves away from VS Code to Chrome to (re)load localhost. E.g. ```npm start | while IFS= read -r line; do echo "[$(date '+%m/%d/%Y, %I:%M:%S %p')] $line"; done | tee -a server2.txt```, ```python -u -m http.server 8000 2>&1 | tee >(awk '{ print $0; fflush(); }' >> server2.txt)```
+6. For complex web project example, refer to line 353-373 in src/extension.js. In general, for execution run, add ```codehistories``` prefix to the command. For web dev run, no need to really use ```codehistories``` prefix. Instead, make use of tee command to log output continuously while the capturing mechanism happens when user moves away from VS Code to Chrome to (re)load localhost. E.g. ```npm start | while IFS= read -r line; do echo "[$(date '+%m/%d/%Y, %I:%M:%S %p')] $line"; done | tee -a server2.txt```, ```python -u -m http.server 8000 2>&1 | tee >(awk '{ print $0; fflush(); }' >> server2.txt)```
 
 ## Release Notes
 
@@ -94,7 +104,7 @@ Removed the need for code-runner extension. Using ```codehistories``` as a prefi
 
 ### V3.x
 
-Added application switch checking to help with web dev heuristic when user is gone from vs code to visit chrome and if they load localhost to test their program. Added right click option to context menu for user to quickly write down their goals/subgoals for record. Undo commit button is now a standalone button placed to the left of the commit button. Git Bash seems to be running slow on Windows so WSL is preferred.
+Added application switch checking to help with web dev heuristic when user is gone from vs code to visit chrome and if they load localhost to test their program. Added right click option to context menu for user to quickly write down their goals/subgoals for record. Undo commit button is now a standalone button placed to the left of the commit button. ```codehistories```prefix is now combined with tee in Unix-like environment to optimize piping result to output.txt.
 
 ## Contact
 

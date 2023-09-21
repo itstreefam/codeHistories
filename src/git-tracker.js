@@ -24,7 +24,7 @@ module.exports = class gitTracker {
     }
 
     initGitingore() {
-        let itemsToAdd = ['codeHistories.git', '.vscode', 'venv', 'node_modules', '.bash_profile'];
+        let itemsToAdd = ['codeHistories.git', '.vscode', 'venv', 'node_modules', '.bash_profile', 'output.txt', 'webData'];
         let gitignorePath = this._currentDir + '/.gitignore';
 
         let data = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, 'utf8') : '';
@@ -327,7 +327,7 @@ module.exports = class gitTracker {
         if(this.isUsingCodeHistoriesGit) {
             let gitDir = path.join(this._currentDir, 'codeHistories.git');
             let workTree = path.join(this._currentDir);
-            let addWebDataCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" add webData`;
+            let addWebDataCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" add -f webData`;
             try {
                 await exec(addWebDataCmd, { cwd: workTree });
                 console.log(`Added webData to codeHistories.git`);
@@ -336,7 +336,7 @@ module.exports = class gitTracker {
             }
         } else {
             try {
-                await this.git.add('webData');
+                await this.git.add('webData', ['-f']);
                 console.log(`Added webData to .git`);
             } catch (err) {
                 console.log(`Error adding webData to .git: ${err}`);
@@ -379,7 +379,7 @@ module.exports = class gitTracker {
         if(this.isUsingCodeHistoriesGit) {
             let gitDir = path.join(this._currentDir, 'codeHistories.git');
             let workTree = path.join(this._currentDir);
-            let addOutputCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" add output.txt`;
+            let addOutputCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" add -f output.txt`;
             try {
                 await exec(addOutputCmd, { cwd: workTree });
                 console.log(`Added output.txt to codeHistories.git`);
@@ -388,7 +388,7 @@ module.exports = class gitTracker {
             }
         } else {
             try {
-                await this.git.add('output.txt');
+                await this.git.add('output.txt', ['-f']);
                 console.log(`Added output.txt to .git`);
             } catch (err) {
                 console.error(`Error adding output.txt to .git: ${err}`);
@@ -396,76 +396,28 @@ module.exports = class gitTracker {
         }
     }
 
-    updateOutput(output){
-        // store output of current terminal to a new file
-        // if file already exists, append to it
-        if(!this.checkEdgeCases(output)){
-            console.log("Edge case detected!", output);
-            return false;
-        }
-
-        let outputFilePath = this._currentDir + '/output.txt';
-
-        // add timestamp to output can be used to detect if user rerun the same program without much changes
-        const timestamp = this.timestamp();
-        let conversion = new Date(timestamp).toLocaleString('en-US');
-        let timestampedOutput = `[${conversion}]\n${output}`;
-
-        if (fs.existsSync(outputFilePath)) {
-            // if file is empty
-            if (fs.statSync(outputFilePath).size == 0) {
-                fs.appendFileSync(outputFilePath, timestampedOutput, function (err) {
-                    if (err) {
-                        console.log(err);
-                        return false;
-                    }
-                });
-            }
-            else{
-                // delete everything in the file
-                fs.truncateSync(outputFilePath, 0);
-                fs.appendFileSync(outputFilePath, timestampedOutput, function (err) {
-                    if (err) {
-                        console.log(err);
-                        return false;
-                    }
-                });
-            }
-        }
-        // if file does not exist, create and write output to it
-        else {
-            fs.writeFileSync(outputFilePath, timestampedOutput, function (err) {
+    async isOutputModified(){
+        if(!fs.existsSync(this._currentDir + '/output.txt')){
+            // create output.txt
+            fs.writeFileSync(this._currentDir + '/output.txt', '', function (err) {
                 if (err) {
                     console.log(err);
                     return false;
                 }
-            });   
+            });
+        }
+
+        // check if output.txt is recently modified
+        var outputFilePath = this._currentDir + '/output.txt';
+        var stats = fs.statSync(outputFilePath);
+        var mtime = new Date(util.inspect(stats.mtime));
+        var now = new Date();
+        var diff = now - mtime;
+        var diffInMinutes = Math.floor(diff / 60000);
+        if(diffInMinutes > 1){
+            return false;
         }
 
         return true;
-    }
-
-    checkEdgeCases(str){
-        // if vs code terminal name is not codeHistories, return false
-        if(vscode.window.activeTerminal.name === "Code Histories"){
-            // only returns true if str contains codehistories
-            if(str.includes("codehistories") && this.countOccurrences(str, "codehistories") == 1){
-                return true;
-            } else if(str === ""){
-                return true;
-            }
-            return false;
-        } else {
-            let edgeCasesRegex = /(clear|gitk)[\s]*|(pwd|ls|cd|mkdir|touch|cp|rm|nano|cat|echo|apt|pip|git)[\s]+/g;
-            if(edgeCasesRegex.test(str)){
-                // console.log("Encounter edge case", str.match(edgeCasesRegex));
-                return false;
-            }
-            return true;
-        }
-    }
-
-    countOccurrences(string, word) {
-        return string.split(word).length - 1;
     }
 }
