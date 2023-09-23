@@ -13,7 +13,7 @@ var iter = 0;
 var eventData = new Object();
 var terminalDimChanged = new Object();
 var terminalOpenedFirstTime = new Object();
-var terminalName = "Code Histories";
+var terminalName = "bash";
 var allTerminalsData = new Object();
 var allTerminalsDirCount = new Object();
 var cmdPrompt = `source .bash_profile`;
@@ -239,6 +239,30 @@ function activate(context) {
 			fs.writeFileSync(settingsPath, settings);
 		}
 
+		// make .bash_profile in the current workspace
+		let bashProfilePath = path.join(workspacePath, ".bash_profile");
+		let bashProfileContent = `
+codehistories() {
+	if [ "$#" -eq 0 ]; then
+		echo "Usage: codehistories <command> [args]"
+		return
+	fi
+	cmd="$*"
+	
+	# Get current date and time in the format [M/D/YYYY, HH:MM:SS AM/PM]
+	timestamp=$(date +"[%-m/%-d/%Y, %I:%M:%S %p]")
+	
+	# Print a newline and the timestamp to output.txt
+	echo -e "\nExecution Time: $timestamp" | tee -a output.txt
+	
+	# Execute the command and append the output
+	eval "$cmd" 2>&1 | tee -a output.txt
+}`;
+
+		if(!fs.existsSync(bashProfilePath)){
+			fs.writeFileSync(bashProfilePath, bashProfileContent);
+		}
+
 		// Store a flag in the extension context to indicate activation
 		extensionActivated = true;
 	});
@@ -252,12 +276,12 @@ function activate(context) {
 				// add all files to git
 				tracker.gitAdd();
 
-				if(terminalName == "Code Histories"){
+				if(terminalName == "bash"){
 					// get all existing terminal instances
 					var terminals = vscode.window.terminals;
 
 					// check if there are any existing terminals with the desired name
-					var existingTerminal = terminals.find(t => t.name === 'Code Histories');
+					var existingTerminal = terminals.find(t => t.name === "bash");
 
 					// create a new terminal instance only if there are no existing terminals with the desired name
 					if (!existingTerminal) {
