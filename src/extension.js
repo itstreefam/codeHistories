@@ -69,6 +69,38 @@ function activate(context) {
 	}
 
 	if(process.platform === 'win32'){
+		vscode.window.onDidChangeTerminalState(event => {
+			if(event.state.isInteractedWith){
+				console.log(`we're up all night to get lucky!`);
+				let checkThenCommit = false;
+		
+				// go through the commands.txt file and check if the last command contains codehistories
+				let commandsPath = path.join(currentDir, 'commands.txt');
+				let commands = fs.readFileSync(commandsPath, 'utf8');
+				let commandsArray = commands.split('\n');
+				let lastCommand = commandsArray[commandsArray.length - 2];
+				console.log('lastCommand: ', lastCommand);
+
+				// make sure the time is consistent with the time in the last command
+				let lastCommandTime = lastCommand.substring(1, 24);
+				let lastCommandTimeObj = new Date(lastCommandTime);
+				let currentTime = new Date();
+				let timeDiff = currentTime.getTime() - lastCommandTimeObj.getTime();
+				let timeDiffInSec = Math.floor(timeDiff / 1000);
+				console.log('timeDiffInSec: ', timeDiffInSec);
+				event.state.isInteractedWith = false;
+			}
+		});
+
+		// example commands.txt
+		// [11/16/2023, 04:55:15 PM]: source .bash_profile
+		// [11/16/2023, 04:55:27 PM]: codehistories python main.py 
+
+		// now we want to check if the last command in commands.txt was successful
+		// if it was, then we should add and commit the output.txt
+		// if it wasn't, then we should revert the git add
+
+
 		// e.g. tri@DESKTOP-XXXXXXX MINGW64 ~/Desktop/test-folder (master)
 		var win_regex_dir = new RegExp(user + "@" + hostname + "(\(.*\))?", "g");
 	
@@ -481,6 +513,33 @@ codehistories() {
 }
 
 function unixLikeTerminalProcess(platform_regex_dir) {
+	// example commands.txt
+	// [11/16/2023, 04:55:15 PM]: source .bash_profile
+	// [11/16/2023, 04:55:27 PM]: codehistories python main.py 
+
+	// now we want to check if the last command in commands.txt was successful
+	// if it was, then we should add and commit the output.txt
+	// if it wasn't, then we should revert the git add
+
+	let checkThenCommit = false;
+	
+	// go through the commands.txt file and check if the last command contains codehistories
+	let commandsPath = path.join(currentDir, 'commands.txt');
+	let commands = fs.readFileSync(commandsPath, 'utf8');
+	let commandsArray = commands.split('\n');
+	let lastCommand = commandsArray[commandsArray.length - 2];
+
+	// make sure the time is consistent with the time in the last command
+	let lastCommandTime = lastCommand.substring(1, 24);
+	let lastCommandTimeObj = new Date(lastCommandTime);
+	let currentTime = new Date();
+	let timeDiff = currentTime.getTime() - lastCommandTimeObj.getTime();
+	let timeDiffInSec = Math.floor(timeDiff / 1000);
+	console.log('timeDiffInSec: ', timeDiffInSec);
+
+
+
+
 	// use bash as default terminal cmd
 	let returned_regex_dir = new RegExp("\\r" + platform_regex_dir.source, platform_regex_dir.flags);
 	

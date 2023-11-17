@@ -61,7 +61,27 @@ codehistories() {
   
   # Execute the command and append the output
   eval "$cmd" 2>&1 | tee -a output.txt
-}`;
+}
+
+log_command_completion() {
+  # Get the last command from the current session's history
+  last_command=$(fc -ln -1 | sed 's/^[[:space:]]*//') # Remove leading whitespace
+  # timestamp=$(date +"[%-m/%-d/%Y, %I:%M:%S %p]")
+  # echo "$timestamp: $last_command" >> commands.txt
+  # Check if the last command executed successfully
+  if [ $? -eq 0 ]; then
+    timestamp=$(date +"[%-m/%-d/%Y, %I:%M:%S %p]")
+    # append the command to the file
+    echo "$timestamp: $last_command" >> commands.txt
+  else
+    timestamp=$(date +"[%-m/%-d/%Y, %I:%M:%S %p]")
+    # append the command to the file with a note that it failed
+    echo "$timestamp: $last_command # FAILED" >> commands.txt
+  fi
+}
+PROMPT_COMMAND=log_command_completion
+
+`;
 
     if (!fs.existsSync(bashProfilePath)) {
       // create the file and add these lines
