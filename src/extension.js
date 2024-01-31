@@ -23,7 +23,7 @@ var timeSwitchedToCode = 0;
 var gitActionsPerformed = false;
 var extensionActivated = false;
 // make a regex that match everything between \033]0; and \007
-var very_special_regex = new RegExp("\033]0;(.*)\007", "g");
+var very_special_regex = new RegExp("\\033]0;(.*)\\007", "g");
 
 /**
  * @param {vscode.ExtensionContext} context
@@ -32,7 +32,7 @@ function activate(context) {
 	console.log('Congratulations, your extension "codeHistories" is now active!');
 
 	if(!vscode.workspace.workspaceFolders){
-		message = "Working folder not found, please open a folder first." ;
+		var message = "Working folder not found, please open a folder first." ;
 		vscode.window.showErrorMessage(message);
 		return;
 	}
@@ -520,7 +520,6 @@ function unixLikeTerminalProcess(platform_regex_dir) {
 	// now we want to check if the last command in commands.txt was successful
 	// if it was, then we should add and commit the output.txt
 	// if it wasn't, then we should revert the git add
-
 	let checkThenCommit = false;
 	
 	// go through the commands.txt file and check if the last command contains codehistories
@@ -536,9 +535,6 @@ function unixLikeTerminalProcess(platform_regex_dir) {
 	let timeDiff = currentTime.getTime() - lastCommandTimeObj.getTime();
 	let timeDiffInSec = Math.floor(timeDiff / 1000);
 	console.log('timeDiffInSec: ', timeDiffInSec);
-
-
-
 
 	// use bash as default terminal cmd
 	let returned_regex_dir = new RegExp("\\r" + platform_regex_dir.source, platform_regex_dir.flags);
