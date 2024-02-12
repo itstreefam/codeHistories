@@ -23,7 +23,7 @@ var timeSwitchedToCode = 0;
 var gitActionsPerformed = false;
 var extensionActivated = false;
 // make a regex that match everything between \033]0; and \007
-var very_special_regex = new RegExp("\033]0;(.*)\007", "g");
+var very_special_regex = new RegExp("\\033]0;(.*)\\007", "g");
 
 /**
  * @param {vscode.ExtensionContext} context
@@ -32,13 +32,12 @@ function activate(context) {
 	console.log('Congratulations, your extension "codeHistories" is now active!');
 
 	if(!vscode.workspace.workspaceFolders){
-		message = "Working folder not found, please open a folder first." ;
+		var message = "Working folder not found, please open a folder first." ;
 		vscode.window.showErrorMessage(message);
 		return;
 	}
 
 	// check git init status
-	// simpleGit().clean(simpleGit.CleanOptions.FORCE);
 	var currentDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
 	tracker = new gitTracker(currentDir);
 	tracker.createGitFolders();
@@ -71,7 +70,7 @@ function activate(context) {
 	if(process.platform === 'win32'){
 		// e.g. tri@DESKTOP-XXXXXXX MINGW64 ~/Desktop/test-folder (master)
 		var win_regex_dir = new RegExp(user + "@" + hostname + "(\(.*\))?", "g");
-	
+		
 		// on did write to terminal
 		vscode.window.onDidWriteTerminalData(async event => {
 			if(event.terminal.name !== terminalName) return;

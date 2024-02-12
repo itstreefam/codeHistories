@@ -2,10 +2,6 @@
 
 A VS Code extension that aims to capture the information needed to generate usable code histories (capturing code state and output). This work remains a prototype as the tool is utilizing VS Code Proposed APIs.
 
-## Setup demo
-
-https://user-images.githubusercontent.com/44308446/219846324-bd156916-f2e0-4cd0-92b9-0481ced5a7f5.mp4
-
 ## Requirements
 
 * VS Code Insiders version (https://code.visualstudio.com/insiders/) to use their proposed API
@@ -15,47 +11,39 @@ https://user-images.githubusercontent.com/44308446/219846324-bd156916-f2e0-4cd0-
 
 ## Extension Setup
 
-1.  Clone this repository.
+1.  Download the file ```code-histories-3.0.0.vsix``` from this repository.
+
 2.  Download the Insiders version of VSCode: https://code.visualstudio.com/insiders/
-3.  Open VSCode. You can determine whether you’ve gotten Insiders based on the icon color, which should be jade green for Insiders (rather than blue).
-4.  Open the code histories repository folder in VSCode.
-5.  From the main directory of the code histories repository, run ```npm i``` to install all dependencies.
-6.  Back in VSCode, press f5 (fn + F5 for Mac) to enter debug mode. This will open a new VScode window which has "[Extension Development Host]" in its name. This is where you should set up the code that you want to be tracked.
-7.  Open the repository or folder that you want to work in using VSCode.
-8.  CTRL-SHIFT-P should start the extension (CMD-SHIFT-P for Mac). That will bring up a menu of options. Look for and choose "Code Histories". Note: When this runs, it should automatically create the settings that are needed for the extension. But, if that fails to happen (which would manifest as an error on CTRL-SHIFT-P) you can do the following:
-    -   Open the directory in a file browser
 
-    -   Make .vscode directory
+3.  Open VSCode Insiders. You can determine whether you’ve gotten Insiders based on the icon color, which should be jade green for Insiders (rather than blue).
 
-    -   Within that .vscode directory, make a settings.json file that contains the following information.
+4.  Open your project folder in VSCode Insiders.
 
-        ```
-        {
-            "terminal.integrated.defaultProfile.windows": "Git Bash",
-            "terminal.integrated.defaultProfile.osx": "bash",
-            "terminal.integrated.defaultProfile.linux": "bash",
-            "terminal.integrated.shellIntegration.enabled": false,
-            "python.terminal.activateEnvironment": false
-        }
-        ```
+5.  Go into the Extensions view ![](assets/extensions_icon.jpg), select the ... ellipsis View and More Actions button, and select Install from VSIX. Then find and open the file ```code-histories-3.0.0.vsix```. ![](assets/locating_install_from_vsix.png)
+
+6.  After installing from the vsix, you need to quit and relaunch VS Code Insiders from command line with ```code-insiders . --enable-proposed-api=code-histories.code-histories``` in your project folder.
+
+7.  Press Ctrl + Shift + P (Cmd + Shift + P for Mac) to bring up a menu of options. Look for and choose "Code Histories".
 
 9.  You should see a “Code Histories activated.” message on the bottom right of the screen when it is running.
 
-10. Press on the multi-play button (which says “Code Histories commit” if you hover over it) for the first time to enter a bash terminal with .bash_profile automatically loaded in the terminal session for you; for subsequent "bash" terminal sessions, if you want to use "codehistories" prefix to trigger auto-commit mechanism, you need to run ```source .bash_profile``` first. 
+10. Press on the multi-play button ![](assets/codehistories_run_icon.png) (which says “Code Histories commit” if you hover over it) for the first time to enter a bash terminal with .bash_profile automatically loaded in the terminal session for you; for subsequent "bash" terminal sessions, if you want to use "codehistories" prefix to trigger auto-commit mechanism, you need to run ```source .bash_profile``` first. 
 
 ## Important notes
 
 1. When the extension starts, it will automatically create a custom .bash_profile in your project's folder to make sure that when you run ```codehistories <cmd> [args]```, the bash terminal can understand and capture the execution's output. You need to always run your code with ```codehistories``` as prefix since it is an important keyword for the tool to capture both the output and the code state.
 
-2. In case you don't want to type out full execution command every time, you use Ctrl + Shift + C (or CMD + Shift + C on Mac) to update the command for the subsequent executions. Then you can press the multi-play button to run the updated execution. For e.g. if you want to run a python file, you set the command to ```python main.py```. Note that this command will be updated for all future executions until you change it again.
+2. In case you don't want to type out full execution command every time, you use Ctrl + Shift + C (or CMD + Shift + C on Mac) to update the command for the subsequent executions. Then you can press the multi-play ![](assets/codehistories_run_icon.png) button to run the updated execution. For e.g. if you want to run a python file, you set the command to ```python main.py```. Note that this command will be updated for all future executions until you change it again.
 
-3. Please don’t make changes while the code is running, as these may not be captured correctly. Also, if you feel that a commit was incorrectly triggered, there is the "Undo Code Histories commit" button that looks like a clock with back arrow to the left of the multi-play button so you can undo and go back to the previous commit.
+3. Please don’t make changes while the code is running, as these may not be captured correctly. Also, if you feel that a commit was incorrectly triggered, there is the "Undo Code Histories commit" button ![](assets/undo_commit_icon.png) so you can undo and go back to the previous commit.
 
-4. When starting up codeHistories extension, codeHistories.git will be created and set as default. The intention here is to have a git repo solely for codeHistories commits which would not interfere with the commonly known .git repo (that might contain more meaningful, containing larger changes commits, especially if user starts out with repos cloned online).The user can switch back and forth between .git and codeHistories.git using Ctrl + Shift + G (or CMD + Shift + G on Mac) or searching for Code Histories: Select git repo (from VS Code View tab -> Command Palette.. option).
+4. To enter goals/subgoals or auto quick commit, right click to open context menu. Goals/subgoals will be saved in the file "goals.txt". ![](assets/how_to_enter_goal.gif) 
 
-5. To use git commands that are related to codeHistories.git, you need to add ```--git-dir=codeHistories.git --work-tree=.``` between ```git``` and the command. For e.g. ```git --git-dir=codeHistories.git --work-tree=. log --pretty=oneline``` to view the codeHistories commits. Occasionally checking this would be a good idea since the files color change only corresponds to normal .git repo.
+5. When starting up codeHistories extension, codeHistories.git will be created and set as default. The intention here is to have a git repo solely for codeHistories commits which would not interfere with the commonly known .git repo (that might contain more meaningful, containing larger changes commits, especially if user starts out with repos cloned online).The user can switch back and forth between .git and codeHistories.git using Ctrl + Shift + G (or CMD + Shift + G on Mac) or searching for Code Histories: Select git repo (from VS Code View tab -> Command Palette.. option).![](assets/select_git_repo_to_track.png)
 
-6. For complex web project example, refer to line 381-401 in src/extension.js. In general, for execution run, add ```codehistories``` prefix to the command. For web dev run, no need to really use ```codehistories``` prefix. Instead, make use of tee command to log output continuously while the capturing mechanism happens when user moves away from VS Code to Chrome to (re)load localhost. E.g. ```npm start | while IFS= read -r line; do echo "[$(date '+%m/%d/%Y, %I:%M:%S %p')] $line"; done | tee -a server2.txt```, ```python -u -m http.server 8000 2>&1 | tee >(awk '{ print $0; fflush(); }' >> server2.txt)```
+6. To use git commands that are related to codeHistories.git, you need to add ```--git-dir=codeHistories.git --work-tree=.``` between ```git``` and the command. For e.g. ```git --git-dir=codeHistories.git --work-tree=. log --pretty=oneline``` to view the codeHistories commits. Occasionally checking this would be a good idea since the files color change only corresponds to normal .git repo.
+
+7. For complex web project example, refer to line 376-396 in src/extension.js. In general, for execution run, add ```codehistories``` prefix to the command. For web dev run, no need to really use ```codehistories``` prefix. Instead, make use of tee command to log output continuously while the capturing mechanism happens when user moves away from VS Code to Chrome to (re)load localhost. E.g. ```npm start | while IFS= read -r line; do echo "[$(date '+%m/%d/%Y, %I:%M:%S %p')] $line"; done | tee -a server2.txt```, ```python -u -m http.server 8000 2>&1 | tee >(awk '{ print $0; fflush(); }' >> server2.txt)```
 
 ## Release Notes
 
@@ -81,7 +69,7 @@ Removed the need for code-runner extension. Using ```codehistories``` as a prefi
 
 ### V3.x
 
-Added application switch checking to help with web dev heuristic when user is gone from vs code to visit chrome and if they load localhost to test their program. Added right click option to context menu for user to quickly write down their goals/subgoals for record. Undo commit button is now a standalone button placed to the left of the commit button. ```codehistories```prefix is now combined with tee in Unix-like environment to optimize piping result to output.txt. "Code Histories" terminal is now generic "bash" terminal given that user should run ```source .bash_profile``` to be able to use ```codehistories``` prefix.
+Added application switch checking to help with web dev heuristic when user is gone from vs code to visit chrome and if they load localhost to test their program. Added right click option to context menu for user to quickly write down their goals/subgoals for record. Undo commit button is now a standalone button placed to the left of the commit button. ```codehistories```prefix is now combined with tee in Unix-like environment to optimize piping result to output.txt. "Code Histories" terminal is now generic "bash" terminal given that user should run ```source .bash_profile``` to be able to use ```codehistories``` prefix. Released vsix package for easier installation.
 
 ## Contact
 
