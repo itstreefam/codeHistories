@@ -28,18 +28,6 @@ var very_special_regex = new RegExp("\\033]0;(.*)\\007", "g");
 /**
  * @param {vscode.ExtensionContext} context
  */
-// function activate(context) {
-// 	console.log('Congratulations, your extension "codeHistories" is now active!');
-// 	vscode.window.onDidExecuteTerminalCommand(event => {
-// 		console.log("terminal: ", event.terminal);
-// 		console.log('command: ', event.commandLine);
-// 		console.log('cwd: ', event.cwd);
-// 		console.log('exitCode: ', event.exitCode);
-// 		console.log('output: ', event.output);
-// 	});
-// }
-
-
 function activate(context) {
 	console.log('Congratulations, your extension "codeHistories" is now active!');
 
@@ -238,10 +226,10 @@ function activate(context) {
 		let vscodePath = path.join(workspacePath, ".vscode");
 		let settingsPath = path.join(vscodePath, "settings.json");
 		let settings = JSON.stringify({
-			"terminal.integrated.defaultProfile.windows": "PowerShell",
+			"terminal.integrated.defaultProfile.windows": "Git Bash",
 			"terminal.integrated.defaultProfile.osx": "bash",
 			"terminal.integrated.defaultProfile.linux": "bash",
-			"terminal.integrated.shellIntegration.enabled": true,
+			"terminal.integrated.shellIntegration.enabled": false,
 			"python.terminal.activateEnvironment": false
 		}, null, 4);
 
