@@ -19,7 +19,11 @@ A VS Code extension that aims to capture the information needed to generate usab
 
 4.  Open your project folder in VSCode Insiders.
 
-5.  Go into the Extensions view ![](assets/extensions_icon.jpg), select the ... ellipsis View and More Actions button, and select Install from VSIX. Then find and open the file ```code-histories-3.0.0.vsix```. ![](assets/locating_install_from_vsix.png)
+5.  Go into the Extensions view ![](assets/extensions_icon.jpg), select the ... ellipsis View and More Actions button, and select Install from VSIX. Then find and open the file ```code-histories-3.0.0.vsix```.
+
+<p align="center">
+  <img src="assets/locating_install_from_vsix.png" style='height: 50%; width: 50%; object-fit: contain' alt="Install from vsix"/>
+</p>
 
 6.  After installing from the vsix, you need to quit and relaunch VS Code Insiders from command line with ```code-insiders . --enable-proposed-api=code-histories.code-histories``` in your project folder.
 
@@ -39,9 +43,15 @@ A VS Code extension that aims to capture the information needed to generate usab
 
 4. To enter goals/subgoals or auto quick commit, right click to open context menu. Goals/subgoals will be saved in the file "goals.txt".
 
-![](assets/how_to_enter_goal.gif) 
+<p align="center">
+  <img src="assets/how_to_enter_goal.gif" alt="How to Enter Goal"/>
+</p>
 
-5. When starting up codeHistories extension, codeHistories.git will be created and set as default. The intention here is to have a git repo solely for codeHistories commits which would not interfere with the commonly known .git repo (that might contain more meaningful, containing larger changes commits, especially if user starts out with repos cloned online).The user can switch back and forth between .git and codeHistories.git using Ctrl + Shift + G (or CMD + Shift + G on Mac) or searching for Code Histories: Select git repo (from VS Code View tab -> Command Palette.. option).![](assets/select_git_repo_to_track.png)
+5. When starting up codeHistories extension, codeHistories.git will be created and set as default. The intention here is to have a git repo solely for codeHistories commits which would not interfere with the commonly known .git repo (that might contain more meaningful, containing larger changes commits, especially if user starts out with repos cloned online).The user can switch back and forth between .git and codeHistories.git using Ctrl + Shift + G (or CMD + Shift + G on Mac) or searching for Code Histories: Select git repo (from VS Code View tab -> Command Palette.. option).
+
+<p align="center">
+  <img src="assets/select_git_repo_to_track.png" style='height: 50%; width: 50%; object-fit: contain' alt="Select git repo to track"/>
+</p>
 
 6. To use git commands that are related to codeHistories.git, you need to add ```--git-dir=codeHistories.git --work-tree=.``` between ```git``` and the command. For e.g. ```git --git-dir=codeHistories.git --work-tree=. log --pretty=oneline``` to view the codeHistories commits. Occasionally checking this would be a good idea since the files color change only corresponds to normal .git repo.
 
