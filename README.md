@@ -37,7 +37,8 @@ A VS Code extension that aims to capture the information needed to generate usab
 
 3. Please don’t make changes while the code is running, as these may not be captured correctly. Also, if you feel that a commit was incorrectly triggered, there is the "Undo Code Histories commit" button ![](assets/undo_commit_icon.png) so you can undo and go back to the previous commit.
 
-4. To enter goals/subgoals or auto quick commit, right click to open context menu. Goals/subgoals will be saved in the file "goals.txt". ![](assets/how_to_enter_goal.gif) 
+4. To enter goals/subgoals or auto quick commit, right click to open context menu. Goals/subgoals will be saved in the file "goals.txt".
+![](assets/how_to_enter_goal.gif) 
 
 5. When starting up codeHistories extension, codeHistories.git will be created and set as default. The intention here is to have a git repo solely for codeHistories commits which would not interfere with the commonly known .git repo (that might contain more meaningful, containing larger changes commits, especially if user starts out with repos cloned online).The user can switch back and forth between .git and codeHistories.git using Ctrl + Shift + G (or CMD + Shift + G on Mac) or searching for Code Histories: Select git repo (from VS Code View tab -> Command Palette.. option).![](assets/select_git_repo_to_track.png)
 
