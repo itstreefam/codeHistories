@@ -1,7 +1,9 @@
 {
   "enabledApiProposals": [
     "terminalDataWriteEvent",
-    "terminalDimensions"
+    "terminalDimensions",
+    "terminalExecuteCommandEvent",
+    "terminalSelection"
   ],
   "name": "code-histories",
   "displayName": "Code Histories",
@@ -18,7 +20,9 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./src/extension.js",
   "contributes": {
     "commands": [
