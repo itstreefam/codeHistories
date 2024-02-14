@@ -13,10 +13,10 @@ var iter = 0;
 var eventData = new Object();
 var terminalDimChanged = new Object();
 var terminalOpenedFirstTime = new Object();
-var terminalName = "bash";
+var terminalName = process.platform === 'win32' ? "pwsh" : "bash";
 var allTerminalsData = new Object();
 var allTerminalsDirCount = new Object();
-var cmdPrompt = `source .bash_profile`;
+var cmdPrompt = process.platform === 'win32' ? ". .\\chPowerShellProfile.ps1" : "source .CH_bash_profile";
 var previousAppName = '';
 var timeSwitchedToChrome = 0;
 var timeSwitchedToCode = 0;
@@ -24,6 +24,11 @@ var gitActionsPerformed = false;
 var extensionActivated = false;
 // make a regex that match everything between \033]0; and \007
 var very_special_regex = new RegExp("\\033]0;(.*)\\007", "g");
+var currentDir;
+var user;
+var hostname;
+var terminalList;
+var terminalInstance;
 
 /**
  * @param {vscode.ExtensionContext} context
@@ -32,26 +37,26 @@ function activate(context) {
 	console.log('Congratulations, your extension "codeHistories" is now active!');
 
 	if(!vscode.workspace.workspaceFolders){
-		var message = "Working folder not found, please open a folder first." ;
+		const message = "Working folder not found, please open a folder first." ;
 		vscode.window.showErrorMessage(message);
 		return;
 	}
 
 	// check git init status
-	var currentDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
+	currentDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
 	tracker = new gitTracker(currentDir);
 	tracker.createGitFolders();
 
 	// get user and hostname for regex matching
-	var user = os.userInfo().username;
-	var hostname = os.hostname();
+	user = os.userInfo().username;
+	hostname = os.hostname();
 	if(hostname.indexOf(".") > 0){
 		hostname = hostname.substring(0, hostname.indexOf("."));
 	}
 
 	// check if current terminals have more than one terminal instance where name is terminalName
-	var terminalList = vscode.window.terminals;
-	var terminalInstance = 0;
+	terminalList = vscode.window.terminals;
+	terminalInstance = 0;
 	for(let i = 0; i < terminalList.length; i++){
 		if(terminalList[i].name == terminalName){
 			terminalInstance++;
@@ -68,6 +73,14 @@ function activate(context) {
 	}
 
 	if(process.platform === 'win32'){
+		// vscode.window.onDidExecuteTerminalCommand(event => {
+		// 	console.log("terminal: ", event.terminal);
+		// 	console.log('command: ', event.commandLine);
+		// 	console.log('cwd: ', event.cwd);
+		// 	console.log('exitCode: ', event.exitCode);
+		// 	console.log('output: ', event.output);
+		// });
+
 		// e.g. tri@DESKTOP-XXXXXXX MINGW64 ~/Desktop/test-folder (master)
 		var win_regex_dir = new RegExp(user + "@" + hostname + "(\(.*\))?", "g");
 		
@@ -214,159 +227,16 @@ function activate(context) {
 		unixLikeTerminalProcess(linux_regex_dir);
 	}
 
-	let activateCodeHistories = vscode.commands.registerCommand('codeHistories.codeHistories', function () {
-		vscode.window.showInformationMessage('Code histories activated!');
-
-		// clear data
-		allTerminalsData = new Object();
-		allTerminalsDirCount = new Object();
-
-		// make a folder .vscode in the current workspace
-		let workspacePath = vscode.workspace.workspaceFolders[0].uri.fsPath;
-		let vscodePath = path.join(workspacePath, ".vscode");
-		let settingsPath = path.join(vscodePath, "settings.json");
-		let settings = JSON.stringify({
-			"terminal.integrated.defaultProfile.windows": "Git Bash",
-			"terminal.integrated.defaultProfile.osx": "bash",
-			"terminal.integrated.defaultProfile.linux": "bash",
-			"terminal.integrated.shellIntegration.enabled": false,
-			"python.terminal.activateEnvironment": false
-		}, null, 4);
-
-		if(!fs.existsSync(vscodePath)){
-			fs.mkdirSync(vscodePath);
-			fs.writeFileSync(settingsPath, settings);
-		}
-
-		// make .bash_profile in the current workspace
-		let bashProfilePath = path.join(workspacePath, ".bash_profile");
-		let bashProfileContent = `
-codehistories() {
-	if [ "$#" -eq 0 ]; then
-		echo "Usage: codehistories <command> [args]"
-		return
-	fi
-	cmd="$*"
-	
-	# Get current date and time in the format [M/D/YYYY, HH:MM:SS AM/PM]
-	timestamp=$(date +"[%-m/%-d/%Y, %I:%M:%S %p]")
-	
-	# Print a newline and the timestamp to output.txt
-	echo -e "\nExecution Time: $timestamp" | tee -a output.txt
-	
-	# Execute the command and append the output
-	eval "$cmd" 2>&1 | tee -a output.txt
-}`;
-
-		if(!fs.existsSync(bashProfilePath)){
-			fs.writeFileSync(bashProfilePath, bashProfileContent);
-		}
-
-		// Store a flag in the extension context to indicate activation
-		extensionActivated = true;
-	});
-
-	let executeCode = vscode.commands.registerCommand('codeHistories.checkAndCommit', function () {
-		if(!extensionActivated){
-			vscode.window.showErrorMessage('Code histories not activated. Ctrl(or Cmd)+Shift+P -> Code Histories');
-		} else {
-			// save all files
-			vscode.commands.executeCommand("workbench.action.files.saveAll").then(() => {
-				// add all files to git
-				tracker.gitAdd();
-
-				if(terminalName == "bash"){
-					// get all existing terminal instances
-					var terminals = vscode.window.terminals;
-
-					// check if there are any existing terminals with the desired name
-					var existingTerminal = terminals.find(t => t.name === "bash");
-
-					// create a new terminal instance only if there are no existing terminals with the desired name
-					if (!existingTerminal) {
-						// create a new terminal instance with name terminalName
-						var codeHistoriesTerminal = new Terminal(terminalName, currentDir);
-						codeHistoriesTerminal.checkBashProfilePath();
-						codeHistoriesTerminal.show();
-						codeHistoriesTerminal.sendText(`source .bash_profile`);
-					} else {
-						existingTerminal.show();
-						existingTerminal.sendText(cmdPrompt);
-					}
-				}
-
-				checkThenCommit = true;
-			});
-		}
-	});
-
-	let selectGitRepo = vscode.commands.registerCommand('codeHistories.selectGitRepo', function () {
-		if(!extensionActivated){
-			vscode.window.showErrorMessage('Code histories not activated. Ctrl(or Cmd)+Shift+P -> Code Histories');
-		} else {
-			tracker.presentGitRepos();
-		}
-	});
-
-	let setNewCmd = vscode.commands.registerCommand('codeHistories.setNewCmd', function () {
-		if(!extensionActivated){
-			vscode.window.showErrorMessage('Code histories not activated. Ctrl(or Cmd)+Shift+P -> Code Histories');
-		} else {
-			vscode.window.showInputBox({
-				prompt: "Enter the new command",
-				placeHolder: "<command> [args]"
-			}).then(newCmd => {
-				if(newCmd){
-					cmdPrompt = "codehistories " + newCmd;
-				}
-			});
-		}
-	});
-
-	let undoCommit = vscode.commands.registerCommand('codeHistories.undoCommit', function () {
-		if (!extensionActivated) {
-			vscode.window.showErrorMessage('Code histories not activated. Ctrl(or Cmd)+Shift+P -> Code Histories');
-		} else {
-			if(!tracker){
-				vscode.window.showErrorMessage('Code histories not activated. Ctrl(or Cmd)+Shift+P -> Code Histories');
-			} else {
-				tracker.undoCommit();
-			}
-		}
-	});
-
-	let enterGoal = vscode.commands.registerCommand('codeHistories.enterGoal', async () => {
-		const goal = await vscode.window.showInputBox({
-						placeHolder: 'Enter your goal or subgoal',
-						prompt: 'Please enter the text for your goal or subgoal',
-					});
-		
-		if(goal){
-			// Write the goal to a file
-			let timestamp = new Date().toLocaleString();
-			// check if the file exists
-			if (fs.existsSync(path.join(currentDir, 'goals.txt'))) {
-				// if it exists, append to it
-				fs.appendFileSync(path.join(currentDir, 'goals.txt'), '\n' + timestamp + '\n' + goal + '\n');
-			} else {
-				// if it doesn't exist, create it
-				fs.writeFileSync(path.join(currentDir, 'goals.txt'), timestamp + '\n' + goal + '\n');
-			}
-		}
-	});
-
-	let quickAutoCommit = vscode.commands.registerCommand('codeHistories.quickAutoCommit', async () => {
-		if (!extensionActivated) {
-			vscode.window.showErrorMessage('Code histories not activated. Ctrl(or Cmd)+Shift+P -> Code Histories');
-		} else {
-			await tracker.gitAdd();
-			await tracker.checkWebData();
-			await tracker.gitCommit();	
-		}
-	});
+	let activateCodeHistories = vscode.commands.registerCommand('codeHistories.codeHistories', activateCodeHistoriesHelper);
+	let executeCheckAndCommit = vscode.commands.registerCommand('codeHistories.checkAndCommit', executeCheckAndCommitHelper);
+	let selectGitRepo = vscode.commands.registerCommand('codeHistories.selectGitRepo', selectGitRepoHelper);
+	let setNewCmd = vscode.commands.registerCommand('codeHistories.setNewCmd', setNewCmdHelper);
+	let undoCommit = vscode.commands.registerCommand('codeHistories.undoCommit', undoCommitHelper);
+	let enterGoal = vscode.commands.registerCommand('codeHistories.enterGoal', enterGoalHelper);
+	let quickAutoCommit = vscode.commands.registerCommand('codeHistories.quickAutoCommit', quickAutoCommitHelper);
 
 	context.subscriptions.push(activateCodeHistories);
-	context.subscriptions.push(executeCode);
+	context.subscriptions.push(executeCheckAndCommit);
 	context.subscriptions.push(selectGitRepo);
 	context.subscriptions.push(setNewCmd);
 	context.subscriptions.push(undoCommit);
@@ -460,7 +330,7 @@ codehistories() {
 			// console.log('webDataArrayFiltered: ', webDataArrayFiltered);
 			if(webDataArrayFiltered.length > 0){
 				// check if webDataArrayFiltered contains a visit to localhost or 127.0.0.1
-				let webDataArrayFilteredContainsLocalhost = webDataArrayFiltered.filter(obj => obj.curUrl.includes('localhost') || obj.curUrl.includes('127.0.0.1'));
+				let webDataArrayFilteredContainsLocalhost = webDataArrayFiltered.filter(obj => obj.curUrl.includes('localhost') || containsIPAddresses(obj.curUrl));
 				
 				if(webDataArrayFilteredContainsLocalhost.length > 0){
 					await tracker.gitAdd();
@@ -477,6 +347,200 @@ codehistories() {
 
 	// Start the first interval
 	intervalId = setTimeout(checkAppSwitch, 500);
+}
+
+/* Activate the extension */
+async function activateCodeHistoriesHelper() {
+	vscode.window.showInformationMessage('Code histories activated!');
+	await createVsCodeSettings(currentDir);
+	await createProfileScripts(currentDir);
+	extensionActivated = true;
+}
+
+async function createVsCodeSettings(currentDir) {
+    const vscodePath = path.join(currentDir, ".vscode");
+    const settingsPath = path.join(vscodePath, "settings.json");
+    const settings = JSON.stringify({
+        "terminal.integrated.defaultProfile.windows": "PowerShell",
+        "terminal.integrated.defaultProfile.osx": "bash",
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "terminal.integrated.shellIntegration.enabled": true,
+        "python.terminal.activateEnvironment": false
+    }, null, 4);
+
+    try {
+        if (!fs.existsSync(vscodePath)) {
+            fs.mkdirSync(vscodePath);
+        }
+        fs.writeFileSync(settingsPath, settings);
+    } catch (error) {
+        vscode.window.showErrorMessage(`Error creating VSCode settings: ${error}`);
+    }
+}
+
+async function createProfileScripts(currentDir) {
+    const bashProfilePath = path.join(currentDir, ".CH_bash_profile");
+    const powershellProfilePath = path.join(currentDir, "CH_PowerShell_profile.ps1");
+    
+    const bashProfileContent = `
+codehistories() {
+	if [ "$#" -eq 0 ]; then
+		echo "Usage: codehistories <command> [args]"
+		return
+	fi
+	cmd="$*"
+	
+	# Get current date and time in the format [M/D/YYYY, HH:MM:SS AM/PM]
+	timestamp=$(date +"[%-m/%-d/%Y, %I:%M:%S %p]")
+	
+	# Print a newline and the timestamp to output.txt
+	echo -e "\nExecution Time: $timestamp" | tee -a output.txt
+	
+	# Execute the command and append the output
+	eval "$cmd" 2>&1 | tee -a output.txt
+}`;
+
+    const powershellProfileContent = `
+function codehistories {
+	param(
+		[Parameter(Position = 0, Mandatory = $false, ValueFromRemainingArguments = $true)]
+		[string[]]$CommandArgs
+	)
+	
+	# Check if any command arguments are provided
+	if ($CommandArgs.Count -eq 0) {
+		Write-Host "Usage: codehistories <command> [args]"
+	} else {
+		# Join the command arguments into a single command string
+		$cmd = $CommandArgs -join ' '
+	
+		# Get current date and time in the format [M/D/YYYY, HH:MM:SS AM/PM]
+		$timestamp = Get-Date -Format "[M/d/yyyy, hh:mm:ss tt]"
+	
+		# Log the execution time and
+		Write-Host "Execution Time: $timestamp"
+	
+		# Execute the command
+		try {
+			Invoke-Expression $cmd
+		} catch {
+			Write-Error "An error occurred executing the command: $_"
+		}
+	}
+}`;
+
+    // Create platform-specific profiles
+    if (process.platform === 'win32') {
+        writeProfileScript(powershellProfilePath, powershellProfileContent);
+    } else if (process.platform === 'darwin' || process.platform === 'linux') {
+        writeProfileScript(bashProfilePath, bashProfileContent);
+    }
+}
+
+function writeProfileScript(profilePath, content) {
+    if (!fs.existsSync(profilePath)) {
+        try {
+            fs.writeFileSync(profilePath, content);
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to create profile script: ${error}`);
+        }
+    }
+}
+/* End of Activate the extension */
+
+/* Execute the check and commit command */
+async function executeCheckAndCommitHelper() {
+	let isExtensionActivated = await checkExtensionActivation();
+	if(!isExtensionActivated) return;
+	await vscode.commands.executeCommand("workbench.action.files.saveAll");
+	await tracker.gitAdd();
+	await handleTerminal(terminalName, currentDir);
+	checkThenCommit = true;
+}
+
+async function handleTerminal(name, workspacePath) {
+    const terminal = await findOrCreateTerminal(name, workspacePath);
+    if (terminal) {
+        terminal.show();
+        terminal.sendText(cmdPrompt);
+    }
+}
+
+async function findOrCreateTerminal(name, workspacePath) {
+    const existingTerminal = vscode.window.terminals.find(t => t.name === name);
+    if (!existingTerminal) {
+		const codeHistoriesTerminal = new Terminal(name);
+        if (name === "bash") {
+            codeHistoriesTerminal.checkBashProfilePath(workspacePath);
+        }
+		if (name === "pwsh") {
+			codeHistoriesTerminal.checkPowerShellProfilePath(workspacePath);
+		}
+		return codeHistoriesTerminal;
+    }
+    return existingTerminal;
+}
+/* End of Execute the check and commit command */
+
+async function selectGitRepoHelper() {
+	let isExtensionActivated = await checkExtensionActivation();
+	if(!isExtensionActivated) return;
+	tracker.presentGitRepos();
+}
+
+async function setNewCmdHelper() {
+	let isExtensionActivated = await checkExtensionActivation();
+	if(!isExtensionActivated) return;
+
+	let newCmd = await vscode.window.showInputBox({
+		prompt: "Enter the new command",
+		placeHolder: "<command> [args]"
+	});
+	if(newCmd) cmdPrompt = `codehistories ${newCmd}`;
+}
+
+async function undoCommitHelper() {
+	let isExtensionActivated = await checkExtensionActivation();
+	if(!isExtensionActivated) return;
+	await tracker.undoCommit();
+}
+
+async function enterGoalHelper() {
+	let isExtensionActivated = await checkExtensionActivation();
+	if(!isExtensionActivated) return;
+	const goal = await vscode.window.showInputBox({
+					placeHolder: 'Enter your goal or subgoal',
+					prompt: 'Please enter the text for your goal or subgoal',
+				});
+	
+	if(goal){
+		// Write the goal to a file
+		let timestamp = new Date().toLocaleString();
+		// check if the file exists
+		if (fs.existsSync(path.join(currentDir, 'CH_Goals'))) {
+			// if it exists, append to it
+			fs.appendFileSync(path.join(currentDir, 'CH_Goals'), '\n' + timestamp + '\n' + goal + '\n');
+		} else {
+			// if it doesn't exist, create it
+			fs.writeFileSync(path.join(currentDir, 'CH_Goals'), timestamp + '\n' + goal + '\n');
+		}
+	}
+}
+
+async function quickAutoCommitHelper() {
+	let isExtensionActivated = await checkExtensionActivation();
+	if(!isExtensionActivated) return;
+	await tracker.gitAdd();
+	await tracker.checkWebData();
+	await tracker.gitCommit();
+}
+
+async function checkExtensionActivation() {
+	if(!extensionActivated){
+		vscode.window.showErrorMessage('Code histories not activated. Ctrl(or Cmd)+Shift+P -> Code Histories');
+		return false;
+	}
+	return true;
 }
 
 function unixLikeTerminalProcess(platform_regex_dir) {
@@ -599,6 +663,15 @@ function unixLikeTerminalProcess(platform_regex_dir) {
 			});
 		}
 	});
+}
+
+function containsIPAddresses(url) {
+	// Define regex patterns for matching IPv4 and IPv6 addresses
+	const ipv4Pattern = /\b(?:\d{1,3}\.){3}\d{1,3}\b/;
+	const ipv6Pattern = /\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b/;
+
+	// Use the regex `test` method to check if the URL contains an IPv4 or IPv6 address
+	return ipv4Pattern.test(url) || ipv6Pattern.test(url);
 }
 
 function removeBackspaces(str) {

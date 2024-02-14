@@ -20,7 +20,7 @@ module.exports = class gitTracker {
         const gitignorePath = `${this._currentDir}/.gitignore`;
         try {
             let data = await fs.promises.readFile(gitignorePath, 'utf8').catch(() => '');
-            const itemsToAdd = ['codeHistories.git', '.vscode', 'venv', 'node_modules', '.bash_profile', 'screencaptures'];
+            const itemsToAdd = ['codeHistories.git', '.vscode', 'venv', 'node_modules', '.CH_bash_profile', 'CH_PowerShell_profile.ps1', 'screencaptures'];
             for(const item of itemsToAdd){
                 if(!data.includes(item)){
                     await fs.promises.appendFile(gitignorePath, `${item}\n`);

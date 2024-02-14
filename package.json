@@ -49,10 +49,6 @@
         "title": "Code Histories: Set new command"
       },
       {
-        "command": "codeHistories.rationaleInfo",
-        "title": "Code Histories: Request rationale info"
-      },
-      {
         "command": "codeHistories.enterGoal",
         "title": "Code Histories: Enter goal/subgoal"
       },

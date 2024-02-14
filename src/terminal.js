@@ -7,9 +7,9 @@ class Terminal {
   constructor(name, cwd) {
     this.name = name;
     this.cwd = cwd;
-
-    let gitBashPath = 'C:\\Program Files\\Git\\bin\\bash.exe';
-    this.terminalShellPath = os.platform() === 'win32' ? gitBashPath : '/bin/bash';
+    // if system is windows, use powershell
+    // if system is mac or linux, use bash
+    this.terminalShellPath = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
 
     this.terminal = vscode.window.createTerminal({
       name: this.name,
@@ -43,8 +43,8 @@ class Terminal {
     return promptCommand;
   }
 
-  checkBashProfilePath(){
-    const bashProfilePath = `${this.cwd}/.bash_profile`;
+  checkBashProfilePath(cwd){
+    const bashProfilePath = `${cwd}/.CH_bash_profile`;
     const content = `
 codehistories() {
   if [ "$#" -eq 0 ]; then
@@ -73,6 +73,51 @@ codehistories() {
       if (!fileContent.includes('codehistories()')) {
         fs.appendFileSync(bashProfilePath, content);
         console.log('Added codehistories to .bash_profile.');
+      }
+    }
+  }
+
+  checkPowerShellProfilePath(cwd){
+    const powerShellProfilePath = `${cwd}/.CH_profile.ps1`;
+    const content = `
+function codehistories {
+  param(
+    [Parameter(Position = 0, Mandatory = $false, ValueFromRemainingArguments = $true)]
+    [string[]]$CommandArgs
+  )
+
+  # Check if any command arguments are provided
+  if ($CommandArgs.Count -eq 0) {
+    Write-Host "Usage: codehistories <command> [args]"
+  } else {
+    # Join the command arguments into a single command string
+    $cmd = $CommandArgs -join ' '
+
+    # Get current date and time in the format [M/D/YYYY, HH:MM:SS AM/PM]
+    $timestamp = Get-Date -Format "[M/d/yyyy, hh:mm:ss tt]"
+
+    # Log the execution time and
+    Write-Host "Execution Time: $timestamp"
+
+    # Execute the command
+    try {
+      Invoke-Expression $cmd
+    } catch {
+      Write-Error "An error occurred executing the command: $_"
+    }
+  }
+}`;
+
+    if (!fs.existsSync(powerShellProfilePath)) {
+      // create the file and add these lines
+      fs.writeFileSync(powerShellProfilePath, content);
+      console.log('Created .CH_profile.ps1 and added codehistories.');
+    } else {
+      // check if the lines are already there
+      const fileContent = fs.readFileSync(powerShellProfilePath, 'utf8');
+      if (!fileContent.includes('codehistories')) {
+        fs.appendFileSync(powerShellProfilePath, content);
+        console.log('Added codehistories to .CH_profile.ps1.');
       }
     }
   }
