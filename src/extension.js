@@ -75,51 +75,7 @@ function activate(context) {
 	if(process.platform === 'win32'){
 		vscode.window.onDidExecuteTerminalCommand(async event => {
 			if(event.terminal.name !== "pwsh") return;
-
-			try{
-				// time in unix timestamp
-				let time = Math.floor(Date.now() / 1000);
-				let command = event.commandLine;
-				let cwd = event.cwd;
-				let exitCode = event.exitCode;
-				let output = event.output;
-
-				// trim user from command, cwd, and output
-				if(user && command && command.includes(user)) command = command.replace(user, 'user');
-				if(user && cwd && cwd.includes(user)) cwd = cwd.replace(user, 'user');
-				if(user && output && output.includes(user)) output = output.replace(user, 'user');
-				
-				let executionInfo = {
-					command: command,
-					cwd: cwd,
-					exitCode: exitCode,
-					output: output,
-					time: time
-				};
-
-				// Log the execution info to JSON file
-				const jsonString = JSON.stringify(executionInfo) + '\n'; // Convert to JSON string and add newline
-				const outputPath = path.join(currentDir, 'CH_output');
-				await fs.promises.appendFile(outputPath, jsonString);
-
-				await tracker.gitAdd();
-				
-				// if command contains more than "codehistories" then we should commit
-				if(command.includes("codehistories") && command.split("codehistories")[1].length > 0){
-					// Write to output to output.txt
-					const outputTxtFilePath = path.join(currentDir, 'output.txt');
-					await fs.promises.appendFile(outputFilePath, `${output}\n`);
-					await tracker.gitAddOutput();
-					await tracker.checkWebData();
-					await tracker.gitCommit();
-				} else {
-					await tracker.gitReset();
-				}
-			} catch(error){
-				console.log("Error occurred:", error);
-				await tracker.gitReset();
-				await vscode.window.showInformationMessage('Error committing to git. Please wait a few seconds and try again.');
-			}
+			await onDidExecuteTerminalCommandHelper(event);
 		});
 
 		// e.g. tri@DESKTOP-XXXXXXX MINGW64 ~/Desktop/test-folder (master)
@@ -265,7 +221,10 @@ function activate(context) {
 	if(process.platform === 'linux'){
 		// linux defaut bash e.g. tri@tri-VirtualBox:~/Desktop/test$
 		var linux_regex_dir = new RegExp("(\(.*\))?" + user + "@" + hostname + ".*\\${1}", "g");
-		unixLikeTerminalProcess(linux_regex_dir);
+		// unixLikeTerminalProcess(linux_regex_dir);
+		vscode.window.onDidExecuteTerminalCommand(async event => {
+			await onDidExecuteTerminalCommandHelper(event);
+		});
 	}
 
 	let activateCodeHistories = vscode.commands.registerCommand('codeHistories.codeHistories', activateCodeHistoriesHelper);
@@ -390,6 +349,70 @@ function activate(context) {
 	intervalId = setTimeout(checkAppSwitch, 500);
 }
 
+async function onDidExecuteTerminalCommandHelper(event) {
+	try {
+		let time = Math.floor(Date.now() / 1000);
+		let command = event.commandLine;
+		let cwd = event.cwd;
+		let exitCode = event.exitCode;
+		let output = event.output;
+
+		if (user && hostname) {
+			// Define regular expressions with word boundaries
+			let userRegex = new RegExp("\\b" + user + "\\b", "g");
+			let hostnameRegex = new RegExp("\\b" + hostname + "\\b", "g");
+
+			// trim user and hostname from command, cwd, and output
+			if (command) {
+				command = command.replace(hostnameRegex, 'hostname');
+				command = command.replace(userRegex, 'user');
+			}
+			if (cwd) {
+				cwd = cwd.replace(hostnameRegex, 'hostname');
+				cwd = cwd.replace(userRegex, 'user');
+			}
+			if (output) {
+				output = output.replace(hostnameRegex, 'hostname');
+				output = output.replace(userRegex, 'user');
+			}
+		}
+
+		let executionInfo = {
+			command: command,
+			cwd: cwd,
+			exitCode: exitCode,
+			output: output,
+			time: time
+		};
+
+		// Log the execution info to JSON file
+		const jsonString = JSON.stringify(executionInfo) + '\n'; // Convert to JSON string and add newline
+		const outputPath = path.join(currentDir, 'CH_output');
+		await fs.promises.appendFile(outputPath, jsonString);
+
+		await tracker.gitAdd();
+
+		// if command contains more than "codehistories" then we should commit
+		if (command.includes("codehistories") && command.split("codehistories")[1].length > 0) {
+			if(event.terminal.name === "pwsh"){
+				// Write to output to output.txt only for windows since powershell couldn't redirect output well
+				// The setup bash profile redirects solid output, we don't need to do it again
+				const outputTxtFilePath = path.join(currentDir, 'output.txt');
+				await fs.promises.appendFile(outputTxtFilePath, `${output}\n`);
+			}
+			await tracker.gitAddOutput();
+			await tracker.checkWebData();
+			await tracker.gitCommit();
+		} else {
+			await tracker.gitReset();
+		}
+	} catch (error) {
+		console.log("Error occurred:", error);
+		await tracker.gitReset();
+		await vscode.window.showInformationMessage('Error committing to git. Please wait a few seconds and try again.');
+	}
+}
+
 /* Activate the extension */
 async function activateCodeHistoriesHelper() {
 	vscode.window.showInformationMessage('Code histories activated!');
@@ -413,7 +436,32 @@ async function createVsCodeSettings(currentDir) {
         if (!fs.existsSync(vscodePath)) {
             fs.mkdirSync(vscodePath);
         }
-        fs.writeFileSync(settingsPath, settings);
+
+        // Read existing settings file
+        let existingSettings = {};
+        if (fs.existsSync(settingsPath)) {
+            try {
+                const data = fs.readFileSync(settingsPath, 'utf8');
+                existingSettings = JSON.parse(data);
+            } catch (error) {
+                console.error("Error parsing existing settings:", error);
+            }
+        }
+
+        // Merge new settings with existing settings
+        let combinedSettings = { ...existingSettings, ...JSON.parse(settings) };
+
+        // Remove any duplicate keys
+        let uniqueSettings = {};
+        for (let key in combinedSettings) {
+            if (!uniqueSettings.hasOwnProperty(key)) {
+                uniqueSettings[key] = combinedSettings[key];
+            }
+        }
+
+        // Write the settings
+        fs.writeFileSync(settingsPath, JSON.stringify(uniqueSettings, null, 4));
+
     } catch (error) {
         vscode.window.showErrorMessage(`Error creating VSCode settings: ${error}`);
     }
@@ -468,12 +516,8 @@ function codehistories {
 		}
 	}
 }`;
-    if (process.platform === 'win32') {
-        writeProfileScript(powershellProfilePath, powershellProfileContent);
-		writeProfileScript(bashProfilePath, bashProfileContent); // flexible for bash users
-    } else if (process.platform === 'darwin' || process.platform === 'linux') {
-        writeProfileScript(bashProfilePath, bashProfileContent);
-    }
+    writeProfileScript(powershellProfilePath, powershellProfileContent); // all platforms can use powershell
+	writeProfileScript(bashProfilePath, bashProfileContent); // flexible for window users who want to use bash
 }
 
 function writeProfileScript(profilePath, content) {
