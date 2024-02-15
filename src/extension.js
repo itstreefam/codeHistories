@@ -73,20 +73,61 @@ function activate(context) {
 	}
 
 	if(process.platform === 'win32'){
-		// vscode.window.onDidExecuteTerminalCommand(event => {
-		// 	console.log("terminal: ", event.terminal);
-		// 	console.log('command: ', event.commandLine);
-		// 	console.log('cwd: ', event.cwd);
-		// 	console.log('exitCode: ', event.exitCode);
-		// 	console.log('output: ', event.output);
-		// });
+		vscode.window.onDidExecuteTerminalCommand(async event => {
+			if(event.terminal.name !== "pwsh") return;
+
+			try{
+				// time in unix timestamp
+				let time = Math.floor(Date.now() / 1000);
+				let command = event.commandLine;
+				let cwd = event.cwd;
+				let exitCode = event.exitCode;
+				let output = event.output;
+
+				// trim user from command, cwd, and output
+				if(user && command && command.includes(user)) command = command.replace(user, 'user');
+				if(user && cwd && cwd.includes(user)) cwd = cwd.replace(user, 'user');
+				if(user && output && output.includes(user)) output = output.replace(user, 'user');
+				
+				let executionInfo = {
+					command: command,
+					cwd: cwd,
+					exitCode: exitCode,
+					output: output,
+					time: time
+				};
+
+				// Log the execution info to JSON file
+				const jsonString = JSON.stringify(executionInfo) + '\n'; // Convert to JSON string and add newline
+				const outputPath = path.join(currentDir, 'CH_output');
+				await fs.promises.appendFile(outputPath, jsonString);
+
+				await tracker.gitAdd();
+				
+				// if command contains more than "codehistories" then we should commit
+				if(command.includes("codehistories") && command.split("codehistories")[1].length > 0){
+					// Write to output to output.txt
+					const outputTxtFilePath = path.join(currentDir, 'output.txt');
+					await fs.promises.appendFile(outputFilePath, `${output}\n`);
+					await tracker.gitAddOutput();
+					await tracker.checkWebData();
+					await tracker.gitCommit();
+				} else {
+					await tracker.gitReset();
+				}
+			} catch(error){
+				console.log("Error occurred:", error);
+				await tracker.gitReset();
+				await vscode.window.showInformationMessage('Error committing to git. Please wait a few seconds and try again.');
+			}
+		});
 
 		// e.g. tri@DESKTOP-XXXXXXX MINGW64 ~/Desktop/test-folder (master)
 		var win_regex_dir = new RegExp(user + "@" + hostname + "(\(.*\))?", "g");
 		
 		// on did write to terminal
 		vscode.window.onDidWriteTerminalData(async event => {
-			if(event.terminal.name !== terminalName) return;
+			if(event.terminal.name !== "bash") return;
 
 			const pid = await event.terminal.processId;
 
@@ -177,7 +218,7 @@ function activate(context) {
 
 		// on did open terminal
 		vscode.window.onDidOpenTerminal(event => {
-			if(event.name == terminalName){
+			if(event.name == "bash"){
 				event.processId.then(pid => {
 					allTerminalsData[pid] = "";
 					allTerminalsDirCount[pid] = 0;
@@ -189,7 +230,7 @@ function activate(context) {
 
 		// on did close terminal
 		vscode.window.onDidCloseTerminal(event => {
-			if(event.name == terminalName){
+			if(event.name == "bash"){
 				event.processId.then(pid => {
 					delete allTerminalsData[pid];
 					delete allTerminalsDirCount[pid];
@@ -201,7 +242,7 @@ function activate(context) {
 
 		// on did change terminal size
 		vscode.window.onDidChangeTerminalDimensions(event => {
-			if(event.terminal.name == terminalName){
+			if(event.terminal.name == "bash"){
 				event.terminal.processId.then(pid => {
 					if(terminalOpenedFirstTime[pid]){
 						terminalDimChanged[pid] = false;
@@ -381,7 +422,6 @@ async function createVsCodeSettings(currentDir) {
 async function createProfileScripts(currentDir) {
     const bashProfilePath = path.join(currentDir, ".CH_bash_profile");
     const powershellProfilePath = path.join(currentDir, "CH_PowerShell_profile.ps1");
-    
     const bashProfileContent = `
 codehistories() {
 	if [ "$#" -eq 0 ]; then
@@ -428,10 +468,9 @@ function codehistories {
 		}
 	}
 }`;
-
-    // Create platform-specific profiles
     if (process.platform === 'win32') {
         writeProfileScript(powershellProfilePath, powershellProfileContent);
+		writeProfileScript(bashProfilePath, bashProfileContent); // flexible for bash users
     } else if (process.platform === 'darwin' || process.platform === 'linux') {
         writeProfileScript(bashProfilePath, bashProfileContent);
     }

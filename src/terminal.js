@@ -78,7 +78,7 @@ codehistories() {
   }
 
   checkPowerShellProfilePath(cwd){
-    const powerShellProfilePath = `${cwd}/.CH_profile.ps1`;
+    const powerShellProfilePath = `${cwd}/CH_PowerShell_profile.ps1`;
     const content = `
 function codehistories {
   param(
@@ -111,13 +111,13 @@ function codehistories {
     if (!fs.existsSync(powerShellProfilePath)) {
       // create the file and add these lines
       fs.writeFileSync(powerShellProfilePath, content);
-      console.log('Created .CH_profile.ps1 and added codehistories.');
+      console.log('Created CH_PowerShell_profile.ps1 and added codehistories.');
     } else {
       // check if the lines are already there
       const fileContent = fs.readFileSync(powerShellProfilePath, 'utf8');
       if (!fileContent.includes('codehistories')) {
         fs.appendFileSync(powerShellProfilePath, content);
-        console.log('Added codehistories to .CH_profile.ps1.');
+        console.log('Added codehistories to CH_PowerShell_profile.ps1.');
       }
     }
   }
