@@ -24,6 +24,12 @@ var gitActionsPerformed = false;
 var extensionActivated = false;
 // make a regex that match everything between \033]0; and \007
 var very_special_regex = new RegExp("\\033]0;(.*)\\007", "g");
+let previousDocument = null;
+let navigationHistory = [];
+var user;
+var hostname;
+var currentDir;
+const debounceTimers = new Map(); // For debouncing per document
 
 /**
  * @param {vscode.ExtensionContext} context
@@ -37,14 +43,26 @@ function activate(context) {
 		return;
 	}
 
+	// Listen for changes in the visible ranges of any text editor
+	context.subscriptions.push(vscode.window.onDidChangeTextEditorVisibleRanges(event => {
+        // Generate a unique key for the editor, e.g., using its document URI
+        const key = event.textEditor.document.uri.fsPath;
+        // Apply debouncing per editor
+        const debouncedHandleVisibleRangeChange = debounce(handleVisibleRangeChange, 500, key);
+        debouncedHandleVisibleRangeChange(event.textEditor); // Pass the editor instance directly
+    }));
+
+    // Listen for document changes to track navigation between documents
+    context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(handleActiveTextEditorChange));
+
 	// check git init status
-	var currentDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
+	currentDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
 	tracker = new gitTracker(currentDir);
 	tracker.createGitFolders();
 
 	// get user and hostname for regex matching
-	var user = os.userInfo().username;
-	var hostname = os.hostname();
+	user = os.userInfo().username;
+	hostname = os.hostname();
 	if(hostname.indexOf(".") > 0){
 		hostname = hostname.substring(0, hostname.indexOf("."));
 	}
@@ -610,6 +628,111 @@ function removeBackspaces(str) {
 	return str;
 }
 
+// Debounce function improved to handle debouncing per unique key (document URI)
+function debounce(func, wait, key) {
+    return function(...args) {
+        if (!debounceTimers.has(key)) {
+            debounceTimers.set(key, null);
+        }
+        clearTimeout(debounceTimers.get(key));
+        debounceTimers.set(key, setTimeout(() => {
+            func.apply(this, args);
+        }, wait));
+    };
+}
+
+function handleVisibleRangeChange(editor) {
+	if (!editor) return;
+
+    const document = editor.document;
+    const visibleRangesInfo = editor.visibleRanges.map(range => {
+        // Extract the first and last line of the range
+        const firstLine = document.lineAt(range.start.line).text;
+        const lastLine = document.lineAt(range.end.line).text;
+		let documentPath = document.uri.fsPath;
+
+		// trim the user and hostname from the document
+		if(user && hostname){
+			let userRegex = new RegExp("\\b" + user + "\\b", "g");
+			let hostnameRegex = new RegExp("\\b" + hostname + "\\b", "g");
+			documentPath = document.uri.fsPath.replace(userRegex, "user").replace(hostnameRegex, "hostname");
+		}
+		const entry = {
+			firstLine: firstLine,
+			lastLine: lastLine,
+			range: [range.start.line+1, range.end.line+1],
+			document: documentPath,
+			timestamp: new Date().toISOString(),
+		}
+
+		// Optionally, append the entry to a file
+		appendNavigationEntryToFile(entry, editor);
+
+		return entry;
+	});
+
+    // Store each visible range change in navigation history
+    navigationHistory.push(...visibleRangesInfo);
+    console.log('Navigation History Updated:', navigationHistory);
+}
+
+function updateVisibleEditors() {
+    vscode.window.visibleTextEditors.forEach(editor => {
+        // Directly call handleVisibleRangeChange for each visible editor
+        // Note: No need to debounce here as this is called from a debounced context or controlled events
+        handleVisibleRangeChange(editor);
+    });
+}
+
+
+function handleActiveTextEditorChange(editor) {
+	// This checks for actual editor changes, including document switches and split view adjustments
+    if (editor) {
+        const currentDocument = editor.document.uri.fsPath;
+        if (previousDocument && currentDocument !== previousDocument) {
+			// Store the navigation history entry for the document switch
+			let entry = {
+				document: currentDocument,
+				prevDocument: previousDocument,
+				timestamp: new Date().toISOString(),
+				transition: true, // Indicates this record is about transitioning between documents
+			};
+
+			// Store the entry in the navigation history
+			navigationHistory.push(entry);
+
+			// Optionally, append the entry to a file
+			appendNavigationEntryToFile(entry, editor);
+
+			console.log('Navigation History Updated:', navigationHistory);
+        }
+        previousDocument = currentDocument; // Update for future comparisons
+    }
+	updateVisibleEditors();
+}
+
+function appendNavigationEntryToFile(entry, editor) {
+    const filePath = path.join(currentDir, 'CH_navigationHistory');
+	const currentDocumentPath = editor.document.uri.fsPath;
+
+	// Skip appending if the current document is the navigation history file
+    if (currentDocumentPath === filePath) {
+        return;
+    }
+
+    // Append the entry to the NDJSON file
+	const ndjsonString = JSON.stringify(entry) + '\n';
+    fs.appendFile(filePath, ndjsonString, (err) => {
+        if (err) {
+            console.error('Error appending navigation entry to file:', err);
+            vscode.window.showErrorMessage('Failed to append navigation entry to file.');
+        } else {
+            console.log(`Navigation entry successfully appended to ${filePath}`);
+            // Optionally, show a confirmation message or log this action silently
+        }
+    });
+}
+
 function deactivate() {
 	console.log('Thank you for trying out "codeHistories"!');
 
@@ -618,6 +741,7 @@ function deactivate() {
 	allTerminalsDirCount = new Object();
 	terminalDimChanged = new Object();
 	terminalOpenedFirstTime = new Object();
+	previousDocument = null;
 }
 
 module.exports = {
