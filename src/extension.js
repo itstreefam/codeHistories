@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const Terminal = require('./terminal');
 const activeWindow = require('active-win');
+const { checkBashProfilePath, checkPowerShellProfilePath } = require('./profileHelpers');
 
 var tracker = null;
 var iter = 0;
@@ -16,7 +17,7 @@ var terminalOpenedFirstTime = new Object();
 var terminalName = process.platform === 'win32' ? "pwsh" : "bash";
 var allTerminalsData = new Object();
 var allTerminalsDirCount = new Object();
-var cmdPrompt = process.platform === 'win32' ? ". .\\chPowerShellProfile.ps1" : "source .CH_bash_profile";
+var cmdPrompt = process.platform === 'win32' ? ". .\\CH_cfg_and_logs\\CH_PowerShell_profile.ps1" : "source ./CH_cfg_and_logs/.CH_bash_profile";
 var previousAppName = '';
 var timeSwitchedToChrome = 0;
 var timeSwitchedToCode = 0;
@@ -24,26 +25,29 @@ var gitActionsPerformed = false;
 var extensionActivated = false;
 // make a regex that match everything between \033]0; and \007
 var very_special_regex = new RegExp("\\033]0;(.*)\\007", "g");
-var currentDir;
 var user;
 var hostname;
 var terminalList;
 var terminalInstance;
+
+function getCurrentDir() {
+	if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+		return vscode.workspace.workspaceFolders[0].uri.fsPath;
+	} else {
+		vscode.window.showErrorMessage("Working folder not found, open a folder and try again.");
+		return null; // No directory found
+	}
+}
 
 /**
  * @param {vscode.ExtensionContext} context
  */
 function activate(context) {
 	console.log('Congratulations, your extension "codeHistories" is now active!');
-
-	if(!vscode.workspace.workspaceFolders){
-		const message = "Working folder not found, please open a folder first." ;
-		vscode.window.showErrorMessage(message);
-		return;
-	}
+	const currentDir = getCurrentDir();
+	if (!currentDir) return;
 
 	// check git init status
-	currentDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
 	tracker = new gitTracker(currentDir);
 	tracker.createGitFolders();
 
@@ -74,7 +78,7 @@ function activate(context) {
 
 	if(process.platform === 'win32'){
 		vscode.window.onDidExecuteTerminalCommand(async event => {
-			if(event.terminal.name !== "pwsh") return;
+			if(event.terminal.name !== "pwsh" && event.terminal.name !== "powershell") return;
 			await onDidExecuteTerminalCommandHelper(event);
 		});
 
@@ -386,15 +390,16 @@ async function onDidExecuteTerminalCommandHelper(event) {
 		};
 
 		// Log the execution info to JSON file
+		const currentDir = getCurrentDir();
 		const jsonString = JSON.stringify(executionInfo) + '\n'; // Convert to JSON string and add newline
-		const outputPath = path.join(currentDir, 'CH_output');
+		const outputPath = path.join(currentDir, 'CH_cfg_and_logs', 'CH_terminal_data');
 		await fs.promises.appendFile(outputPath, jsonString);
 
 		await tracker.gitAdd();
 
 		// if command contains more than "codehistories" then we should commit
 		if (command.includes("codehistories") && command.split("codehistories")[1].length > 0) {
-			if(event.terminal.name === "pwsh"){
+			if(event.terminal.name === "pwsh" || event.terminal.name === "powershell"){
 				// Write to output to output.txt only for windows since powershell couldn't redirect output well
 				// The setup bash profile redirects solid output, we don't need to do it again
 				const outputTxtFilePath = path.join(currentDir, 'output.txt');
@@ -416,13 +421,14 @@ async function onDidExecuteTerminalCommandHelper(event) {
 /* Activate the extension */
 async function activateCodeHistoriesHelper() {
 	vscode.window.showInformationMessage('Code histories activated!');
+	const currentDir = getCurrentDir();
 	await createVsCodeSettings(currentDir);
 	await createProfileScripts(currentDir);
 	extensionActivated = true;
 }
 
-async function createVsCodeSettings(currentDir) {
-    const vscodePath = path.join(currentDir, ".vscode");
+async function createVsCodeSettings(cwd) {
+    const vscodePath = path.join(cwd, ".vscode");
     const settingsPath = path.join(vscodePath, "settings.json");
     const settings = JSON.stringify({
         "terminal.integrated.defaultProfile.windows": "PowerShell",
@@ -467,67 +473,9 @@ async function createVsCodeSettings(currentDir) {
     }
 }
 
-async function createProfileScripts(currentDir) {
-    const bashProfilePath = path.join(currentDir, ".CH_bash_profile");
-    const powershellProfilePath = path.join(currentDir, "CH_PowerShell_profile.ps1");
-    const bashProfileContent = `
-codehistories() {
-	if [ "$#" -eq 0 ]; then
-		echo "Usage: codehistories <command> [args]"
-		return
-	fi
-	cmd="$*"
-	
-	# Get current date and time in the format [M/D/YYYY, HH:MM:SS AM/PM]
-	timestamp=$(date +"[%-m/%-d/%Y, %I:%M:%S %p]")
-	
-	# Print a newline and the timestamp to output.txt
-	echo -e "\nExecution Time: $timestamp" | tee -a output.txt
-	
-	# Execute the command and append the output
-	eval "$cmd" 2>&1 | tee -a output.txt
-}`;
-
-    const powershellProfileContent = `
-function codehistories {
-	param(
-		[Parameter(Position = 0, Mandatory = $false, ValueFromRemainingArguments = $true)]
-		[string[]]$CommandArgs
-	)
-	
-	# Check if any command arguments are provided
-	if ($CommandArgs.Count -eq 0) {
-		Write-Host "Usage: codehistories <command> [args]"
-	} else {
-		# Join the command arguments into a single command string
-		$cmd = $CommandArgs -join ' '
-	
-		# Get current date and time in the format [M/D/YYYY, HH:MM:SS AM/PM]
-		$timestamp = Get-Date -Format "[M/d/yyyy, hh:mm:ss tt]"
-	
-		# Log the execution time and
-		Write-Host "Execution Time: $timestamp"
-	
-		# Execute the command
-		try {
-			Invoke-Expression $cmd
-		} catch {
-			Write-Error "An error occurred executing the command: $_"
-		}
-	}
-}`;
-    writeProfileScript(powershellProfilePath, powershellProfileContent); // all platforms can use powershell
-	writeProfileScript(bashProfilePath, bashProfileContent); // flexible for window users who want to use bash
-}
-
-function writeProfileScript(profilePath, content) {
-    if (!fs.existsSync(profilePath)) {
-        try {
-            fs.writeFileSync(profilePath, content);
-        } catch (error) {
-            vscode.window.showErrorMessage(`Failed to create profile script: ${error}`);
-        }
-    }
+async function createProfileScripts(cwd) {
+	checkPowerShellProfilePath(cwd);
+	checkBashProfilePath(cwd);
 }
 /* End of Activate the extension */
 
@@ -537,6 +485,7 @@ async function executeCheckAndCommitHelper() {
 	if(!isExtensionActivated) return;
 	await vscode.commands.executeCommand("workbench.action.files.saveAll");
 	await tracker.gitAdd();
+	const currentDir = getCurrentDir();
 	await handleTerminal(terminalName, currentDir);
 	checkThenCommit = true;
 }
@@ -550,16 +499,19 @@ async function handleTerminal(name, workspacePath) {
 }
 
 async function findOrCreateTerminal(name, workspacePath) {
-    const existingTerminal = vscode.window.terminals.find(t => t.name === name);
+	let existingTerminal = vscode.window.terminals.find(t => t.name === name);
     if (!existingTerminal) {
-		const codeHistoriesTerminal = new Terminal(name);
+        let codeHistoriesTerminal = new Terminal(name, workspacePath);
+
+        // Depending on the terminal name, check and create the profile scripts
         if (name === "bash") {
-            codeHistoriesTerminal.checkBashProfilePath(workspacePath);
+            await checkBashProfilePath(workspacePath);
+        } else if (name === "pwsh" || name === "powershell") {
+            await checkPowerShellProfilePath(workspacePath);
         }
-		if (name === "pwsh") {
-			codeHistoriesTerminal.checkPowerShellProfilePath(workspacePath);
-		}
-		return codeHistoriesTerminal;
+
+        // After setting up the profiles, return the new terminal instance
+        return codeHistoriesTerminal;
     }
     return existingTerminal;
 }
@@ -598,15 +550,17 @@ async function enterGoalHelper() {
 	
 	if(goal){
 		// Write the goal to a file
-		let timestamp = new Date().toLocaleString();
-		// check if the file exists
-		if (fs.existsSync(path.join(currentDir, 'CH_Goals'))) {
-			// if it exists, append to it
-			fs.appendFileSync(path.join(currentDir, 'CH_Goals'), '\n' + timestamp + '\n' + goal + '\n');
-		} else {
-			// if it doesn't exist, create it
-			fs.writeFileSync(path.join(currentDir, 'CH_Goals'), timestamp + '\n' + goal + '\n');
-		}
+		let time = Math.floor(Date.now() / 1000);
+		let goalInfo = {
+			goal: goal,
+			time: time
+		};
+
+		// Log the goal info to JSON file
+		const currentDir = getCurrentDir();
+		const jsonString = JSON.stringify(goalInfo) + '\n'; // Convert to JSON string and add newline
+		const outputPath = path.join(currentDir, 'CH_cfg_and_logs', 'CH_goals');
+		await fs.promises.appendFile(outputPath, jsonString);
 	}
 }
 
