@@ -406,9 +406,9 @@ async function onDidExecuteTerminalCommandHelper(event) {
 
 		// Log the execution info to JSON file
 		const currentDir = getCurrentDir();
-		const jsonString = JSON.stringify(executionInfo) + '\n'; // Convert to JSON string and add newline
-		const outputPath = path.join(currentDir, 'CH_cfg_and_logs', 'CH_terminal_data');
-		await fs.promises.appendFile(outputPath, jsonString);
+		const ndjsonString = JSON.stringify(executionInfo) + '\n'; // Convert to JSON string and add newline
+		const outputPath = path.join(currentDir, 'CH_cfg_and_logs', 'CH_terminal_data.ndjson');
+		await fs.promises.appendFile(outputPath, ndjsonString);
 
 		await tracker.gitAdd();
 
@@ -573,9 +573,9 @@ async function enterGoalHelper() {
 
 		// Log the goal info to JSON file
 		const currentDir = getCurrentDir();
-		const jsonString = JSON.stringify(goalInfo) + '\n'; // Convert to JSON string and add newline
-		const outputPath = path.join(currentDir, 'CH_cfg_and_logs', 'CH_goals');
-		await fs.promises.appendFile(outputPath, jsonString);
+		const ndjsonString = JSON.stringify(goalInfo) + '\n'; // Convert to JSON string and add newline
+		const outputPath = path.join(currentDir, 'CH_cfg_and_logs', 'CH_goals.ndjson');
+		await fs.promises.appendFile(outputPath, ndjsonString);
 	}
 }
 
@@ -727,12 +727,21 @@ function containsIPAddresses(url) {
 }
 
 function removeBackspaces(str) {
-	var pattern = /[\u0000]|[\u0001]|[\u0002]|[\u0003]|[\u0004]|[\u0005]|[\u0006]|[\u0007]|[\u0008]|[\u000b]|[\u000c]|[\u000d]|[\u000e]|[\u000f]|[\u0010]|[\u0011]|[\u0012]|[\u0013]|[\u0014]|[\u0015]|[\u0016]|[\u0017]|[\u0018]|[\u0019]|[\u001a]|[\u001b]|[\u001c]|[\u001d]|[\u001e]|[\u001f]|[\u001c]|[\u007f]|[\u0040]/gm;
-    while (str.indexOf("\b") != -1) {
-        str = str.replace(/.?\x08/, ""); // 0x08 is the ASCII code for \b
+	var patternString = (
+        "[\\u0000]|[\\u0001]|[\\u0002]|[\\u0003]|[\\u0004]|" +
+        "[\\u0005]|[\\u0006]|[\\u0007]|[\\u0008]|[\\u000b]|" +
+        "[\\u000c]|[\\u000d]|[\\u000e]|[\\u000f]|[\\u0010]|" +
+        "[\\u0011]|[\\u0012]|[\\u0013]|[\\u0014]|[\\u0015]|" +
+        "[\\u0016]|[\\u0017]|[\\u0018]|[\\u0019]|[\\u001a]|" +
+        "[\\u001b]|[\\u001c]|[\\u001d]|[\\u001e]|[\\u001f]|" +
+        "[\\u007f]|[\\u0040]"
+    );
+    var pattern = new RegExp(patternString, "gm");
+    while (str.indexOf("\b") !== -1) {
+        str = str.replace(/.?\x08/g, ""); // 0x08 is the ASCII code for \b
     }
-	str = str.replace(pattern, "");	
-	return str;
+    str = str.replace(pattern, "");  
+    return str;
 }
 
 // Debounce function improved to handle debouncing per unique key (document URI)
@@ -749,34 +758,41 @@ function debounce(func, wait, key) {
 }
 
 function handleVisibleRangeChange(editor) {
-	if (!editor) return;
+    if (!editor) return;
 
     const document = editor.document;
     const visibleRangesInfo = editor.visibleRanges.map(range => {
-        // Extract the first and last line of the range
-        const firstLine = document.lineAt(range.start.line).text;
-        const lastLine = document.lineAt(range.end.line).text;
-		let documentPath = document.uri.fsPath;
+        // Calculate surrounding lines' indices, ensuring they are within document bounds
+        const startLineIndex = Math.max(range.start.line - 4, 0); // 4 lines above the first visible, or document start
+        const endLineIndex = Math.min(range.end.line + 4, document.lineCount - 1); // 4 lines below the last visible, or document end
 
-		// trim the user and hostname from the document
-		if(user && hostname){
-			let userRegex = new RegExp("\\b" + user + "\\b", "g");
-			let hostnameRegex = new RegExp("\\b" + hostname + "\\b", "g");
-			documentPath = document.uri.fsPath.replace(userRegex, "user").replace(hostnameRegex, "hostname");
-		}
-		const entry = {
-			firstLine: firstLine,
-			lastLine: lastLine,
-			range: [range.start.line+1, range.end.line+1],
-			document: documentPath,
-			time: Math.floor(Date.now() / 1000),
-		}
+        // Extract text for the surrounding lines
+        const linesText = [];
+        for (let i = startLineIndex; i <= endLineIndex; i++) {
+            linesText.push(document.lineAt(i).text);
+        }
 
-		// Optionally, append the entry to a file
-		appendNavigationEntryToFile(entry, editor);
+        let documentPath = document.uri.fsPath;
 
-		return entry;
-	});
+        // trim the user and hostname from the document
+        if (user && hostname) {
+            let userRegex = new RegExp("\\b" + user + "\\b", "g");
+            let hostnameRegex = new RegExp("\\b" + hostname + "\\b", "g");
+            documentPath = documentPath.replace(userRegex, "user").replace(hostnameRegex, "hostname");
+        }
+
+        const entry = {
+            surroundingLines: linesText,
+            range: [range.start.line + 1, range.end.line + 1],
+            document: documentPath,
+            time: Math.floor(Date.now() / 1000),
+        };
+
+        // Optionally, append the entry to a file
+        appendNavigationEntryToFile(entry, editor);
+
+        return entry;
+    });
 
     // Store each visible range change in navigation history
     navigationHistory.push(...visibleRangesInfo);
@@ -795,13 +811,21 @@ function updateVisibleEditors() {
 function handleActiveTextEditorChange(editor) {
 	// This checks for actual editor changes, including document switches and split view adjustments
     if (editor) {
-        const currentDocument = editor.document.uri.fsPath;
+        let currentDocument = editor.document.uri.fsPath;
         if (previousDocument && currentDocument !== previousDocument) {
+			// trim the user and hostname from the document
+			if (user && hostname) {
+				let userRegex = new RegExp("\\b" + user + "\\b", "g");
+				let hostnameRegex = new RegExp("\\b" + hostname + "\\b", "g");
+				currentDocument = currentDocument.replace(userRegex, "user").replace(hostnameRegex, "hostname");
+				previousDocument = previousDocument.replace(userRegex, "user").replace(hostnameRegex, "hostname");
+			}
+
 			// Store the navigation history entry for the document switch
 			let entry = {
 				document: currentDocument,
 				prevDocument: previousDocument,
-				timestamp: new Date().toISOString(),
+				time: Math.floor(Date.now() / 1000),
 				transition: true, // Indicates this record is about transitioning between documents
 			};
 
@@ -819,7 +843,8 @@ function handleActiveTextEditorChange(editor) {
 }
 
 function appendNavigationEntryToFile(entry, editor) {
-    const filePath = path.join(currentDir, 'CH_navigationHistory');
+	const currentDir = getCurrentDir();
+    const filePath = path.join(currentDir, 'CH_cfg_and_logs', 'CH_navigation_history.ndjson');
 	const currentDocumentPath = editor.document.uri.fsPath;
 
 	// Skip appending if the current document is the navigation history file
@@ -833,9 +858,6 @@ function appendNavigationEntryToFile(entry, editor) {
         if (err) {
             console.error('Error appending navigation entry to file:', err);
             vscode.window.showErrorMessage('Failed to append navigation entry to file.');
-        } else {
-            console.log(`Navigation entry successfully appended to ${filePath}`);
-            // Optionally, show a confirmation message or log this action silently
         }
     });
 }
