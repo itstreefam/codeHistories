@@ -31,6 +31,7 @@ var terminalList;
 var terminalInstance;
 var previousDocument = null;
 var navigationHistory = [];
+var selectionHistory = [];
 const debounceTimers = new Map(); // For debouncing per document
 
 function getCurrentDir() {
@@ -61,6 +62,9 @@ function activate(context) {
 
     // Listen for document changes to track navigation between documents
     context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(handleActiveTextEditorChange));
+
+	// Listen for selection changes
+    context.subscriptions.push(vscode.window.onDidChangeTextEditorSelection(handleTextEditorSelectionChange));
 
 	// check git init status
 	tracker = new gitTracker(currentDir);
@@ -788,15 +792,15 @@ function handleVisibleRangeChange(editor) {
             time: Math.floor(Date.now() / 1000),
         };
 
-        // Optionally, append the entry to a file
         appendNavigationEntryToFile(entry, editor);
 
         return entry;
     });
 
-    // Store each visible range change in navigation history
-    navigationHistory.push(...visibleRangesInfo);
-    console.log('Navigation History Updated:', navigationHistory);
+	// Store each visible range change in navigation history
+	// Uncomment the following lines to view the visible ranges info in the console
+    // navigationHistory.push(...visibleRangesInfo);
+    // console.log('Navigation History Updated:', navigationHistory);
 }
 
 function updateVisibleEditors() {
@@ -829,17 +833,58 @@ function handleActiveTextEditorChange(editor) {
 				transition: true, // Indicates this record is about transitioning between documents
 			};
 
-			// Store the entry in the navigation history
-			navigationHistory.push(entry);
+			// appendNavigationEntryToFile(entry, editor);
 
-			// Optionally, append the entry to a file
-			appendNavigationEntryToFile(entry, editor);
-
-			console.log('Navigation History Updated:', navigationHistory);
+			// Uncomment the following lines to view the navigation history in the console
+			// navigationHistory.push(entry);
+			// console.log('Navigation History Updated:', navigationHistory);
         }
         previousDocument = currentDocument; // Update for future comparisons
     }
 	updateVisibleEditors();
+}
+
+function handleTextEditorSelectionChange(event) {
+    const editor = event.textEditor;
+    const selection = event.selections[0]; // Get the primary selection if there are multiple
+
+    if (!selection.isEmpty) {
+        // There's a highlight
+        const document = editor.document;
+        const highlightedText = document.getText(selection);
+        let documentPath = document.uri.fsPath;
+        const time = Math.floor(Date.now() / 1000);
+
+		// trim the user and hostname from the document
+		if (user && hostname) {
+			let userRegex = new RegExp("\\b" + user + "\\b", "g");
+			let hostnameRegex = new RegExp("\\b" + hostname + "\\b", "g");
+			documentPath = documentPath.replace(userRegex, "user").replace(hostnameRegex, "hostname");
+		}
+
+        const entry = {
+            type: "highlight",
+            document: documentPath,
+            highlightedText: highlightedText,
+            range: [selection.start.line + 1, selection.end.line + 1],
+            time: time,
+        };
+
+		// Log the execution info to JSON file
+		const currentDir = getCurrentDir();
+		const ndjsonString = JSON.stringify(entry) + '\n'; // Convert to JSON string and add newline
+		const outputPath = path.join(currentDir, 'CH_cfg_and_logs', 'CH_selection_history.ndjson');
+		fs.appendFile(outputPath, ndjsonString, (err) => {
+			if (err) {
+				console.error('Error appending selection entry to file:', err);
+				vscode.window.showErrorMessage('Failed to append selection entry to file.');
+			}
+		}); 
+        
+		// Uncomment the following lines to view the selection history in the console 
+        // selectionHistory.push(entry);
+        // console.log('Selection History Updated:', selectionHistory);
+    }
 }
 
 function appendNavigationEntryToFile(entry, editor) {
