@@ -12,7 +12,7 @@
   "version": "3.0.0",
   "publisher": "code-histories",
   "private": true,
-	"license": "MIT",
+  "license": "MIT",
   "repository": "https://github.com/TriPham2110/codeHistories",
   "engines": {
     "vscode": "^1.63.0"
@@ -47,10 +47,6 @@
       {
         "command": "codeHistories.setNewCmd",
         "title": "Code Histories: Set new command"
-      },
-      {
-        "command": "codeHistories.rationaleInfo",
-        "title": "Code Histories: Request rationale info"
       },
       {
         "command": "codeHistories.enterGoal",

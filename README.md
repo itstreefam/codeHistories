@@ -11,7 +11,7 @@ A VS Code extension that aims to capture the information needed to generate usab
 
 ## Extension Setup
 
-1.  Download the file ```code-histories-3.0.0.vsix``` from this repository.
+1.  Download the file ```code-histories.vsix``` from this repository.
 
 2.  Download the Insiders version of VSCode: https://code.visualstudio.com/insiders/
 
@@ -19,7 +19,7 @@ A VS Code extension that aims to capture the information needed to generate usab
 
 4.  Open your project folder in VSCode Insiders.
 
-5.  Go into the Extensions view ![](assets/extensions_icon.jpg), select the ... ellipsis View and More Actions button, and select Install from VSIX. Then find and open the file ```code-histories-3.0.0.vsix```.
+5.  Go into the Extensions view ![](assets/extensions_icon.jpg), select the ... ellipsis View and More Actions button, and select Install from VSIX. Then find and open the file ```code-histories.vsix```.
 
 <p align="center">
   <img src="assets/locating_install_from_vsix.png" style='height: 50%; width: 50%; object-fit: contain' alt="Install from vsix"/>
