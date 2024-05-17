@@ -15,7 +15,8 @@
   "license": "MIT",
   "repository": "https://github.com/TriPham2110/codeHistories",
   "engines": {
-    "vscode": "^1.63.0"
+    "vscode": "^1.63.0",
+    "node": ">=18"
   },
   "categories": [
     "Other"
@@ -24,6 +25,7 @@
     "onStartupFinished"
   ],
   "main": "./src/extension.js",
+  "type": "commonjs",
   "contributes": {
     "commands": [
       {
@@ -115,7 +117,7 @@
     "vscode-dts": "^0.3.0"
   },
   "dependencies": {
-    "active-win": "^8.1.0",
+    "active-win": "^8.2.1",
     "simple-git": "^3.5.0"
   }
 }

@@ -6,7 +6,7 @@ const path = require('path');
 const util = require('util');
 const exec = util.promisify(cp.exec);
 
-module.exports = class gitTracker {
+class gitTracker {
     constructor(currentDir) {
         this._currentDir = currentDir;
         this._initialWorkspaceDir = currentDir;
@@ -331,3 +331,5 @@ module.exports = class gitTracker {
         }
     }
 }
+
+module.exports = gitTracker;
