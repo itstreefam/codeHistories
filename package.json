@@ -13,7 +13,10 @@
   "publisher": "code-histories",
   "private": true,
   "license": "MIT",
-  "repository": "https://github.com/TriPham2110/codeHistories",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/itstreefam/codeHistories.git"
+  },
   "engines": {
     "vscode": "^1.63.0",
     "node": ">=18"

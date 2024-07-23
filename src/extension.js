@@ -23,6 +23,7 @@ var timeSwitchedToChrome = 0;
 var timeSwitchedToCode = 0;
 var gitActionsPerformed = false;
 var extensionActivated = false;
+var checkThenCommit = false;
 // make a regex that match everything between \033]0; and \007
 var very_special_regex = new RegExp("\\033]0;(.*)\\007", "g");
 var user = os.userInfo().username;
@@ -383,6 +384,11 @@ async function onDidExecuteTerminalCommandHelper(event) {
 		let cwd = event.cwd;
 		let exitCode = event.exitCode;
 		let output = event.output;
+
+		// console.log('command: ', command);
+		// console.log('cwd: ', cwd);
+		// console.log('exitCode: ', exitCode);
+		// console.log('output: ', output);
 
 		if (user && hostname) {
 			// Define regular expressions with word boundaries
