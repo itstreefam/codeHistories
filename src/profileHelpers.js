@@ -39,7 +39,25 @@ codehistories() {
 function checkPowerShellProfilePath(cwd) {
     const dirPath = path.join(cwd, 'CH_cfg_and_logs');
     const powerShellProfilePath = path.join(dirPath, 'CH_PowerShell_profile.ps1');
-    const content = `
+    const remoteSignedFunc = `
+function Set-RemoteSignedPolicy {
+  $currentPolicy = Get-ExecutionPolicy
+  if ($currentPolicy -ne 'RemoteSigned') {
+    try {
+      Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+      Write-Host "Execution policy set to RemoteSigned for the current user."
+    } catch {
+      Write-Error "Failed to set execution policy: $_"
+    }
+  } else {
+    Write-Host "Execution policy is already set to RemoteSigned."
+  }
+}
+
+Set-RemoteSignedPolicy
+`;
+
+    const chFunc = `
 function codehistories {
   param(
     [Parameter(Position = 0, Mandatory = $false, ValueFromRemainingArguments = $true)]
@@ -71,12 +89,17 @@ function codehistories {
     ensureDirectoryExists(dirPath);
 
     if (!fs.existsSync(powerShellProfilePath)) {
-        fs.writeFileSync(powerShellProfilePath, content);
+        fs.writeFileSync(powerShellProfilePath, remoteSignedFunc + chFunc);
         console.log('Created CH_PowerShell_profile.ps1 and added codehistories.');
     } else {
         const fileContent = fs.readFileSync(powerShellProfilePath, 'utf8');
+        if (!fileContent.includes('function Set-RemoteSignedPolicy')) {
+            fs.appendFileSync(powerShellProfilePath, remoteSignedFunc);
+            console.log('Added Set-RemoteSignedPolicy to CH_PowerShell_profile.ps1.');
+        }
+
         if (!fileContent.includes('function codehistories')) {
-            fs.appendFileSync(powerShellProfilePath, content);
+            fs.appendFileSync(powerShellProfilePath, chFunc);
             console.log('Added codehistories to CH_PowerShell_profile.ps1.');
         }
     }
