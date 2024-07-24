@@ -60,6 +60,10 @@
       {
         "command": "codeHistories.quickAutoCommit",
         "title": "Code Histories: Quick auto commit"
+      },
+      {
+        "command": "codeHistories.selectTerminalProfile",
+        "title": "Code Histories: Select terminal profile"
       }
     ],
     "keybindings": [
@@ -72,6 +76,11 @@
         "command": "codeHistories.setNewCmd",
         "key": "Ctrl+Shift+C",
         "mac": "Cmd+Shift+C"
+      },
+      {
+        "command": "codeHistories.selectTerminalProfile",
+        "key": "Ctrl+Shift+T",
+        "mac": "Cmd+Shift+T"
       }
     ],
     "menus": {

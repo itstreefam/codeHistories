@@ -39,22 +39,22 @@ codehistories() {
 function checkPowerShellProfilePath(cwd) {
     const dirPath = path.join(cwd, 'CH_cfg_and_logs');
     const powerShellProfilePath = path.join(dirPath, 'CH_PowerShell_profile.ps1');
-    const remoteSignedFunc = `
-function Set-RemoteSignedPolicy {
+    const unrestrictedFunc = `
+function Set-UnrestrictedPolicy {
   $currentPolicy = Get-ExecutionPolicy
-  if ($currentPolicy -ne 'RemoteSigned') {
+  if ($currentPolicy -ne 'Unrestricted') {
     try {
-      Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
-      Write-Host "Execution policy set to RemoteSigned for the current user."
+      Set-ExecutionPolicy Unrestricted -Scope CurrentUser
+      Write-Host "Execution policy set to Unrestricted for the current user."
     } catch {
       Write-Error "Failed to set execution policy: $_"
     }
   } else {
-    Write-Host "Execution policy is already set to RemoteSigned."
+    Write-Host "Execution policy is already set to Unrestricted."
   }
 }
 
-Set-RemoteSignedPolicy
+Set-UnrestrictedPolicy
 `;
 
     const chFunc = `
@@ -89,13 +89,13 @@ function codehistories {
     ensureDirectoryExists(dirPath);
 
     if (!fs.existsSync(powerShellProfilePath)) {
-        fs.writeFileSync(powerShellProfilePath, remoteSignedFunc + chFunc);
+        fs.writeFileSync(powerShellProfilePath, unrestrictedFunc + chFunc);
         console.log('Created CH_PowerShell_profile.ps1 and added codehistories.');
     } else {
         const fileContent = fs.readFileSync(powerShellProfilePath, 'utf8');
-        if (!fileContent.includes('function Set-RemoteSignedPolicy')) {
-            fs.appendFileSync(powerShellProfilePath, remoteSignedFunc);
-            console.log('Added Set-RemoteSignedPolicy to CH_PowerShell_profile.ps1.');
+        if (!fileContent.includes('function Set-UnrestrictedPolicy')) {
+            fs.appendFileSync(powerShellProfilePath, unrestrictedFunc);
+            console.log('Added Set-UnrestrictedPolicy to CH_PowerShell_profile.ps1.');
         }
 
         if (!fileContent.includes('function codehistories')) {
