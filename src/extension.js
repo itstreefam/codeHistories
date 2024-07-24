@@ -405,6 +405,13 @@ async function onDidExecuteTerminalCommandHelper(event) {
 				cwd = cwd.replace(userRegex, 'user');
 			}
 			if (output) {
+				// Instead of grabbing the entire output with cwd
+				// Just grab the line that starting from Execution Time
+				// Then append the command before it
+				let outputFromExecLine = output.substring(output.indexOf('Execution Time:'));
+				if (outputFromExecLine) {
+					output = command + '\n' + outputFromExecLine;
+				}
 				output = output.replace(hostnameRegex, 'hostname');
 				output = output.replace(userRegex, 'user');
 			}
@@ -426,8 +433,8 @@ async function onDidExecuteTerminalCommandHelper(event) {
 
 		await tracker.gitAdd();
 
-		// if command contains more than "codehistories" then we should commit
-		if (command.includes("codehistories") && command.split("codehistories")[1].length > 0) {
+		// if command contains "codehistories" then we should commit
+		if (command.includes("codehistories")) {
 			if(event.terminal.name === "pwsh" || event.terminal.name === "powershell"){
 				// Write to output to output.txt only for windows since powershell couldn't redirect output well
 				// The setup bash profile redirects solid output, we don't need to do it again
