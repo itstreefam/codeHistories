@@ -102,10 +102,11 @@ function activate(context) {
 
 	if(process.platform === 'win32'){
 		vscode.window.onDidExecuteTerminalCommand(async event => {
-			if(event.terminal.name !== "pwsh" && event.terminal.name !== "powershell") return;
+			// if(event.terminal.name !== "pwsh" && event.terminal.name !== "powershell") return;
 			await onDidExecuteTerminalCommandHelper(event);
 		});
 
+		/*
 		// e.g. tri@DESKTOP-XXXXXXX MINGW64 ~/Desktop/test-folder (master)
 		var win_regex_dir = new RegExp(user + "@" + hostname + "(\(.*\))?", "g");
 		
@@ -237,6 +238,7 @@ function activate(context) {
 				});
 			}
 		});
+		*/
 	}
 
 	if(process.platform === "darwin"){
@@ -262,6 +264,7 @@ function activate(context) {
 	let undoCommit = vscode.commands.registerCommand('codeHistories.undoCommit', undoCommitHelper);
 	let enterGoal = vscode.commands.registerCommand('codeHistories.enterGoal', enterGoalHelper);
 	let quickAutoCommit = vscode.commands.registerCommand('codeHistories.quickAutoCommit', quickAutoCommitHelper);
+	let selectTerminalProfile = vscode.commands.registerCommand('codeHistories.selectTerminalProfile', showTerminalProfileQuickPick);
 
 	context.subscriptions.push(activateCodeHistories);
 	context.subscriptions.push(executeCheckAndCommit);
@@ -270,6 +273,7 @@ function activate(context) {
 	context.subscriptions.push(undoCommit);
 	context.subscriptions.push(enterGoal);
 	context.subscriptions.push(quickAutoCommit);
+	context.subscriptions.push(selectTerminalProfile);
 
 	// this is for web dev heuristics
 	// if user saves a file in the workspace, then they visit chrome to test their program on localhost (require that they do reload the page so that it is recorded as an event in webData)
@@ -409,8 +413,10 @@ async function onDidExecuteTerminalCommandHelper(event) {
 				// Just grab the line that starting from Execution Time
 				// Then append the command before it
 				let outputFromExecLine = output.substring(output.indexOf('Execution Time:'));
-				if (outputFromExecLine) {
-					output = command + '\n' + outputFromExecLine;
+				if (outputFromExecLine && (terminalName === "pwsh" || terminalName === "powershell")) {
+					output = '\n' + outputFromExecLine;
+				} else {
+					output = outputFromExecLine;
 				}
 				output = output.replace(hostnameRegex, 'hostname');
 				output = output.replace(userRegex, 'user');
@@ -460,6 +466,8 @@ async function activateCodeHistoriesHelper() {
 	const currentDir = getCurrentDir();
 	await createVsCodeSettings(currentDir);
 	await createProfileScripts(currentDir);
+	// call selectTerminalProfile to open the terminal
+	await vscode.commands.executeCommand('codeHistories.selectTerminalProfile');
 	extensionActivated = true;
 }
 
@@ -526,8 +534,88 @@ async function executeCheckAndCommitHelper() {
 	checkThenCommit = true;
 }
 
+async function showTerminalProfileQuickPick() {
+	const currentDir = getCurrentDir();
+
+	const profiles = [
+		{ label: "Bash or Git Bash", name: "bash"},
+		{ label: "PowerShell", name: "pwsh"},
+	];
+
+	try{
+		const selectedProfile = await vscode.window.showQuickPick(profiles, {
+			placeHolder: "Select the terminal profile to open (shortcut: Ctrl/Cmd+Shift+T)",
+		});
+
+		profileName = selectedProfile.name;
+
+		if (!profileName) {
+			vscode.window.showErrorMessage("No terminal profile selected. Selecting the default terminal profile.");
+			return;
+		}
+
+		if (profileName === "bash" && process.platform === "win32") {
+			// update the vscode settings.json to use Git Bash as the default terminal
+			const vscodePath = path.join(currentDir, ".vscode");
+			const settingsPath = path.join(vscodePath, "settings.json");
+			// find the terminal.integrated.defaultProfile.windows key and set it to Git Bash
+			const settings = JSON.stringify({
+				"terminal.integrated.defaultProfile.windows": "Git Bash",
+			}, null, 4);
+
+			try {
+				if (!fs.existsSync(vscodePath)) {
+					fs.mkdirSync(vscodePath);
+				}
+
+				// Read existing settings file
+				let existingSettings = {};
+				if (fs.existsSync(settingsPath)) {
+					try {
+						const data = fs.readFileSync(settingsPath, 'utf8');
+						existingSettings = JSON.parse(data);
+					} catch (error) {
+						console.error("Error parsing existing settings:", error);
+					}
+				}
+
+				// Merge new settings with existing settings
+				let combinedSettings = { ...existingSettings, ...JSON.parse(settings) };
+
+				// Remove any duplicate keys
+				let uniqueSettings = {};
+				for (let key in combinedSettings) {
+					if (!uniqueSettings.hasOwnProperty(key)) {
+						uniqueSettings[key] = combinedSettings[key];
+					}
+
+					// Write the settings
+					fs.writeFileSync(settingsPath, JSON.stringify(uniqueSettings, null, 4));
+				}
+
+			} catch (error) {
+				vscode.window.showErrorMessage(`Error creating VSCode settings: ${error}`);
+			}
+		}
+
+		terminalName = profileName;
+		if(terminalName === "pwsh" || terminalName === "powershell"){
+			cmdPrompt = ". .\\CH_cfg_and_logs\\CH_PowerShell_profile.ps1";
+		}
+		if(terminalName === "bash"){
+			cmdPrompt = "source ./CH_cfg_and_logs/.CH_bash_profile";
+		}
+
+		await handleTerminal(terminalName, currentDir);
+	} catch (error) {
+		vscode.window.showErrorMessage("No terminal profile selected. Selecting the default terminal profile.");
+		return;
+	}
+}
+
 async function handleTerminal(name, workspacePath) {
-    const terminal = await findOrCreateTerminal(name, workspacePath);
+	const terminal = await findOrCreateTerminal(name, workspacePath);
+	// console.log('Terminal:', terminal);
     if (terminal) {
         terminal.show();
         terminal.sendText(cmdPrompt);
@@ -537,10 +625,11 @@ async function handleTerminal(name, workspacePath) {
 async function findOrCreateTerminal(name, workspacePath) {
 	let existingTerminal = vscode.window.terminals.find(t => t.name === name);
     if (!existingTerminal) {
+		// console.log('workspacePath:', workspacePath);
         let codeHistoriesTerminal = new Terminal(name, workspacePath);
 
         // Depending on the terminal name, check and create the profile scripts
-        if (name === "bash") {
+        if (name === "bash" || name === "Git Bash") {
             await checkBashProfilePath(workspacePath);
         } else if (name === "pwsh" || name === "powershell") {
             await checkPowerShellProfilePath(workspacePath);

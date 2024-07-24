@@ -7,13 +7,17 @@ class Terminal {
   constructor(name, cwd) {
     this.name = name;
     this.cwd = cwd;
-    // if system is windows, use powershell
+    // if system is windows, depends on name, use Git Bash or PowerShell
     // if system is mac or linux, use bash
-    this.terminalShellPath = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
-
-    const profilePath = os.platform() === 'win32' ? 
-      path.join(cwd, 'CH_cfg_and_logs', 'CH_PowerShell_profile.ps1') : 
-      path.join(cwd, 'CH_cfg_and_logs', '.CH_bash_profile');
+    if (os.platform() === 'win32') {
+      if (name === 'bash') {
+        this.terminalShellPath = 'C:\\Program Files\\Git\\bin\\bash.exe';
+      } else {
+        this.terminalShellPath = 'powershell.exe';
+      }
+    } else {
+      this.terminalShellPath = '/bin/bash';
+    }
 
     this.terminal = vscode.window.createTerminal({
       name: this.name,
@@ -21,13 +25,6 @@ class Terminal {
       shellPath: this.terminalShellPath,
       shellArgs: [],
     });
-
-    // Check and possibly create/update the profile files
-    if (os.platform() === 'win32') {
-      checkPowerShellProfilePath(this.cwd);
-    } else {
-      checkBashProfilePath(this.cwd);
-    }
 
     let promptCommand = this.getPromptCommand();
     if (promptCommand) {
