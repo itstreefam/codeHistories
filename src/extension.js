@@ -101,10 +101,14 @@ function activate(context) {
 	}
 
 	if(process.platform === 'win32'){
-		vscode.window.onDidExecuteTerminalCommand(async event => {
-			// if(event.terminal.name !== "pwsh" && event.terminal.name !== "powershell") return;
-			await onDidExecuteTerminalCommandHelper(event);
+		vscode.window.onDidStartTerminalShellExecution(async event => {
+			await onDidExecuteShellCommandHelper(event);
 		});
+
+		// vscode.window.onDidExecuteTerminalCommand(async event => {
+		// 	// if(event.terminal.name !== "pwsh" && event.terminal.name !== "powershell") return;
+		// 	await onDidExecuteTerminalCommandHelper(event);
+		// });
 
 		/*
 		// e.g. tri@DESKTOP-XXXXXXX MINGW64 ~/Desktop/test-folder (master)
@@ -452,6 +456,135 @@ async function onDidExecuteTerminalCommandHelper(event) {
 			await tracker.gitCommit();
 		} else {
 			await tracker.gitReset();
+		}
+	} catch (error) {
+		console.log("Error occurred:", error);
+		await tracker.gitReset();
+		await vscode.window.showInformationMessage('Error committing to git. Please wait a few seconds and try again.');
+	}
+}
+
+// https://stackoverflow.com/questions/25245716/remove-all-ansi-colors-styles-from-strings
+function removeANSIcodesHelper(txt) {
+	const processedTxt = txt.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+	return processedTxt;
+}
+
+// https://stackoverflow.com/questions/20856197/remove-non-ascii-character-in-string
+function removeNonASCIICharsHelper(txt) {
+	const processedTxt = txt.replace(/[\x00-\x08\x0E-\x1F\x7F-\uFFFF]/g, '');
+	return processedTxt;
+}
+
+async function onDidExecuteShellCommandHelper(event) {
+	try {
+		// console.log('event.terminal', event.terminal);
+		// console.log('event.shellIntegration', event.shellIntegration);
+		// console.log('event.execution', event.execution);
+		if(event.execution.commandLine){
+			let time = Math.floor(Date.now() / 1000);
+			let command = event.execution.commandLine ? event.execution.commandLine.value : '';
+			let cwd = event.execution.cwd ? event.execution.cwd.path : '';
+			let outputStream = event.execution.read();
+			let output = '';
+			for await (let data of outputStream) {
+				data = data.toString();
+				data = removeANSIcodesHelper(data);
+				data = removeNonASCIICharsHelper(data);
+				// console.log('data:', data);
+				output += data;
+			}
+
+			// Regex pattern to remove ]633;...; or ]633;..., sequences with at most one character between ]633; and the next ; or ,
+			const weirdSeq1Regex = /\]633;[^;|^,]?;|\]633;[^;|^,]?,/g;
+
+			// Regex pattern to replace \x5c with /
+			const weirdSeq2Regex = /\\x5c/g;
+
+			// Regex pattern to match UIID
+			const uuidRegex = /[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}/g;
+
+			// Regex to remove ,\n with \n
+			const weirdSeq3Regex = /,\n|,\n\r|,\r|,\r\n/g;
+
+			if(process.platform === 'win32' && terminalName === "bash"){
+				output = output.replace(weirdSeq1Regex, '');
+				output = output.replace(uuidRegex, '\n');
+				output = output.replace(weirdSeq3Regex, '\n');
+
+				// Regex pattern to 0,Cwd= and everything after it
+				const weirdSeq4Regex = /0,Cwd=.*$/g;
+				output = output.replace(weirdSeq4Regex, '');
+			}
+			
+			if(process.platform === 'win32' && (terminalName === "pwsh" || terminalName === "powershell")){
+				output = output.replace(weirdSeq1Regex, '');
+				output = output.replace(weirdSeq2Regex, '\\');
+				output = output.replace(uuidRegex, '\n');
+				output = output.replace(weirdSeq3Regex, '\n');
+				
+				// Regex pattern to \]633; and everything after it until the first >
+				const weirdSeq5Regex = /\]633;.*?>\s/g;
+				output = output.replace(weirdSeq5Regex, '');
+			}
+
+			if (user && hostname) {
+				// Define regular expressions with word boundaries
+				let userRegex = new RegExp("\\b" + user + "\\b", "g");
+				let hostnameRegex = new RegExp("\\b" + hostname + "\\b", "g");
+	
+				// trim user and hostname from command, cwd, and output
+				if (command) {
+					command = command.replace(hostnameRegex, 'hostname');
+					command = command.replace(userRegex, 'user');
+				}
+				if (cwd) {
+					cwd = cwd.replace(hostnameRegex, 'hostname');
+					cwd = cwd.replace(userRegex, 'user');
+				}
+				if(output){
+					output = output.replace(hostnameRegex, 'hostname');
+					output = output.replace(userRegex, 'user');
+				}
+			}
+
+			// trim command;\n* from output
+			let commandRegex = new RegExp(command + ";\n*", "g");
+			output = output.replace(commandRegex, '');
+	
+			console.log('command: ', command);
+			console.log('cwd: ', cwd);
+			console.log('output: ', output);
+
+			let executionInfo = {
+				command: command,
+				cwd: cwd,
+				output: output,
+				time: time
+			};
+	
+			// Log the execution info to JSON file
+			const currentDir = getCurrentDir();
+			const ndjsonString = JSON.stringify(executionInfo) + '\n'; // Convert to JSON string and add newline
+			const outputPath = path.join(currentDir, 'CH_cfg_and_logs', 'CH_terminal_data.ndjson');
+			await fs.promises.appendFile(outputPath, ndjsonString);
+	
+			await tracker.gitAdd();
+	
+			// if command contains "codehistories" then we should commit
+			if (command.includes("codehistories")) {
+				if(event.terminal.name === "pwsh" || event.terminal.name === "powershell"){
+					// Write to output to output.txt only for windows since powershell couldn't redirect output well
+					// The setup bash profile redirects solid output, we don't need to do it again
+					const outputTxtFilePath = path.join(currentDir, 'output.txt');
+					await fs.promises.appendFile(outputTxtFilePath, `${output}\n`);
+				}
+				await tracker.gitAddOutput();
+				await tracker.checkWebData();
+				await tracker.gitCommit();
+			} else {
+				await tracker.gitReset();
+			}
 		}
 	} catch (error) {
 		console.log("Error occurred:", error);
