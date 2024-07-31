@@ -16,7 +16,11 @@ class Terminal {
         this.terminalShellPath = 'powershell.exe';
       }
     } else {
-      this.terminalShellPath = '/bin/bash';
+      if (name === 'pwsh') {
+        this.terminalShellPath = 'pwsh';
+      } else {
+        this.terminalShellPath = '/bin/bash';
+      }
     }
 
     this.terminal = vscode.window.createTerminal({

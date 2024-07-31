@@ -256,9 +256,18 @@ function activate(context) {
 		// linux defaut bash e.g. tri@tri-VirtualBox:~/Desktop/test$
 		var linux_regex_dir = new RegExp("(\(.*\))?" + user + "@" + hostname + ".*\\${1}", "g");
 		// unixLikeTerminalProcess(linux_regex_dir);
-		vscode.window.onDidExecuteTerminalCommand(async event => {
-			await onDidExecuteTerminalCommandHelper(event);
+		// vscode.window.onDidExecuteTerminalCommand(async event => {
+		// 	await onDidExecuteTerminalCommandHelper(event);
+		// });
+
+		vscode.window.onDidStartTerminalShellExecution(async event => {
+			await onDidExecuteShellCommandHelper(event);
 		});
+
+		// this for exit code but output is currently not showing in this event
+		// vscode.window.onDidEndTerminalShellExecution(async event => {
+		// 	console.log('event: ', event);
+		// });
 	}
 
 	let activateCodeHistories = vscode.commands.registerCommand('codeHistories.codeHistories', activateCodeHistoriesHelper);
@@ -507,7 +516,7 @@ async function onDidExecuteShellCommandHelper(event) {
 			// Regex to remove ,\n with \n
 			const weirdSeq3Regex = /,\n|,\n\r|,\r|,\r\n/g;
 
-			if(process.platform === 'win32' && terminalName === "bash"){
+			if(terminalName === "bash"){
 				output = output.replace(weirdSeq1Regex, '');
 				output = output.replace(uuidRegex, '\n');
 				output = output.replace(weirdSeq3Regex, '\n');
@@ -517,7 +526,7 @@ async function onDidExecuteShellCommandHelper(event) {
 				output = output.replace(weirdSeq4Regex, '');
 			}
 			
-			if(process.platform === 'win32' && (terminalName === "pwsh" || terminalName === "powershell")){
+			if(terminalName === "pwsh" || terminalName === "powershell"){
 				output = output.replace(weirdSeq1Regex, '');
 				output = output.replace(weirdSeq2Regex, '\\');
 				output = output.replace(uuidRegex, '\n');
@@ -687,53 +696,87 @@ async function showTerminalProfileQuickPick() {
 			return;
 		}
 
-		if (profileName === "bash" && process.platform === "win32") {
-			// update the vscode settings.json to use Git Bash as the default terminal
-			const vscodePath = path.join(currentDir, ".vscode");
-			const settingsPath = path.join(vscodePath, "settings.json");
-			// find the terminal.integrated.defaultProfile.windows key and set it to Git Bash
-			const settings = JSON.stringify({
-				"terminal.integrated.defaultProfile.windows": "Git Bash",
-			}, null, 4);
-
-			try {
-				if (!fs.existsSync(vscodePath)) {
-					fs.mkdirSync(vscodePath);
-				}
-
-				// Read existing settings file
-				let existingSettings = {};
-				if (fs.existsSync(settingsPath)) {
-					try {
-						const data = fs.readFileSync(settingsPath, 'utf8');
-						existingSettings = JSON.parse(data);
-					} catch (error) {
-						console.error("Error parsing existing settings:", error);
-					}
-				}
-
-				// Merge new settings with existing settings
-				let combinedSettings = { ...existingSettings, ...JSON.parse(settings) };
-
-				// Remove any duplicate keys
-				let uniqueSettings = {};
-				for (let key in combinedSettings) {
-					if (!uniqueSettings.hasOwnProperty(key)) {
-						uniqueSettings[key] = combinedSettings[key];
-					}
-
-					// Write the settings
-					fs.writeFileSync(settingsPath, JSON.stringify(uniqueSettings, null, 4));
-				}
-
-			} catch (error) {
-				vscode.window.showErrorMessage(`Error creating VSCode settings: ${error}`);
+		const vscodePath = path.join(currentDir, ".vscode");
+		const settingsPath = path.join(vscodePath, "settings.json");
+		let settings;
+		
+		if (profileName === "bash") {
+			if(process.platform === "win32"){
+				settings = JSON.stringify({
+					"terminal.integrated.defaultProfile.windows": "Git Bash",
+				}, null, 4);
 			}
+			if(process.platform === "darwin"){
+				settings = JSON.stringify({
+					"terminal.integrated.defaultProfile.osx": profileName,
+				}, null, 4);
+			}
+			if(process.platform === "linux"){
+				settings = JSON.stringify({
+					"terminal.integrated.defaultProfile.linux": profileName,
+				}, null, 4);
+			}
+		}
+
+		if (profileName === "pwsh") {
+			if(process.platform === "win32"){
+				settings = JSON.stringify({
+					"terminal.integrated.defaultProfile.windows": "PowerShell",
+				}, null, 4);
+			}
+			if(process.platform === "darwin"){
+				settings = JSON.stringify({
+					"terminal.integrated.defaultProfile.osx": profileName,
+				}, null, 4);
+			}
+			if(process.platform === "linux"){
+				settings = JSON.stringify({
+					"terminal.integrated.defaultProfile.linux": profileName,
+				}, null, 4);
+			}
+		}
+
+		try {
+			if (!fs.existsSync(vscodePath)) {
+				fs.mkdirSync(vscodePath);
+			}
+
+			// Read existing settings file
+			let existingSettings = {};
+			if (fs.existsSync(settingsPath)) {
+				try {
+					const data = fs.readFileSync(settingsPath, 'utf8');
+					existingSettings = JSON.parse(data);
+				} catch (error) {
+					console.error("Error parsing existing settings:", error);
+				}
+			}
+
+			// Merge new settings with existing settings
+			let combinedSettings = { ...existingSettings, ...JSON.parse(settings) };
+
+			// Remove any duplicate keys
+			let uniqueSettings = {};
+			for (let key in combinedSettings) {
+				if (!uniqueSettings.hasOwnProperty(key)) {
+					uniqueSettings[key] = combinedSettings[key];
+				}
+
+				// Write the settings
+				fs.writeFileSync(settingsPath, JSON.stringify(uniqueSettings, null, 4));
+			}
+
+		} catch (error) {
+			vscode.window.showErrorMessage(`Error creating VSCode settings: ${error}`);
 		}
 
 		terminalName = profileName;
 		if(terminalName === "pwsh" || terminalName === "powershell"){
-			cmdPrompt = ". .\\CH_cfg_and_logs\\CH_PowerShell_profile.ps1";
+			if(process.platform === "win32") {
+				cmdPrompt = ". .\\CH_cfg_and_logs\\CH_PowerShell_profile.ps1";
+			} else {
+				cmdPrompt = ". ./CH_cfg_and_logs/CH_PowerShell_profile.ps1";
+			}
 		}
 		if(terminalName === "bash"){
 			cmdPrompt = "source ./CH_cfg_and_logs/.CH_bash_profile";
