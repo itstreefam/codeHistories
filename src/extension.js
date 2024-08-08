@@ -11,6 +11,7 @@ const { checkBashProfilePath, checkPowerShellProfilePath } = require('./profileH
 const { debounce, getCurrentDir } = require('./helpers');
 const navigation = require('./navigation');
 const selection = require('./selection');
+const save = require('./save');
 
 var tracker = null;
 var iter = 0;
@@ -61,8 +62,8 @@ function activate(context) {
 		debouncedSelectionChangeHandler(event.textEditor);
 	}));
 
-	// Listen for save events
-	context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(handleTextDocumentSave));
+	// Listen for save events in files
+	context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(save.handleFileSave));
 
 	// check git init status
 	tracker = new gitTracker(currentDir);
@@ -1003,38 +1004,6 @@ function containsIPAddresses(url) {
 
 	// Use the regex `test` method to check if the URL contains an IPv4 or IPv6 address
 	return ipv4Pattern.test(url) || ipv6Pattern.test(url);
-}
-
-function handleTextDocumentSave(document) {
-	const currentDir = getCurrentDir();
-	let documentPath = document.uri.fsPath;
-
-	// trim the user and hostname from the document
-	if (user && hostname) {
-		let userRegex = new RegExp("\\b" + user + "\\b", "g");
-		let hostnameRegex = new RegExp("\\b" + hostname + "\\b", "g");
-		documentPath = documentPath.replace(userRegex, "user").replace(hostnameRegex, "hostname");
-	}
-
-	const entry = {
-		document: documentPath,
-		time: Math.floor(Date.now() / 1000),
-	};
-	
-	// check if save_log.ndjson exists
-	const saveLogPath = path.join(currentDir, 'CH_cfg_and_logs', 'CH_save_log.ndjson');
-	if (!fs.existsSync(saveLogPath)) {
-		fs.writeFileSync(saveLogPath, '');
-	}
-
-	// Append the entry to the NDJSON file
-	const ndjsonString = JSON.stringify(entry) + '\n';
-	fs.appendFile(saveLogPath, ndjsonString, (err) => {
-		if (err) {
-			console.error('Error appending save entry to file:', err);
-			vscode.window.showErrorMessage('Failed to append save entry to file.');
-		}
-	});
 }
 
 function deactivate() {
