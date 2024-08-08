@@ -486,8 +486,6 @@ async function onDidExecuteShellCommandHelper(event) {
 		// console.log('event.execution', event.execution);
 		if(event.execution.commandLine){
 			let time = Math.floor(Date.now() / 1000);
-			let command = event.execution.commandLine ? event.execution.commandLine.value : '';
-			let cwd = event.execution.cwd ? event.execution.cwd.path : '';
 			let outputStream = event.execution.read();
 			let output = '';
 			for await (let data of outputStream) {
@@ -497,38 +495,54 @@ async function onDidExecuteShellCommandHelper(event) {
 				// console.log('data:', data);
 				output += data;
 			}
+			// console.log('rawOutput:', output);
 
-			// Regex pattern to remove ]633;...; or ]633;..., sequences with at most one character between ]633; and the next ; or ,
-			const weirdSeq1Regex = /\]633;[^;|^,]?;|\]633;[^;|^,]?,/g;
+			// Regex to grab between ]633;C and ]633;D
+			const outputRegex = /\]633;C(.*?)\]633;D/g;
+			let outputMatch = output.match(outputRegex);
+			let finalOutput = '';
+			if(outputMatch){
+				finalOutput = outputMatch[0];
+				finalOutput = finalOutput.replace(']633;C', '').replace(']633;D', '');
+				// console.log('finalOutputMatch:', finalOutput);
+			}
+
+			// Regex to check exit code
+			const exitCodeRegex = /\]633;D(?:;(\d+))?/g;
+			let exitCodeMatch = output.match(exitCodeRegex);
+			let exitCode = '';
+			if(exitCodeMatch){
+				exitCode = exitCodeMatch[0];
+				exitCode = exitCode.replace(']633;D;', '');
+				// console.log('exitCodeMatch:', exitCode);
+			}
+
+			// Regex to find cwd
+			const cwdRegex = /Cwd=(.*)/g;
+			let cwdMatch = output.match(cwdRegex);
+			let cwd = '';
+			if(cwdMatch){
+				cwd = cwdMatch[0];
+				cwd = cwd.replace('Cwd=', '');
+				// console.log('cwdMatch:', cwd);
+			}
+
+			// Regex to match cmd executed
+			const execCmdRegex = /\]633;E;(.*?);/g;
+			let execCmdMatch = output.match(execCmdRegex);
+			let command = '';
+			if(execCmdMatch){
+				command = execCmdMatch[0];
+				command = command.replace(']633;E;', '');
+				command = command.replace(';', '');
+				// console.log('execCmdMatch:', command);
+			}
 
 			// Regex pattern to replace \x5c with /
-			const weirdSeq2Regex = /\\x5c/g;
-
-			// Regex pattern to match UIID
-			const uuidRegex = /[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}/g;
-
-			// Regex to remove ,\n with \n
-			const weirdSeq3Regex = /,\n|,\n\r|,\r|,\r\n/g;
-
-			if(terminalName === "bash"){
-				output = output.replace(weirdSeq1Regex, '');
-				output = output.replace(uuidRegex, '\n');
-				output = output.replace(weirdSeq3Regex, '\n');
-
-				// Regex pattern to 0,Cwd= and everything after it
-				const weirdSeq4Regex = /0,Cwd=.*$/g;
-				output = output.replace(weirdSeq4Regex, '');
-			}
+			const weirdRegex = /\\x5c/g;
 			
 			if(terminalName === "pwsh" || terminalName === "powershell"){
-				output = output.replace(weirdSeq1Regex, '');
-				output = output.replace(weirdSeq2Regex, '\\');
-				output = output.replace(uuidRegex, '\n');
-				output = output.replace(weirdSeq3Regex, '\n');
-				
-				// Regex pattern to \]633; and everything after it until the first >
-				const weirdSeq5Regex = /\]633;.*?>\s/g;
-				output = output.replace(weirdSeq5Regex, '');
+				output = output.replace(weirdRegex, '\\');
 			}
 
 			if (user && hostname) {
@@ -550,21 +564,21 @@ async function onDidExecuteShellCommandHelper(event) {
 					output = output.replace(userRegex, 'user');
 				}
 			}
-
-			// trim command;\n* from output
-			let commandRegex = new RegExp(command + ";\n*", "g");
-			output = output.replace(commandRegex, '');
 	
-			console.log('command: ', command);
-			console.log('cwd: ', cwd);
-			console.log('output: ', output);
+			// console.log('command:', command);
+			// console.log('output:', finalOutput);
+			// console.log('cwd:', cwd);
+			// console.log('exitCode:', exitCode);
 
 			let executionInfo = {
 				command: command,
+				output: finalOutput,
+				exitCode: exitCode,
 				cwd: cwd,
-				output: output,
 				time: time
 			};
+
+			console.log('executionInfo:', executionInfo);
 	
 			// Log the execution info to JSON file
 			const currentDir = getCurrentDir();
