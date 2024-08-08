@@ -13,10 +13,10 @@ function handleTextEditorSelectionChange(editor) {
     const document = editor.document;
     const selection = editor.selection;
 
-    console.log('Selection:', selection);
+    // console.log('Selection:', selection);
 
     const selectedText = document.getText(selection);
-    console.log('Selected Text:', selectedText);
+    // console.log('Selected Text:', selectedText);
 
     // Define the range for capturing text around the selection
     const startLineIndex = selection.start.line;
@@ -61,7 +61,8 @@ function handleTextEditorSelectionChange(editor) {
 	}
 
     const entry = {
-        selectedLinesText: linesText,
+        selectedText: selectedText,
+        selectedLinesText: linesText, // Capture the lines of text around the selection
         range: [selection.start.line + 1, selection.end.line + 1],
 		document: documentPath,
         time: Math.floor(Date.now() / 1000),
