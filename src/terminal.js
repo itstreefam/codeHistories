@@ -13,7 +13,7 @@ class Terminal {
       if (name === 'bash') {
         this.terminalShellPath = 'C:\\Program Files\\Git\\bin\\bash.exe';
       } else {
-        this.terminalShellPath = 'powershell.exe';
+        this.terminalShellPath = 'C:\\Program Files\\PowerShell\\7\\pwsh.exe';
       }
     } else {
       if (name === 'pwsh') {

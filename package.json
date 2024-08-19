@@ -3,8 +3,7 @@
     "terminalDataWriteEvent",
     "terminalDimensions",
     "terminalExecuteCommandEvent",
-    "terminalSelection",
-    "terminalShellIntegration"
+    "terminalSelection"
   ],
   "name": "code-histories",
   "displayName": "Code Histories",

@@ -495,7 +495,14 @@ async function onDidExecuteShellCommandHelper(event) {
 				// console.log('data:', data);
 				output += data;
 			}
-			// console.log('rawOutput:', output);
+			console.log('rawOutput:', output);
+
+			// Regex pattern to replace \x5c with \
+			const weirdRegex = /\\x5c/g;
+			
+			if(terminalName === "pwsh" || terminalName === "powershell"){
+				output = output.replace(weirdRegex, '\\');
+			}
 
 			// Regex to grab between ]633;C and ]633;D
 			const outputRegex = /\]633;C(.*?)\]633;D/g;
@@ -517,14 +524,13 @@ async function onDidExecuteShellCommandHelper(event) {
 				// console.log('exitCodeMatch:', exitCode);
 			}
 
-			// Regex to find cwd
-			const cwdRegex = /Cwd=(.*)/g;
-			let cwdMatch = output.match(cwdRegex);
+			// grab cwd from shellIntegration event
 			let cwd = '';
-			if(cwdMatch){
-				cwd = cwdMatch[0];
-				cwd = cwd.replace('Cwd=', '');
-				// console.log('cwdMatch:', cwd);
+			if(event.shellIntegration.cwd && event.shellIntegration.cwd.path){
+				cwd = event.shellIntegration.cwd.path;
+				if(cwd.substring(0, 1) === '/'){
+					cwd = cwd.substring(1);
+				}
 			}
 
 			// Regex to match cmd executed
@@ -536,13 +542,6 @@ async function onDidExecuteShellCommandHelper(event) {
 				command = command.replace(']633;E;', '');
 				command = command.replace(';', '');
 				// console.log('execCmdMatch:', command);
-			}
-
-			// Regex pattern to replace \x5c with /
-			const weirdRegex = /\\x5c/g;
-			
-			if(terminalName === "pwsh" || terminalName === "powershell"){
-				output = output.replace(weirdRegex, '\\');
 			}
 
 			if (user && hostname) {
