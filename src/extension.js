@@ -12,6 +12,7 @@ const { debounce, getCurrentDir } = require('./helpers');
 const navigation = require('./navigation');
 const selection = require('./selection');
 const save = require('./save');
+const helpers = require('./helpers');
 
 var tracker = null;
 var iter = 0;
@@ -98,145 +99,6 @@ function activate(context) {
 		vscode.window.onDidStartTerminalShellExecution(async event => {
 			await onDidExecuteShellCommandHelper(event);
 		});
-
-		// vscode.window.onDidExecuteTerminalCommand(async event => {
-		// 	// if(event.terminal.name !== "pwsh" && event.terminal.name !== "powershell") return;
-		// 	await onDidExecuteTerminalCommandHelper(event);
-		// });
-
-		/*
-		// e.g. tri@DESKTOP-XXXXXXX MINGW64 ~/Desktop/test-folder (master)
-		var win_regex_dir = new RegExp(user + "@" + hostname + "(\(.*\))?", "g");
-		
-		// on did write to terminal
-		vscode.window.onDidWriteTerminalData(async event => {
-			if(event.terminal.name !== "bash") return;
-
-			const pid = await event.terminal.processId;
-
-			var terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
-
-			if(terminalDimChanged[pid]){
-				terminalData = "";
-				terminalDimChanged[pid] = false;
-			}
-
-			if(typeof allTerminalsData[pid] === 'undefined'){
-				allTerminalsData[pid] = "";
-			}
-
-			if(typeof allTerminalsDirCount[pid] === 'undefined'){
-				allTerminalsDirCount[pid] = 0;
-			}
-			
-			// test if very_special_regex matches
-			if(very_special_regex.test(terminalData)){
-				// get the matched string
-				var specialMatched = terminalData.match(very_special_regex);
-				// remove the matched from the terminalData
-				terminalData = terminalData.replace(specialMatched, "");
-			}
-
-			// see if terminalData contains win_regex_dir
-			if(win_regex_dir.test(terminalData.trim())){
-				// get the matched string
-				var matched = terminalData.match(win_regex_dir);
-				console.log('matched: ', matched);
-
-				//if matched.length is a number
-				if(matched.length){
-					// add length of matched array to counterMatchedDir
-					allTerminalsDirCount[pid] += matched.length;
-				}
-			}
-
-			// iter += 1;
-			// eventData[iter] = terminalData;
-			// console.log(eventData);
-
-			// allTerminalsData[pid] = globalStr of the terminal instance with pid
-			allTerminalsData[pid] += terminalData;
-			// console.log('allTerminalsData: ', allTerminalsData[pid]);
-
-			console.log('There are %s matched regex dir for pid %s', allTerminalsDirCount[pid], pid);
-
-			// if counter is >= 2, then we should have enough information to trim and find the output
-			if(allTerminalsDirCount[pid] >= 2){
-				if(typeof matched === 'undefined') return;
-				let lastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]);
-
-				// check if allTerminalsData[pid] contains codehistories
-				let hasCodehistories = removeBackspaces(allTerminalsData[pid]).includes("codehistories");
-				if(!hasCodehistories) return;
-
-				try{
-					await tracker.gitAdd();
-					
-					let outputUpdated = await tracker.isOutputModified();	
-					console.log('output.txt updated?', outputUpdated);
-
-					if(outputUpdated){
-						await tracker.gitAddOutput();
-						await tracker.checkWebData();
-						await tracker.gitCommit();
-					} else {
-						// if output.txt is not updated, then we should revert the git add
-						await tracker.gitReset();
-					}
-				} catch(error){
-					console.log("Error occurred:", error);
-					await tracker.gitReset();
-					await vscode.window.showInformationMessage('Error committing to git. Please wait a few seconds and try again.');
-				}
-
-				// console.log('globalStr of %s before reset: ', pid, allTerminalsData[pid]);
-				
-				// reset globalStr of pid to contain only the matched dir string
-				allTerminalsData[pid] = allTerminalsData[pid].substring(lastOccurence);
-				// console.log('globalStr of %s after reset: ', pid, allTerminalsData[pid]);
-				
-				allTerminalsDirCount[pid] = 1;
-			}
-		});
-
-		// on did open terminal
-		vscode.window.onDidOpenTerminal(event => {
-			if(event.name == "bash"){
-				event.processId.then(pid => {
-					allTerminalsData[pid] = "";
-					allTerminalsDirCount[pid] = 0;
-					terminalDimChanged[pid] = false;
-					terminalOpenedFirstTime[pid] = true;
-				});
-			}
-		});
-
-		// on did close terminal
-		vscode.window.onDidCloseTerminal(event => {
-			if(event.name == "bash"){
-				event.processId.then(pid => {
-					delete allTerminalsData[pid];
-					delete allTerminalsDirCount[pid];
-					delete terminalDimChanged[pid];
-					delete terminalOpenedFirstTime[pid];
-				});
-			}
-		});
-
-		// on did change terminal size
-		vscode.window.onDidChangeTerminalDimensions(event => {
-			if(event.terminal.name == "bash"){
-				event.terminal.processId.then(pid => {
-					if(terminalOpenedFirstTime[pid]){
-						terminalDimChanged[pid] = false;
-						terminalOpenedFirstTime[pid] = false;
-					}else if(allTerminalsData[pid]){
-						terminalDimChanged[pid] = true;
-					}
-				});
-			}
-		});
-		*/
 	}
 
 	if(process.platform === "darwin"){
@@ -386,6 +248,9 @@ function activate(context) {
 
 	// Start the first interval
 	intervalId = setTimeout(checkAppSwitch, 500);
+
+	// call activateCodeHistoriesHelper on startup
+	activateCodeHistoriesHelper();
 }
 
 async function onDidExecuteTerminalCommandHelper(event) {
@@ -696,7 +561,7 @@ async function showTerminalProfileQuickPick() {
 			placeHolder: "Select the terminal profile to open (shortcut: Ctrl/Cmd+Shift+T)",
 		});
 
-		profileName = selectedProfile.name;
+		let profileName = selectedProfile.name;
 
 		if (!profileName) {
 			vscode.window.showErrorMessage("No terminal profile selected. Selecting the default terminal profile.");
@@ -955,7 +820,7 @@ function unixLikeTerminalProcess(platform_regex_dir) {
 			let lastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]);
 
 			// check if allTerminalsData[pid] contains codehistories
-			let hasCodehistories = removeBackspaces(allTerminalsData[pid]).includes("codehistories");
+			let hasCodehistories = helpers.removeBackspaces(allTerminalsData[pid]).includes("codehistories");
 			if(!hasCodehistories) return;
 
 			try{

@@ -1,7 +1,6 @@
 {
   "enabledApiProposals": [
     "terminalDataWriteEvent",
-    "terminalDimensions",
     "terminalExecuteCommandEvent",
     "terminalSelection"
   ],
