@@ -65,6 +65,7 @@ function handleTextEditorSelectionChange(editor) {
         selectedLinesText: linesText, // Capture the lines of text around the selection
         range: [selection.start.line + 1, selection.end.line + 1],
 		document: documentPath,
+        allText: document.getText(),
         time: Math.floor(Date.now() / 1000),
     };
 

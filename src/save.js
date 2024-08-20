@@ -14,9 +14,13 @@ function handleFileSave(document) {
 		documentPath = documentPath.replace(userRegex, "user").replace(hostnameRegex, "hostname");
 	}
 
+	// get the text content of the document
+	const documentText = document.getText();
+
 	const entry = {
 		document: documentPath,
 		time: Math.floor(Date.now() / 1000),
+		allText: documentText,
 	};
 	
 	// check if save_log.ndjson exists
