@@ -63,6 +63,10 @@
       {
         "command": "codeHistories.selectTerminalProfile",
         "title": "Code Histories: Select terminal profile"
+      },
+      {
+        "command": "codeHistories.testRunPythonScript",
+        "title": "Code Histories: Test run python script"
       }
     ],
     "keybindings": [
@@ -129,6 +133,7 @@
   },
   "dependencies": {
     "active-win": "^8.2.1",
-    "simple-git": "^3.5.0"
+    "simple-git": "^3.5.0",
+    "sqlite3": "^5.1.7"
   }
 }

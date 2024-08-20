@@ -134,6 +134,7 @@ function activate(context) {
 	let enterGoal = vscode.commands.registerCommand('codeHistories.enterGoal', enterGoalHelper);
 	let quickAutoCommit = vscode.commands.registerCommand('codeHistories.quickAutoCommit', quickAutoCommitHelper);
 	let selectTerminalProfile = vscode.commands.registerCommand('codeHistories.selectTerminalProfile', showTerminalProfileQuickPick);
+	let testRunPythonScript = vscode.commands.registerCommand('codeHistories.testRunPythonScript', testRunPythonScriptHelper);
 
 	context.subscriptions.push(activateCodeHistories);
 	context.subscriptions.push(executeCheckAndCommit);
@@ -143,6 +144,7 @@ function activate(context) {
 	context.subscriptions.push(enterGoal);
 	context.subscriptions.push(quickAutoCommit);
 	context.subscriptions.push(selectTerminalProfile);
+	context.subscriptions.push(testRunPythonScript);
 
 	// this is for web dev heuristics
 	// if user saves a file in the workspace, then they visit chrome to test their program on localhost (require that they do reload the page so that it is recorded as an event in webData)
@@ -251,6 +253,12 @@ function activate(context) {
 
 	// call activateCodeHistoriesHelper on startup
 	activateCodeHistoriesHelper();
+}
+
+async function testRunPythonScriptHelper() {
+	const scriptPath = path.join(__dirname, 'dynamic_history_gen', 'generate_events_from_git.py');
+	const webDataPath = path.join(getCurrentDir(), 'webData');
+	helpers.runPythonScript(scriptPath, [webDataPath], console.log);
 }
 
 async function onDidExecuteTerminalCommandHelper(event) {
