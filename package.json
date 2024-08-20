@@ -67,6 +67,10 @@
       {
         "command": "codeHistories.testRunPythonScript",
         "title": "Code Histories: Test run python script"
+      },
+      {
+        "command": "codeHistories.testDBConstructor",
+        "title": "Code Histories: Test DB constructor"
       }
     ],
     "keybindings": [

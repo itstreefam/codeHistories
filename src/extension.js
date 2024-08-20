@@ -13,6 +13,7 @@ const navigation = require('./navigation');
 const selection = require('./selection');
 const save = require('./save');
 const helpers = require('./helpers');
+const GitHistory = require('./dynamic_history_gen/git_history');
 
 var tracker = null;
 var iter = 0;
@@ -135,6 +136,7 @@ function activate(context) {
 	let quickAutoCommit = vscode.commands.registerCommand('codeHistories.quickAutoCommit', quickAutoCommitHelper);
 	let selectTerminalProfile = vscode.commands.registerCommand('codeHistories.selectTerminalProfile', showTerminalProfileQuickPick);
 	let testRunPythonScript = vscode.commands.registerCommand('codeHistories.testRunPythonScript', testRunPythonScriptHelper);
+	let testDBConstructor = vscode.commands.registerCommand('codeHistories.testDBConstructor', testDBConstructorHelper);
 
 	context.subscriptions.push(activateCodeHistories);
 	context.subscriptions.push(executeCheckAndCommit);
@@ -145,6 +147,7 @@ function activate(context) {
 	context.subscriptions.push(quickAutoCommit);
 	context.subscriptions.push(selectTerminalProfile);
 	context.subscriptions.push(testRunPythonScript);
+	context.subscriptions.push(testDBConstructor);
 
 	// this is for web dev heuristics
 	// if user saves a file in the workspace, then they visit chrome to test their program on localhost (require that they do reload the page so that it is recorded as an event in webData)
@@ -258,7 +261,25 @@ function activate(context) {
 async function testRunPythonScriptHelper() {
 	const scriptPath = path.join(__dirname, 'dynamic_history_gen', 'generate_events_from_git.py');
 	const webDataPath = path.join(getCurrentDir(), 'webData');
-	helpers.runPythonScript(scriptPath, [webDataPath], console.log);
+	const preprocessedWebData = helpers.runPythonScript(scriptPath, [webDataPath], console.log);
+}
+
+async function testDBConstructorHelper() {
+	const scriptPath = path.join(__dirname, 'dynamic_history_gen', 'generate_events_from_git.py');
+	const webDataPath = path.join(getCurrentDir(), 'webData');
+	try {
+        const preprocessedWebData = await helpers.runPythonScript(scriptPath, [webDataPath]);
+
+        if (preprocessedWebData && preprocessedWebData.trim()) {
+            let gitDB = new GitHistory(getCurrentDir(), preprocessedWebData);
+            console.log('GitHistory instance created successfully');
+        } else {
+            console.error('Error: Preprocessed web data is empty or invalid.');
+            throw new Error('Preprocessed web data is empty. Unable to construct GitHistory instance.');
+        }
+    } catch (error) {
+        console.error('Failed to run the Python script:', error.message);
+    }
 }
 
 async function onDidExecuteTerminalCommandHelper(event) {

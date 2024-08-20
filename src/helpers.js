@@ -48,28 +48,34 @@ function removeBackspaces(str) {
     return str;
 }
 
-function runPythonScript(scriptPath, args, callback) {
-    let pythonPath = vscode.workspace.getConfiguration("python").get("pythonPath");
-    if (!pythonPath) {
-        pythonPath = "python";
-    }
-    let options = {
-        cwd: path.dirname(scriptPath)
-    };
-    let process = spawn(pythonPath, [scriptPath, ...args], options);
-    let result = "";
-    process.stdout.on('data', function(data) {
-        result += data.toString();
-    });
-    process.stderr.on('data', function(data) {
-        console.error(data.toString());
-    });
-    process.on('exit', function(code) {
-        if (code !== 0) {
-            console.error("Error running Python script:", code);
-            return;
+function runPythonScript(scriptPath, args) {
+    return new Promise((resolve, reject) => {
+        let pythonPath = vscode.workspace.getConfiguration("python").get("pythonPath");
+        if (!pythonPath) {
+            pythonPath = "python";
         }
-        callback(result);
+        let options = {
+            cwd: path.dirname(scriptPath)
+        };
+        let process = spawn(pythonPath, [scriptPath, ...args], options);
+        let result = "";
+
+        process.stdout.on('data', function(data) {
+            result += data.toString();
+        });
+
+        process.stderr.on('data', function(data) {
+            console.error(data.toString());
+        });
+
+        process.on('exit', function(code) {
+            if (code !== 0) {
+                console.error("Error running Python script:", code);
+                reject(new Error(`Python script exited with code ${code}`));
+                return;
+            }
+            resolve(result);
+        });
     });
 }
 

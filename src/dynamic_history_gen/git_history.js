@@ -7,9 +7,10 @@ const sqlite3 = require('sqlite3').verbose();
 
 class GitHistory {
 
-    constructor(gitFolder) {
+    constructor(gitFolder, eventsData) {
         this.gitFolder = gitFolder;
-        this.eventsFile = null;
+        this.eventsData = eventsData;
+
         this.exec = util.promisify(cp.exec);
         this.readFile = util.promisify(fs.readFile);
 
@@ -21,10 +22,7 @@ class GitHistory {
         }
 
         // trim username code_text for privacy
-        this.userName = "";
-        if(userName) {
-            this.userName = os.userInfo().username;
-        }
+        this.userName = os.userInfo().username;
 
         this.gitData = this.constructGitData();
 
@@ -357,7 +355,7 @@ class GitHistory {
     async combineWebEventsAndCommits() {
         try {
             this.hashObjsList = await this.constructHashObjsList(this.gitFolder);
-            this.eventsList = await this.constructEventsList(this.eventsFile);
+            this.eventsList = await this.constructEventsList(this.eventsData);
 
             if(this.eventsList.length > 0 && this.hashObjsList.length > 0) {
                 // combine and sort the time of events and commits
@@ -471,10 +469,12 @@ class GitHistory {
         }
     }
 
-    async constructEventsList(eventsFile) {
+    async constructEventsList(eventsData) {
         try {
-            let events = await this.readFile(eventsFile, 'utf8');
-            events = await this.csvJSON(events);
+            if (!eventsData) {
+                throw new Error('Events data is undefined or null');
+            }
+            let events = await this.csvJSON(eventsData);
             console.log('Events list constructed!');
             return events;
         } catch (err) {
