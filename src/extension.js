@@ -369,11 +369,12 @@ async function onDidExecuteShellCommandHelper(event) {
 				output = output.replace(weirdRegex, '\\');
 			}
 
-			// Regex to grab between ]633;C and ]633;D
-			const outputRegex = /\]633;C(.*?)\]633;D/g;
+			// Regex to grab between ]633;C and ]633;D including multiple lines (in the case of errors)
+			const outputRegex = /\]633;C([\s\S]*?)\]633;D/g;
 			let outputMatch = output.match(outputRegex);
 			let finalOutput = '';
 			if(outputMatch){
+				// console.log("outputMatch:", outputMatch);
 				finalOutput = outputMatch[0];
 				finalOutput = finalOutput.replace(']633;C', '').replace(']633;D', '');
 				// console.log('finalOutputMatch:', finalOutput);
@@ -423,9 +424,9 @@ async function onDidExecuteShellCommandHelper(event) {
 					cwd = cwd.replace(hostnameRegex, 'hostname');
 					cwd = cwd.replace(userRegex, 'user');
 				}
-				if(output){
-					output = output.replace(hostnameRegex, 'hostname');
-					output = output.replace(userRegex, 'user');
+				if(finalOutput){
+					finalOutput = finalOutput.replace(hostnameRegex, 'hostname');
+					finalOutput = finalOutput.replace(userRegex, 'user');
 				}
 			}
 	
@@ -458,7 +459,7 @@ async function onDidExecuteShellCommandHelper(event) {
 					// Write to output to output.txt only for windows since powershell couldn't redirect output well
 					// The setup bash profile redirects solid output, we don't need to do it again
 					const outputTxtFilePath = path.join(currentDir, 'output.txt');
-					await fs.promises.appendFile(outputTxtFilePath, `${output}\n`);
+					await fs.promises.appendFile(outputTxtFilePath, `${finalOutput}\n`);
 				}
 				await tracker.gitAddOutput();
 				await tracker.checkWebData();
