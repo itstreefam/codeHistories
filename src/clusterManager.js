@@ -1,5 +1,6 @@
 const fuzzball = require('fuzzball');
 const vscode = require('vscode');
+const Diff = require('diff');
 
 class ClusterManager {
     constructor() {
@@ -183,8 +184,28 @@ class ClusterManager {
                 <meta charset="UTF-8">
                 <title>Code Clusters</title>
                 <style>
+                    body {
+                        font-family: Arial, sans-serif;
+                        background-color: #1e1e1e;
+                        color: #d4d4d4;
+                    }
+                    h1 {
+                        color: #f0f0f0;
+                        font-size: 20px;
+                        margin-bottom: 15px;
+                    }
+                    ul {
+                        list-style-type: none;
+                        padding-left: 0;
+                    }
+                    li {
+                        background-color: #2e2e2e;
+                        margin-bottom: 10px;
+                        padding: 10px;
+                        border-radius: 5px;
+                    }
                     .collapsible {
-                        background-color: #777;
+                        background-color: #444;
                         color: white;
                         cursor: pointer;
                         padding: 10px;
@@ -194,32 +215,50 @@ class ClusterManager {
                         outline: none;
                         font-size: 15px;
                     }
-
                     .content {
-                        padding: 0 18px;
+                        padding: 10px;
                         display: none;
                         overflow: hidden;
-                        background-color: #f1f1f1;
+                        background-color: #333;
+                        color: white;
+                        margin-top: 5px;
                     }
-
                     .stray-event {
-                        background-color: #f9f9f9;
-                        margin: 5px 0;
+                        background-color: #444;
+                        margin: 10px 0;
                         padding: 10px;
-                        border: 1px solid #ddd;
+                        border-radius: 5px;
+                        color: white;
+                    }
+                    pre {
+                        background-color: #2e2e2e;
+                        padding: 10px;
+                        border-radius: 5px;
+                        overflow-x: auto;
+                    }
+                    .diff-added {
+                        color: #00ff00;
+                    }
+                    .diff-removed {
+                        color: #ff0000;
+                    }
+                    .diff-context {
+                        color: #ffffff;
                     }
                 </style>
             </head>
             <body>
                 <h1>Grouped Events</h1>
-                ${groupedEventsHTML}
+                <ul>
+                    ${groupedEventsHTML}
+                </ul>
 
                 <h1>Stray Events</h1>
-                ${strayEventsHTML}
+                <ul>
+                    ${strayEventsHTML}
+                </ul>
 
                 <script>
-                    const vscode = acquireVsCodeApi();
-
                     document.querySelectorAll('.collapsible').forEach(coll => {
                         coll.addEventListener('click', function() {
                             this.classList.toggle('active');
@@ -232,36 +271,92 @@ class ClusterManager {
                         });
                     });
                 </script>
+                <script src="https://cdn.jsdelivr.net/npm/diff2html/bundles/js/diff2html.min.js"></script>
             </body>
             </html>`;
     }
 
     generateGroupedEventsHTML() {
         if (this.groupedEvents.length === 0) {
-            return '<p>No grouped events.</p>';
+            return '<li>No grouped events.</li>';
         }
 
-        return this.groupedEvents.map((event, index) => `
-            <button type="button" class="collapsible">Group ${index + 1}</button>
-            <div class="content">
-                <ul>
-                    ${event.code_text}
-                </ul>
-            </div>
-        `).join('');
+        return this.groupedEvents.map((event, index) => {
+            const diffSnippet = this.generateDiffSnippet(event);
+
+            // example time: 1723572314
+            // convert this to MM/DD/YYYY HH:MM:SS
+            const humanReadableTime = new Date(event.time * 1000).toLocaleString();
+            const filename = this.getFilename(event.notes);
+
+            // Condense content: Only show a few lines or the diff if there's a diff
+            const contentSnippet = diffSnippet ? diffSnippet : this.condenseContent(event.code_text);
+
+            return `
+                <li>
+                    <button type="button" class="collapsible">Group ${index + 1}</button>
+                    <div class="content">
+                        <p><strong>${humanReadableTime}</strong> - <em>${filename}</em></p>
+                        <div>${contentSnippet}</div>
+                    </div>
+                </li>
+            `;
+        }).join('');
     }
 
     generateStrayEventsHTML() {
         if (this.strayEvents.length === 0) {
-            return '<p>No stray events.</p>';
+            return '<li>No stray events.</li>';
         }
 
-        return this.strayEvents.map((event, index) => `
-            <div class="stray-event">
-                <p>Event ${index + 1}: ${event.code_text}</p>
-            </div>
-        `).join('');
+        return this.strayEvents.map((event, index) => {
+            const diffSnippet = this.generateDiffSnippet(event);
+            const humanReadableTime = new Date(event.time * 1000).toLocaleString();
+            const filename = this.getFilename(event.notes);
+
+            // Condense content: Only show a few lines or the diff if there's a diff
+            const contentSnippet = diffSnippet ? diffSnippet : this.condenseContent(event.code_text);
+
+            return `
+                <li class="stray-event">
+                    <p><strong>${humanReadableTime}</strong> - <em>${filename}</em></p>
+                    <div>${contentSnippet}</div>
+                </li>
+            `;
+        }).join('');
+    }  
+
+    generateDiffSnippet(event) {
+        const pastLines = this.pastEvent ? this.get_code_lines(this.pastEvent.code_text) : [];
+        const currentLines = this.get_code_lines(event.code_text);
+    
+        // Generate diff
+        const diff = Diff.diffLines(pastLines.join('\n'), currentLines.join('\n'));
+    
+        // Check if there's any diff
+        const hasDiff = diff.some(part => part.added || part.removed);
+    
+        if (!hasDiff) {
+            return null; // No differences detected, return null
+        }
+    
+        // Map through the diff and render it with line numbers
+        return `<pre>${diff.map((part, index) => {
+            if (part.added) {
+                return `<span class="diff-added">+ ${part.value.replace(/\n/g, '<br>')}</span>`;
+            } else if (part.removed) {
+                return `<span class="diff-removed">- ${part.value.replace(/\n/g, '<br>')}</span>`;
+            } else {
+                return `<span class="diff-context"> ${part.value.replace(/\n/g, '<br>')}</span>`;
+            }
+        }).join('<br>')}</pre>`;
     }
+
+    condenseContent(codeText) {
+        const lines = codeText.split('\n');
+        const snippet = lines.slice(0, 3).join('<br>'); // Display only the first 3 lines
+        return `<pre>${snippet}</pre>`;
+    }  
 
     best_match(target, lines) {
         if (target.length > 0) {
