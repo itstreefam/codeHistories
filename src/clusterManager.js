@@ -10,6 +10,7 @@ class ClusterManager {
         this.pastEvent = null;  // Stores the previous event to compare against
         this.MAX_NEW_LINES = 5;  // Maximum number of new lines that can be added/deleted between events
         this.debug = false;  // Debug flag to print out additional information
+        this.webviewPanel = null;
     }
 
     // Method to process a new event in real-time
@@ -35,11 +36,7 @@ class ClusterManager {
             this.pastEvent = codeEntry;
         }
 
-        console.log("Grouped Events: ", this.groupedEvents);
-        console.log("Stray Events: ", this.strayEvents);
-
-        // Display the resulting grouped and stray events
-        return this.updateWebPanel(this.groupedEvents, this.strayEvents);
+        this.updateWebPanel();
     }
 
     // Method to match lines between events and determine if they belong in the same cluster
@@ -115,6 +112,7 @@ class ClusterManager {
                 this.clusterStartTime = pastEvt.time;
             }
             this.groupedEvents.push(currEvt);
+            this.clearStrayEvents(currEvt); // Remove from stray events if grouped
         } else if (perfectMatches.length > 0 && currentLines.length !== pastLines.length && (currentLines.length - pastLines.length <= this.MAX_NEW_LINES) && newLines.length <= this.MAX_NEW_LINES) {
             if (this.debug) console.log("\t1-3 lines added/deleted; start new cluster");
             if (!this.inCluster) {
@@ -122,6 +120,7 @@ class ClusterManager {
                 this.clusterStartTime = pastEvt.time;
             }
             this.groupedEvents.push(currEvt);
+            this.clearStrayEvents(currEvt); // Remove from stray events if grouped
         } else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length > 0 && currentLines.length === pastLines.length) {
             if (this.debug) console.log("\t>= 1 line replaced; start new cluster");
             if (!this.inCluster) {
@@ -129,6 +128,7 @@ class ClusterManager {
                 this.clusterStartTime = pastEvt.time;
             }
             this.groupedEvents.push(currEvt);
+            this.clearStrayEvents(currEvt); // Remove from stray events if grouped
         } else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length === 0 && currentLines.length !== pastLines.length) {
             if (this.debug) console.log("\twhitespace changes only; start new cluster");
             if (!this.inCluster) {
@@ -136,18 +136,131 @@ class ClusterManager {
                 this.clusterStartTime = pastEvt.time;
             }
             this.groupedEvents.push(currEvt);
+            this.clearStrayEvents(currEvt); // Remove from stray events if grouped
         } else {
             if (this.inCluster) {
-                console.log(`${this.clusterStartTime},${pastEvt.time},'code',${pastFilename}`);
-                this.groupedEvents.push(pastEvt);
+                // console.log(`${this.clusterStartTime},${pastEvt.time},'code',${pastFilename}`);
+                // this.groupedEvents.push(pastEvt);
                 if (this.debug) {
                     console.log(`${currTime}: partialMatches=${partialMatches} perfectMatches=${perfectMatches.length} newLines=${newLines.length} currLineLength=${currentLines.length} pastLineLength=${pastLines.length}`);
                     console.log("\n");
                 }
+                this.finalizeGroup();
             }
             this.strayEvents.push(currEvt);  // Event does not fit into any cluster
             this.inCluster = false;
         }
+    }
+
+    clearStrayEvents(event) {
+        this.strayEvents = this.strayEvents.filter(e => e !== event);
+    }
+
+    finalizeGroup() {
+        console.log('Finalizing group', this.groupedEvents);
+        this.groupedEvents = [];
+        this.inCluster = false;
+        this.updateWebPanel();
+    }
+
+    updateWebPanel() {
+        if (!this.webviewPanel) {
+            this.webviewPanel = vscode.window.createWebviewPanel(
+                'historyWebview',
+                'History Webview',
+                vscode.ViewColumn.Beside,
+                { enableScripts: true }
+            );
+        }
+
+        const groupedEventsHTML = this.generateGroupedEventsHTML();
+        const strayEventsHTML = this.generateStrayEventsHTML();
+
+        this.webviewPanel.webview.html = `
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <title>Code Clusters</title>
+                <style>
+                    .collapsible {
+                        background-color: #777;
+                        color: white;
+                        cursor: pointer;
+                        padding: 10px;
+                        width: 100%;
+                        border: none;
+                        text-align: left;
+                        outline: none;
+                        font-size: 15px;
+                    }
+
+                    .content {
+                        padding: 0 18px;
+                        display: none;
+                        overflow: hidden;
+                        background-color: #f1f1f1;
+                    }
+
+                    .stray-event {
+                        background-color: #f9f9f9;
+                        margin: 5px 0;
+                        padding: 10px;
+                        border: 1px solid #ddd;
+                    }
+                </style>
+            </head>
+            <body>
+                <h1>Grouped Events</h1>
+                ${groupedEventsHTML}
+
+                <h1>Stray Events</h1>
+                ${strayEventsHTML}
+
+                <script>
+                    const vscode = acquireVsCodeApi();
+
+                    document.querySelectorAll('.collapsible').forEach(coll => {
+                        coll.addEventListener('click', function() {
+                            this.classList.toggle('active');
+                            const content = this.nextElementSibling;
+                            if (content.style.display === 'block') {
+                                content.style.display = 'none';
+                            } else {
+                                content.style.display = 'block';
+                            }
+                        });
+                    });
+                </script>
+            </body>
+            </html>`;
+    }
+
+    generateGroupedEventsHTML() {
+        if (this.groupedEvents.length === 0) {
+            return '<p>No grouped events.</p>';
+        }
+
+        return this.groupedEvents.map((event, index) => `
+            <button type="button" class="collapsible">Group ${index + 1}</button>
+            <div class="content">
+                <ul>
+                    ${event.code_text}
+                </ul>
+            </div>
+        `).join('');
+    }
+
+    generateStrayEventsHTML() {
+        if (this.strayEvents.length === 0) {
+            return '<p>No stray events.</p>';
+        }
+
+        return this.strayEvents.map((event, index) => `
+            <div class="stray-event">
+                <p>Event ${index + 1}: ${event.code_text}</p>
+            </div>
+        `).join('');
     }
 
     best_match(target, lines) {
@@ -180,38 +293,6 @@ class ClusterManager {
         }
         return filename;
     }
-
-    // Method to display the resulting grouped and stray events
-    updateWebPanel(groupedEvents, strayEvents) {
-
-
-
-        // Display as html table
-        let html = "<table border='1'>";
-        html += "<tr><th>Grouped Events</th></tr>";
-        for (const event of groupedEvents) {
-            html += `<tr><td>${event.time}</td><td>${event.notes}</td></tr>`;
-        }
-        html += "</table>";
-
-        html += "<table border='1'>";
-        html += "<tr><th>Stray Events</th></tr>";
-        for (const event of strayEvents) {
-            html += `<tr><td>${event.time}</td><td>${event.notes}</td></tr>`;
-        }
-
-        html += "</table>";
-
-        const panel = vscode.window.createWebviewPanel(
-            'historyWebview',
-            'History Webview',
-            vscode.ViewColumn.Beside, // Split the editor
-            { enableScripts: true }
-        );
-
-        panel.webview.html = html;
-    }
-
 }
 
 module.exports = ClusterManager;
