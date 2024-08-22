@@ -6,10 +6,11 @@ class ClusterManager {
     constructor() {
         this.inCluster = false;  // Tracks if we are currently grouping events into a cluster
         this.clusterStartTime = 0;  // Tracks the start time of the current cluster
-        this.groupedEvents = [];  // Stores events that are part of a cluster
+        this.groupedEvents = {}; // Stores grouped events with a common cluster identifier
+        this.groupCounter = 0;  // Counter to track the number of groups
         this.strayEvents = [];  // Stores events that do not fit into any cluster
         this.pastEvent = null;  // Stores the previous event to compare against
-        this.MAX_NEW_LINES = 5;  // Maximum number of new lines that can be added/deleted between events
+        this.MAX_NEW_LINES = 3;  // Maximum number of new lines that can be added/deleted between events
         this.debug = false;  // Debug flag to print out additional information
         this.webviewPanel = null;
     }
@@ -23,16 +24,28 @@ class ClusterManager {
 
         // Only pay attention when there's actually some code
         if (codeEntry.code_text.trim().length > 0) {
-            if (this.pastEvent) {
-                const filename = this.getFilename(codeEntry.notes);
+            const filename = this.getFilename(codeEntry.notes);
 
-                if (filename !== "webData") {
+            if (this.pastEvent) {
+                const pastFilename = this.getFilename(this.pastEvent.notes);
+
+                // Finalize the cluster if switching files
+                if (filename !== pastFilename) {
+                    if (this.inCluster) {
+                        this.finalizeGroup(pastFilename);
+                        this.inCluster = false;
+                    }
+                    // Treat the current event as the start of a new cluster
+                    this.strayEvents.push(codeEntry);
+                } else {
+                    // Process as usual if it's the same file
                     this.match_lines(filename, this.pastEvent, codeEntry);
                 }
             } else {
                 // If this is the first event, it is treated as a stray until a cluster can be formed
                 this.strayEvents.push(codeEntry);
             }
+
             // Update the pastEvent with the current event after processing
             this.pastEvent = codeEntry;
         }
@@ -71,6 +84,9 @@ class ClusterManager {
             }
         }
 
+        // Always add the current event to the strayEvents initially
+        this.strayEvents.push(currEvt);
+
         if (this.debug) {
             console.log(currFilename);
             if (pastFilename === currFilename) {
@@ -88,80 +104,90 @@ class ClusterManager {
         if (pastFilename !== currFilename) {
             if (this.inCluster) {
                 console.log(`${this.clusterStartTime},${pastEvt.time},'code',${pastFilename}`);
-                this.groupedEvents.push(pastEvt);
+                this.finalizeGroup(pastFilename);
                 this.inCluster = false;
             } else if (this.debug) {
                 console.log(`\tDEBUG ${pastEvt.time}-${currEvt.time}: not in cluster ${pastFilename} != ${currFilename}`);
             }
-            this.strayEvents.push(currEvt);  // Different file, consider it a stray event
             return;
         }
 
-        // Continue existing clusters only if conditions are met
+        // continue existing clusters only....
+        // no changes made, don't start a cluster, but continue if there's an existing one.
         if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length === 0 && currentLines.length === pastLines.length) {
             if (this.debug) console.log("\tcontinue cluster");
             if (this.inCluster) {
-                this.groupedEvents.push(currEvt);
+                this.inCluster = true;
             }
         }
 
-        // Start or continue clusters when conditions are met
+        // start or continue clusters.
+        // at least one line has been edited, but nothing has been added/deleted
         else if (partialMatches > 0 && currentLines.length === pastLines.length) {
             if (this.debug) console.log("\t>=1 line edited; start new cluster");
             if (!this.inCluster) {
                 this.inCluster = true;
                 this.clusterStartTime = pastEvt.time;
             }
-            this.groupedEvents.push(currEvt);
-            this.clearStrayEvents(currEvt); // Remove from stray events if grouped
+        // at least one line has been added or deleted, but fewer than 4 new lines.
         } else if (perfectMatches.length > 0 && currentLines.length !== pastLines.length && (currentLines.length - pastLines.length <= this.MAX_NEW_LINES) && newLines.length <= this.MAX_NEW_LINES) {
             if (this.debug) console.log("\t1-3 lines added/deleted; start new cluster");
             if (!this.inCluster) {
                 this.inCluster = true;
                 this.clusterStartTime = pastEvt.time;
             }
-            this.groupedEvents.push(currEvt);
-            this.clearStrayEvents(currEvt); // Remove from stray events if grouped
-        } else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length > 0 && currentLines.length === pastLines.length) {
+        } 
+        // at least one line has been replaced, but code is the same length
+        else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length > 0 && currentLines.length === pastLines.length) {
             if (this.debug) console.log("\t>= 1 line replaced; start new cluster");
             if (!this.inCluster) {
                 this.inCluster = true;
                 this.clusterStartTime = pastEvt.time;
             }
-            this.groupedEvents.push(currEvt);
-            this.clearStrayEvents(currEvt); // Remove from stray events if grouped
-        } else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length === 0 && currentLines.length !== pastLines.length) {
+        } 
+        // only white space changes, no edits or additions/deletions
+        else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length === 0 && currentLines.length !== pastLines.length) {
             if (this.debug) console.log("\twhitespace changes only; start new cluster");
             if (!this.inCluster) {
                 this.inCluster = true;
                 this.clusterStartTime = pastEvt.time;
             }
-            this.groupedEvents.push(currEvt);
-            this.clearStrayEvents(currEvt); // Remove from stray events if grouped
         } else {
+            // we've just come out of a cluster, so print it out
             if (this.inCluster) {
-                // console.log(`${this.clusterStartTime},${pastEvt.time},'code',${pastFilename}`);
-                // this.groupedEvents.push(pastEvt);
+                console.log(`${this.clusterStartTime},${pastEvt.time},'code',${pastFilename}`);
+                this.finalizeGroup(pastFilename);
                 if (this.debug) {
                     console.log(`${currTime}: partialMatches=${partialMatches} perfectMatches=${perfectMatches.length} newLines=${newLines.length} currLineLength=${currentLines.length} pastLineLength=${pastLines.length}`);
                     console.log("\n");
                 }
-                this.finalizeGroup();
             }
-            this.strayEvents.push(currEvt);  // Event does not fit into any cluster
-            this.inCluster = false;
+
+            // if there's a big clump that's come in, then we should start another cluster immediately
+            if ( (pastFilename === currFilename) && (perfectMatches.length > 0) && (currentLines.length - pastLines.length > this.MAX_NEW_LINES) ) {
+                console.log(`\t starting new cluster ${pastEvt.time}`)
+                this.clusterStartTime = pastEvt.time;
+                this.inCluster = true;
+            }
+            else {
+                this.inCluster = false;
+            }
         }
-    }
 
-    clearStrayEvents(event) {
-        this.strayEvents = this.strayEvents.filter(e => e !== event);
-    }
-
-    finalizeGroup() {
-        console.log('Finalizing group', this.groupedEvents);
-        this.groupedEvents = [];
-        this.inCluster = false;
+        // update the web panel after processing the event
         this.updateWebPanel();
+    }
+
+    finalizeGroup(pastFilename) {
+        // console.log(`${this.clusterStartTime},${pastEvt.time},'code',${pastFilename}`);
+        let groupKey = `group-${this.groupCounter++}`;
+        let startTime = this.clusterStartTime;
+        let endTime = this.pastEvent.time;
+        let type = 'code';
+        let filename = pastFilename;
+
+        this.groupedEvents[groupKey] = { startTime, endTime, type, filename, events: [...this.strayEvents] };
+        this.strayEvents = [];
     }
 
     updateWebPanel() {
@@ -271,36 +297,17 @@ class ClusterManager {
                         });
                     });
                 </script>
-                <script src="https://cdn.jsdelivr.net/npm/diff2html/bundles/js/diff2html.min.js"></script>
             </body>
             </html>`;
     }
 
     generateGroupedEventsHTML() {
-        if (this.groupedEvents.length === 0) {
+        if (Object.keys(this.groupedEvents).length === 0) {
             return '<li>No grouped events.</li>';
         }
 
-        return this.groupedEvents.map((event, index) => {
-            const diffSnippet = this.generateDiffSnippet(event);
-
-            // example time: 1723572314
-            // convert this to MM/DD/YYYY HH:MM:SS
-            const humanReadableTime = new Date(event.time * 1000).toLocaleString();
-            const filename = this.getFilename(event.notes);
-
-            // Condense content: Only show a few lines or the diff if there's a diff
-            const contentSnippet = diffSnippet ? diffSnippet : this.condenseContent(event.code_text);
-
-            return `
-                <li>
-                    <button type="button" class="collapsible">Group ${index + 1}</button>
-                    <div class="content">
-                        <p><strong>${humanReadableTime}</strong> - <em>${filename}</em></p>
-                        <div>${contentSnippet}</div>
-                    </div>
-                </li>
-            `;
+        return Object.keys(this.groupedEvents).map((groupKey) => {
+            return this.generateGroupHTML(groupKey);
         }).join('');
     }
 
@@ -310,52 +317,68 @@ class ClusterManager {
         }
 
         return this.strayEvents.map((event, index) => {
-            const diffSnippet = this.generateDiffSnippet(event);
             const humanReadableTime = new Date(event.time * 1000).toLocaleString();
             const filename = this.getFilename(event.notes);
-
-            // Condense content: Only show a few lines or the diff if there's a diff
-            const contentSnippet = diffSnippet ? diffSnippet : this.condenseContent(event.code_text);
-
             return `
                 <li class="stray-event">
                     <p><strong>${humanReadableTime}</strong> - <em>${filename}</em></p>
-                    <div>${contentSnippet}</div>
                 </li>
             `;
         }).join('');
-    }  
+    }
 
-    generateDiffSnippet(event) {
-        const pastLines = this.pastEvent ? this.get_code_lines(this.pastEvent.code_text) : [];
-        const currentLines = this.get_code_lines(event.code_text);
+    generateGroupHTML(groupKey) {
+        const group = this.groupedEvents[groupKey];
     
+        // Check if the group has at least two events
+        if (group.events.length < 2) {
+            return '';  // Skip rendering if there are fewer than two events
+        }
+    
+        // compare the start code and end code
+        const DiffHTML = this.generateDiffHTML(group.events);
+        
+        return `
+            <li>
+                <button type="button" class="collapsible">Activity</button>
+                <div class="content">
+                    <p><strong>Start Time:</strong> ${new Date(group.startTime * 1000).toLocaleString()}</p>
+                    <p><strong>End Time:</strong> ${new Date(group.endTime * 1000).toLocaleString()}</p>
+                    <p><strong>File:</strong> ${group.filename}</p>
+                    ${DiffHTML}
+                </div>
+            </li>
+        `;
+    }
+
+    generateDiffHTML (events) {
+        // Get the event at startTime
+        const startCodeEvent = events[0];
+        const startCodeEventLines = this.get_code_lines(startCodeEvent.code_text);
+
+        // Get the event at endTime
+        const endCodeEvent = events[events.length - 1];
+        const endCodeEventLines = this.get_code_lines(endCodeEvent.code_text);
+
         // Generate diff
-        const diff = Diff.diffLines(pastLines.join('\n'), currentLines.join('\n'));
+        const diff = Diff.diffLines(endCodeEventLines.join('\n'), startCodeEventLines.join('\n'));
     
-        // Check if there's any diff
-        const hasDiff = diff.some(part => part.added || part.removed);
+        // Filter out the unchanged lines, leaving only the added and removed ones
+        const filteredDiff = diff.filter(part => part.added || part.removed);
     
-        if (!hasDiff) {
+        // Check if there's any diff after filtering
+        if (filteredDiff.length === 0) {
             return null; // No differences detected, return null
         }
     
-        // Map through the diff and render it with line numbers
-        return `<pre>${diff.map((part, index) => {
+        // Map through the filtered diff and render only added/removed lines
+        return `<pre>${filteredDiff.map((part, index) => {
             if (part.added) {
                 return `<span class="diff-added">+ ${part.value.replace(/\n/g, '<br>')}</span>`;
             } else if (part.removed) {
                 return `<span class="diff-removed">- ${part.value.replace(/\n/g, '<br>')}</span>`;
-            } else {
-                return `<span class="diff-context"> ${part.value.replace(/\n/g, '<br>')}</span>`;
             }
         }).join('<br>')}</pre>`;
-    }
-
-    condenseContent(codeText) {
-        const lines = codeText.split('\n');
-        const snippet = lines.slice(0, 3).join('<br>'); // Display only the first 3 lines
-        return `<pre>${snippet}</pre>`;
     }  
 
     best_match(target, lines) {
