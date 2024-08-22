@@ -14,6 +14,7 @@ const selection = require('./selection');
 const save = require('./save');
 const helpers = require('./helpers');
 const GitHistory = require('./dynamic_history_gen/git_history');
+const ClusterManager = require('./clusterManager');
 
 var tracker = null;
 var iter = 0;
@@ -127,6 +128,8 @@ function activate(context) {
 		// });
 	}
 
+	const clusterManager = new ClusterManager();
+
 	let activateCodeHistories = vscode.commands.registerCommand('codeHistories.codeHistories', activateCodeHistoriesHelper);
 	let executeCheckAndCommit = vscode.commands.registerCommand('codeHistories.checkAndCommit', executeCheckAndCommitHelper);
 	let selectGitRepo = vscode.commands.registerCommand('codeHistories.selectGitRepo', selectGitRepoHelper);
@@ -137,6 +140,11 @@ function activate(context) {
 	let selectTerminalProfile = vscode.commands.registerCommand('codeHistories.selectTerminalProfile', showTerminalProfileQuickPick);
 	let testRunPythonScript = vscode.commands.registerCommand('codeHistories.testRunPythonScript', testRunPythonScriptHelper);
 	let testDBConstructor = vscode.commands.registerCommand('codeHistories.testDBConstructor', testDBConstructorHelper);
+	// historyWebview takes in an object with the following properties: document, time, code_text, notes
+	let historyWebview = vscode.commands.registerCommand('codeHistories.historyWebview', function (entry) {
+        // vscode.window.showInformationMessage(`Webview for ${entry.notes} should be opened.`);
+		clusterManager.processEvent(entry);
+    });
 
 	context.subscriptions.push(activateCodeHistories);
 	context.subscriptions.push(executeCheckAndCommit);
@@ -148,6 +156,7 @@ function activate(context) {
 	context.subscriptions.push(selectTerminalProfile);
 	context.subscriptions.push(testRunPythonScript);
 	context.subscriptions.push(testDBConstructor);
+	context.subscriptions.push(historyWebview);
 
 	// this is for web dev heuristics
 	// if user saves a file in the workspace, then they visit chrome to test their program on localhost (require that they do reload the page so that it is recorded as an event in webData)

@@ -17,11 +17,18 @@ function handleFileSave(document) {
 	// get the text content of the document
 	const documentText = document.getText();
 
+	// get filename from document path
+	const filename = path.basename(documentPath);
+
 	const entry = {
 		document: documentPath,
 		time: Math.floor(Date.now() / 1000),
-		allText: documentText,
+		code_text: documentText,
+		notes: `save: ${filename};`,
 	};
+
+	// communicate with the extension
+	vscode.commands.executeCommand('codeHistories.historyWebview', entry);
 	
 	// check if save_log.ndjson exists
 	const saveLogPath = path.join(currentDir, 'CH_cfg_and_logs', 'CH_save_log.ndjson');

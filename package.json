@@ -71,6 +71,10 @@
       {
         "command": "codeHistories.testDBConstructor",
         "title": "Code Histories: Test DB constructor"
+      },
+      {
+        "command": "codeHistories.historyWebview",
+        "title": "Code Histories: History webview"
       }
     ],
     "keybindings": [
@@ -137,6 +141,7 @@
   },
   "dependencies": {
     "active-win": "^8.2.1",
+    "fuzzball": "^2.1.2",
     "simple-git": "^3.5.0",
     "sqlite3": "^5.1.7"
   }
