@@ -17,8 +17,15 @@ class ClusterManager {
 
     // Method to process a new event in real-time
     processEvent(codeEntry) {
+        console.log(codeEntry);
+
         // only pay attention to code or save events
         if (!codeEntry.notes.startsWith("code") && !codeEntry.notes.startsWith("save")) {
+            if(codeEntry.notes.startsWith("search") || codeEntry.notes.startsWith("research") || codeEntry.notes.startsWith("revisit") || codeEntry.notes.startsWith("visit")) {
+                // display the event in the web panel
+                this.strayEvents.push(codeEntry);
+                this.updateWebPanel();
+            }
             return;
         }
 
@@ -183,7 +190,7 @@ class ClusterManager {
         let groupKey = `group-${this.groupCounter++}`;
         let startTime = this.clusterStartTime;
         let endTime = this.pastEvent.time;
-        let type = 'code';
+        let type = this.pastEvent.notes.substring(0, 4);
         let filename = pastFilename;
 
         this.groupedEvents[groupKey] = { startTime, endTime, type, filename, events: [...this.strayEvents] };
@@ -340,7 +347,7 @@ class ClusterManager {
         
         return `
             <li>
-                <button type="button" class="collapsible">Activity</button>
+                <button type="button" class="collapsible">Activity ${groupKey}</button>
                 <div class="content">
                     <p><strong>Start Time:</strong> ${new Date(group.startTime * 1000).toLocaleString()}</p>
                     <p><strong>End Time:</strong> ${new Date(group.endTime * 1000).toLocaleString()}</p>

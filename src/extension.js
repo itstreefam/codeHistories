@@ -15,6 +15,7 @@ const save = require('./save');
 const helpers = require('./helpers');
 const GitHistory = require('./dynamic_history_gen/git_history');
 const ClusterManager = require('./clusterManager');
+const { processWebData } = require('./dynamic_history_gen/processLiveWeb');
 
 var tracker = null;
 var iter = 0;
@@ -226,6 +227,9 @@ function activate(context) {
 		try {
 			// search between timeSwitchedToChrome and timeSwitchedToCode in webData
 			let webData = fs.readFileSync(path.join(currentDir, 'webData'), 'utf8');
+
+			// wait a few seconds for the webData to be updated
+			await new Promise(resolve => setTimeout(resolve, 1000));
 			let webDataArray = JSON.parse(webData);
 
 			let webDataArrayFiltered = [];
@@ -239,6 +243,16 @@ function activate(context) {
 				}
 				if (obj.time >= startTime && obj.time <= endTime) {
 					webDataArrayFiltered.unshift(obj);
+				}
+			}
+
+			let dataForHistory = processWebData(webDataArrayFiltered);
+			console.log('dataForHistory: ', dataForHistory);
+
+			if (dataForHistory.length > 0) {
+				for (let i = 0; i < dataForHistory.length; i++) {
+					let entry = dataForHistory[i];
+					clusterManager.processEvent(entry);
 				}
 			}
 
