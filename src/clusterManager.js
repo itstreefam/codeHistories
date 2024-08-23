@@ -1,6 +1,7 @@
 const fuzzball = require('fuzzball');
 const vscode = require('vscode');
 const Diff = require('diff');
+const diff2html = require('diff2html');
 
 class ClusterManager {
     constructor() {
@@ -216,14 +217,16 @@ class ClusterManager {
             <head>
                 <meta charset="UTF-8">
                 <title>Code Clusters</title>
+                <script src="https://cdn.jsdelivr.net/npm/diff2html@3.4.48/bundles/js/diff2html-ui.min.js"></script>
+                <link href="https://cdn.jsdelivr.net/npm/diff2html@3.4.48/bundles/css/diff2html.min.css" rel="stylesheet">
                 <style>
                     body {
                         font-family: Arial, sans-serif;
-                        background-color: #1e1e1e;
-                        color: #d4d4d4;
+                        background-color: #f5f5f5; /* Light background */
+                        color: #333; /* Darker text for contrast */
                     }
                     h1 {
-                        color: #f0f0f0;
+                        color: #333; /* Darker text for headers */
                         font-size: 20px;
                         margin-bottom: 15px;
                     }
@@ -232,14 +235,15 @@ class ClusterManager {
                         padding-left: 0;
                     }
                     li {
-                        background-color: #2e2e2e;
+                        background-color: #ffffff; /* White background for list items */
                         margin-bottom: 10px;
                         padding: 10px;
                         border-radius: 5px;
+                        box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
                     }
                     .collapsible {
-                        background-color: #444;
-                        color: white;
+                        background-color: #f0f0f0; /* Light grey background for collapsible headers */
+                        color: #333; /* Dark text */
                         cursor: pointer;
                         padding: 10px;
                         width: 100%;
@@ -247,37 +251,42 @@ class ClusterManager {
                         text-align: left;
                         outline: none;
                         font-size: 15px;
+                        border-radius: 5px;
                     }
                     .content {
                         padding: 10px;
                         display: none;
                         overflow: hidden;
-                        background-color: #333;
-                        color: white;
+                        background-color: #fafafa; /* Even lighter grey for content */
+                        color: #333; /* Dark text */
                         margin-top: 5px;
+                        border-radius: 5px;
                     }
                     .stray-event {
-                        background-color: #444;
+                        background-color: #ffffff; /* White background for stray events */
                         margin: 10px 0;
                         padding: 10px;
                         border-radius: 5px;
-                        color: white;
+                        box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.1);
                     }
                     pre {
-                        background-color: #2e2e2e;
+                        background-color: #f0f0f0; /* Light grey for code blocks */
                         padding: 10px;
                         border-radius: 5px;
                         overflow-x: auto;
                     }
-                    .diff-added {
-                        color: #00ff00;
+                    .diff-container {
+                        background-color: #ffffff; /* White background for diff container */
+                        padding: 10px;
+                        border-radius: 5px;
+                        box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.1);
                     }
-                    .diff-removed {
-                        color: #ff0000;
+
+                    .d2h-wrapper {
+                        background-color: #ffffff;
+                        color: #333;
                     }
-                    .diff-context {
-                        color: #ffffff;
-                    }
+
                 </style>
             </head>
             <body>
@@ -367,25 +376,45 @@ class ClusterManager {
         const endCodeEvent = events[events.length - 1];
         const endCodeEventLines = this.get_code_lines(endCodeEvent.code_text);
 
-        // Generate diff
-        const diff = Diff.diffLines(endCodeEventLines.join('\n'), startCodeEventLines.join('\n'));
+        // // Generate diff
+        // const diff = Diff.diffLines(endCodeEventLines.join('\n'), startCodeEventLines.join('\n'));
     
-        // Filter out the unchanged lines, leaving only the added and removed ones
-        const filteredDiff = diff.filter(part => part.added || part.removed);
+        // // Filter out the unchanged lines, leaving only the added and removed ones
+        // const filteredDiff = diff.filter(part => part.added || part.removed);
     
-        // Check if there's any diff after filtering
-        if (filteredDiff.length === 0) {
-            return null; // No differences detected, return null
-        }
+        // // Check if there's any diff after filtering
+        // if (filteredDiff.length === 0) {
+        //     return null; // No differences detected, return null
+        // }'
+
+        // // Map through the filtered diff and render only added/removed lines
+        // return `<pre>${filteredDiff.map((part, index) => {
+        //     if (part.added) {
+        //         return `<span class="diff-added">+ ${part.value.replace(/\n/g, '<br>')}</span>`;
+        //     } else if (part.removed) {
+        //         return `<span class="diff-removed">- ${part.value.replace(/\n/g, '<br>')}</span>`;
+        //     }
+        // }).join('<br>')}</pre>`;
+
+        const diffString = Diff.createTwoFilesPatch(
+            'start', 
+            'end', 
+            startCodeEvent.code_text, 
+            endCodeEvent.code_text, 
+            startCodeEvent.filename, 
+            endCodeEvent.filename
+        );
+
+        // Render the diff as HTML
+        const diffHtml = diff2html.html(diffString, {
+            inputFormat: 'diff',
+            showFiles: false,
+            matching: 'lines',
+            outputFormat: 'side-by-side', // or 'line-by-line'
+            diffStyle: 'word', // 'word' or 'char' level diff
+        });
     
-        // Map through the filtered diff and render only added/removed lines
-        return `<pre>${filteredDiff.map((part, index) => {
-            if (part.added) {
-                return `<span class="diff-added">+ ${part.value.replace(/\n/g, '<br>')}</span>`;
-            } else if (part.removed) {
-                return `<span class="diff-removed">- ${part.value.replace(/\n/g, '<br>')}</span>`;
-            }
-        }).join('<br>')}</pre>`;
+        return `<div class="diff-container">${diffHtml}</div>`;
     }  
 
     best_match(target, lines) {
