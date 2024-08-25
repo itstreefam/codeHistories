@@ -13,7 +13,7 @@ class Terminal {
       if (name === 'bash') {
         this.terminalShellPath = 'C:\\Program Files\\Git\\bin\\bash.exe';
       } else {
-        this.terminalShellPath = 'powershell.exe';
+        this.terminalShellPath = 'C:\\Program Files\\PowerShell\\7\\pwsh.exe';
       }
     } else {
       if (name === 'pwsh') {
@@ -46,7 +46,7 @@ class Terminal {
 
   getPromptCommand() {
     let promptCommand = '';
-    if (os.platform() === 'darwin') {
+    if (os.platform() === 'darwin' && this.name.includes("bash")) {
       // when open up a new terminal, bash-3.2$ was shown
       // change this to hostname:current_directory username$
       promptCommand = "export PS1='\\h:\\W \\u\\$ '";

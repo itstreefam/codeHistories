@@ -1,11 +1,5 @@
 {
-  "enabledApiProposals": [
-    "terminalDataWriteEvent",
-    "terminalDimensions",
-    "terminalExecuteCommandEvent",
-    "terminalSelection",
-    "terminalShellIntegration"
-  ],
+  "enabledApiProposals": [],
   "name": "code-histories",
   "displayName": "Code Histories",
   "description": "Tracking user's code state and output on VSCode",
