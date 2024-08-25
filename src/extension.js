@@ -95,36 +95,13 @@ function activate(context) {
 		}
 	}
 
-	if(process.platform === 'win32'){
-		vscode.window.onDidStartTerminalShellExecution(async event => {
-			await onDidExecuteShellCommandHelper(event);
-		});
-	}
+	vscode.window.onDidStartTerminalShellExecution(async event => {
+		await onDidExecuteShellCommandHelper(event);
+	});
 
-	if(process.platform === "darwin"){
-		// use bash as default terminal cmd 
-		// hostname:directory_name user$
-		var mac_regex_dir = new RegExp("(\(.*\))?" + hostname + ".*" + user + "\\${1}", "g");
-		unixLikeTerminalProcess(mac_regex_dir);
-	}
-
-	if(process.platform === 'linux'){
-		// linux defaut bash e.g. tri@tri-VirtualBox:~/Desktop/test$
-		var linux_regex_dir = new RegExp("(\(.*\))?" + user + "@" + hostname + ".*\\${1}", "g");
-		// unixLikeTerminalProcess(linux_regex_dir);
-		// vscode.window.onDidExecuteTerminalCommand(async event => {
-		// 	await onDidExecuteTerminalCommandHelper(event);
-		// });
-
-		vscode.window.onDidStartTerminalShellExecution(async event => {
-			await onDidExecuteShellCommandHelper(event);
-		});
-
-		// this for exit code but output is currently not showing in this event
-		// vscode.window.onDidEndTerminalShellExecution(async event => {
-		// 	console.log('event: ', event);
-		// });
-	}
+	// vscode.window.onDidEndTerminalShellExecution(async event => {
+	// 	console.log('event: ', event);
+	// });
 
 	let activateCodeHistories = vscode.commands.registerCommand('codeHistories.codeHistories', activateCodeHistoriesHelper);
 	let executeCheckAndCommit = vscode.commands.registerCommand('codeHistories.checkAndCommit', executeCheckAndCommitHelper);
@@ -380,6 +357,17 @@ async function onDidExecuteShellCommandHelper(event) {
 				// console.log('finalOutputMatch:', finalOutput);
 			}
 
+			// For current pwsh case in Mac
+			if(os.platform() === 'darwin' && terminalName === "pwsh"){
+				const pwshDarwinOutputRegex = /\]633;C([\s\S]*)/g;
+				outputMatch = output.match(pwshDarwinOutputRegex);
+				finalOutput = '';
+				if(outputMatch){
+					finalOutput = outputMatch[0];
+					finalOutput = finalOutput.replace(']633;C', '').replace(']0;', '');
+				}
+			}
+
 			// Regex to check exit code
 			const exitCodeRegex = /\]633;D(?:;(\d+))?/g;
 			let exitCodeMatch = output.match(exitCodeRegex);
@@ -430,10 +418,10 @@ async function onDidExecuteShellCommandHelper(event) {
 				}
 			}
 	
-			// console.log('command:', command);
-			// console.log('output:', finalOutput);
-			// console.log('cwd:', cwd);
-			// console.log('exitCode:', exitCode);
+			console.log('command:', command);
+			console.log('output:', finalOutput);
+			console.log('cwd:', cwd);
+			console.log('exitCode:', exitCode);
 
 			let executionInfo = {
 				command: command,
@@ -455,12 +443,8 @@ async function onDidExecuteShellCommandHelper(event) {
 	
 			// if command contains "codehistories" then we should commit
 			if (command.includes("codehistories")) {
-				if(event.terminal.name === "pwsh" || event.terminal.name === "powershell"){
-					// Write to output to output.txt only for windows since powershell couldn't redirect output well
-					// The setup bash profile redirects solid output, we don't need to do it again
-					const outputTxtFilePath = path.join(currentDir, 'output.txt');
-					await fs.promises.appendFile(outputTxtFilePath, `${finalOutput}\n`);
-				}
+				const outputTxtFilePath = path.join(currentDir, 'output.txt');
+				await fs.promises.appendFile(outputTxtFilePath, `${finalOutput}\n`);
 				await tracker.gitAddOutput();
 				await tracker.checkWebData();
 				await tracker.gitCommit();
@@ -752,128 +736,6 @@ async function checkExtensionActivation() {
 		return false;
 	}
 	return true;
-}
-
-function unixLikeTerminalProcess(platform_regex_dir) {
-	// use bash as default terminal cmd
-	let returned_regex_dir = new RegExp("\\r" + platform_regex_dir.source, platform_regex_dir.flags);
-	
-	// on did write to terminal
-	vscode.window.onDidWriteTerminalData(async event => {
-		if(event.terminal.name !== terminalName) return;
-
-		const pid = await event.terminal.processId;
-
-		var terminalData = event.data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
-
-		if(typeof allTerminalsData[pid] === 'undefined'){
-			allTerminalsData[pid] = "";
-		}
-
-		if(typeof allTerminalsDirCount[pid] === 'undefined'){
-			allTerminalsDirCount[pid] = 0;
-		}
-
-		// test if very_special_regex matches
-		if(very_special_regex.test(terminalData)){
-			// get the matched string
-			var matched = terminalData.match(very_special_regex);
-			// remove the matched from the terminalData
-			terminalData = terminalData.replace(matched, "");
-		}
-
-		// see if terminalData contains regex_dir
-		if(platform_regex_dir.test(terminalData) && !returned_regex_dir.test(terminalData)){
-			// get the matched string
-			var matched = terminalData.match(platform_regex_dir);
-			console.log('matched: ', matched);
-			
-			//if matched.length is a number
-			if(matched.length){
-				// add length of matched array to counterMatchedDir
-				allTerminalsDirCount[pid] += matched.length;
-			}
-		}
-
-		// iter += 1;
-		// eventData[iter] = terminalData;
-		// console.log(eventData);
-
-		// allTerminalsData[pid] = globalStr of the terminal instance with pid
-		allTerminalsData[pid] += terminalData;
-		// console.log('allTerminalsData: ', pid, allTerminalsData[pid]);
-
-		console.log('There are %s matched regex dir for pid %s', allTerminalsDirCount[pid], pid);
-
-		// if counter is >= 2, then we should have enough information to trim and find the output
-		if(allTerminalsDirCount[pid] >= 2){
-
-			if(returned_regex_dir.test(allTerminalsData[pid])){
-				// happens when the terminal is interacted with without necessarily writing out new data
-				let carriage_return_dir = allTerminalsData[pid].match(returned_regex_dir);
-				// console.log('carriage_return_dir: ', carriage_return_dir);
-
-				// remove the matched string from allTerminalsData[pid]
-				allTerminalsData[pid] = allTerminalsData[pid].replace(carriage_return_dir, "");
-			}
-
-			if(typeof matched === 'undefined') return;
-			let lastOccurence = allTerminalsData[pid].lastIndexOf(matched[matched.length - 1]);
-
-			// check if allTerminalsData[pid] contains codehistories
-			let hasCodehistories = helpers.removeBackspaces(allTerminalsData[pid]).includes("codehistories");
-			if(!hasCodehistories) return;
-
-			try{
-				await tracker.gitAdd();
-				
-				let outputUpdated = await tracker.isOutputModified();	
-				console.log('output.txt updated?', outputUpdated);
-
-				if(outputUpdated){
-					await tracker.gitAddOutput();
-					await tracker.checkWebData();
-					await tracker.gitCommit();
-				} else {
-					// if output.txt is not updated, then we should revert the git add
-					await tracker.gitReset();
-				}
-			} catch(error){
-				console.log("Error occurred:", error);
-				await tracker.gitReset();
-				await vscode.window.showInformationMessage('Error committing to git. Please wait a few seconds and try again.');
-			}
-
-			// console.log('globalStr of %s before reset: ', pid, allTerminalsData[pid]);
-			
-			// reset globalStr of pid to contain only the matched dir string
-			allTerminalsData[pid] = allTerminalsData[pid].substring(lastOccurence);
-			// console.log('globalStr of %s after reset: ', pid, allTerminalsData[pid]);
-			
-			allTerminalsDirCount[pid] = 1;
-			checkThenCommit = false;
-		}
-	});
-
-	// on did open terminal
-	vscode.window.onDidOpenTerminal(event => {
-		if(event.name == terminalName){
-			event.processId.then(pid => {
-				allTerminalsData[pid] = "";
-				allTerminalsDirCount[pid] = 0;
-			});
-		}
-	});
-
-	// on did close terminal
-	vscode.window.onDidCloseTerminal(event => {
-		if(event.name == terminalName){
-			event.processId.then(pid => {
-				delete allTerminalsData[pid];
-				delete allTerminalsDirCount[pid];
-			});
-		}
-	});
 }
 
 function containsIPAddresses(url) {
