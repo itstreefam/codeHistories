@@ -11,31 +11,29 @@ function initializeColumns(data) {
 }
 
 function filterUnwantedRows(data) {
-    // Filter out rows where the action contains 'empty new tab is active tab'
-    // and Remove rows where curTitle is 'New Tab' or 'Extensions'
+    // Filter out rows where the curTitle contains 'New Tab' or 'Extensions'
     return data.filter(row => {
-        return !row.action.includes('empty new tab is active tab') &&
-               !['New Tab', 'Extensions'].includes(row.curTitle);
+        const isUnwantedTitle = row.curTitle.toLowerCase().includes('new tab') || row.curTitle.toLowerCase().includes('extensions');
+        return !isUnwantedTitle;
     });
 }
 
 function assignNewActions(data) {
-    data.forEach(row => {
+    data.forEach((row, index) => {
         let newAction = row.action;
+        console.log(`Row ${index} before assignNewActions:`, row);
 
         if (row.curTitle.toLowerCase().includes('search') || row.curUrl.includes('https://www.google.com/search')) {
             newAction = 'search';
-        }
-
-        if (!['search', 'revisit'].includes(newAction)) {
+        } else if (row.action.includes('revisit')) {
+            newAction = 'revisit';
+        } else {
             newAction = 'visit';
         }
 
-        if (row.action.includes('revisit')) {
-            newAction = 'revisit';
-        }
-
         row.new_action = newAction;
+
+        console.log(`Row ${index} after assignNewActions:`, row);
     });
 
     return data;
@@ -46,54 +44,31 @@ function finalizeActions(data) {
         row.seen = arr.slice(0, index).some(prevRow => prevRow.info === row.info);
 
         if (row.seen) {
-            row.new_action = row.new_action === 'search' ? 'research' : 'revisit';
+            row.new_action = 'revisit';
         }
 
+        // Remove duplicate rows
         if (index > 0 && row.info === arr[index - 1].info && !row.info.includes('localhost')) {
             arr.splice(index, 1);
         }
 
         row.dwell_time = 0;
+
+        // Calculate dwell time
         if (row.new_action.includes('visit') && index < arr.length - 1) {
             row.dwell_time = arr[index + 1].time - row.time;
         }
 
-        if (row.dwell_time < 5 && row.new_action.includes('visit')) {
-            arr.splice(index, 1);
+        // Add dwell time to notes for visit actions and in seconds
+        if (row.new_action.includes('visit')) {
+            row.info += ` (${row.dwell_time / 1000}s)`;
         }
 
-        if (row.new_action === 'research') {
-            arr.splice(index, 1);
-        }
-
+        // Remove double quotes from info
         row.info = row.info.replace(/"/g, '').trim();
-        if (row.action.includes('(')) {
-            row.action = row.action.substring(row.action.indexOf('(') + 1, row.action.indexOf(')'));
-        }
-    });
-
-    data.forEach(row => {
-        row.new_action = refineActionLabels(row);
     });
 
     return data;
-}
-
-function refineActionLabels(row) {
-    const newAction = row.new_action;
-    const oldAction = row.action;
-
-    if (oldAction.includes('typed') && newAction.includes('visit')) {
-        return `${newAction} (typed)`;
-    } else if (oldAction.includes('form_submit') && newAction.includes('visit')) {
-        return `${newAction} (form_submit)`;
-    } else if (oldAction.includes('auto_bookmark') && newAction.includes('visit')) {
-        return `${newAction} (auto_bookmark)`;
-    } else if (oldAction.includes('reload') && newAction.includes('visit')) {
-        return `${newAction} (reload)`;
-    } else {
-        return newAction;
-    }
 }
 
 function prepareOutputData(data) {
@@ -106,6 +81,7 @@ function prepareOutputData(data) {
 }
 
 function processWebData(dataList) {
+    console.log('dataList:', dataList);
     const rawData = initializeColumns(dataList);
     
     if (!rawData) {
@@ -117,12 +93,20 @@ function processWebData(dataList) {
         };
     }
 
+    console.log('After initializeColumns:', rawData);
+
     let data = rawData;
-    data = initializeColumns(data);
-    data = filterUnwantedRows(data);
-    data = assignNewActions(data);
-    data = finalizeActions(data);
-    const outputData = prepareOutputData(data);  
+    let afterFilterUnwantedRowsData = filterUnwantedRows(data);
+    console.log('After filterUnwantedRows:', afterFilterUnwantedRowsData);
+
+    let afterAssignNewActionsData = assignNewActions(afterFilterUnwantedRowsData);
+    console.log('After assignNewActions:', afterAssignNewActionsData);
+
+    let afterFinalizeActionsData = finalizeActions(afterAssignNewActionsData);
+    console.log('After finalizeActions:', afterFinalizeActionsData);
+
+    const outputData = prepareOutputData(afterFinalizeActionsData);  
+    console.log('Final outputData:', outputData);
     return outputData;
 }
 

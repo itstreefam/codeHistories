@@ -335,11 +335,19 @@ class ClusterManager {
         return this.strayEvents.map((event, index) => {
             const humanReadableTime = new Date(event.time * 1000).toLocaleString();
             const filename = this.getFilename(event.notes);
-            return `
-                <li class="stray-event">
-                    <p><strong>${humanReadableTime}</strong> - <em>${filename}</em></p>
-                </li>
-            `;
+            if(event.notes.startsWith("code") || event.notes.startsWith("save")) {
+                return `
+                    <li class="stray-event">
+                        <p><strong>${humanReadableTime}</strong> - <em>${filename}</em></p>
+                    </li>
+                `;
+            } else {
+                return `
+                    <li class="stray-event">
+                        <p><strong>${humanReadableTime}</strong> - <em>${event.notes}</em></p>
+                    </li>
+                `;
+            }
         }).join('');
     }
 

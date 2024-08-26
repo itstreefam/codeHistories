@@ -228,36 +228,35 @@ function activate(context) {
 			// search between timeSwitchedToChrome and timeSwitchedToCode in webData
 			let webData = fs.readFileSync(path.join(currentDir, 'webData'), 'utf8');
 
-			// wait a few seconds for the webData to be updated
-			await new Promise(resolve => setTimeout(resolve, 1000));
 			let webDataArray = JSON.parse(webData);
 
 			let webDataArrayFiltered = [];
 			let startTime = timeSwitchedToChrome;
 			let endTime = timeSwitchedToCode;
 
+			// Traverse the array backwards
 			for (let i = webDataArray.length - 1; i >= 0; i--) {
 				let obj = webDataArray[i];
-				if(obj.time < startTime){
-					break;
-				}
-				if (obj.time >= startTime && obj.time <= endTime) {
-					webDataArrayFiltered.unshift(obj);
-				}
-			}
-
-			let dataForHistory = processWebData(webDataArrayFiltered);
-			console.log('dataForHistory: ', dataForHistory);
-
-			if (dataForHistory.length > 0) {
-				for (let i = 0; i < dataForHistory.length; i++) {
-					let entry = dataForHistory[i];
-					clusterManager.processEvent(entry);
+				
+				if (obj.time <= endTime && obj.time >= startTime) {
+					webDataArrayFiltered.unshift(obj);  // Prepend to maintain order
+				} else if (obj.time < startTime) {
+					break;  // Early exit, no need to check earlier events
 				}
 			}
 
-			// console.log('webDataArrayFiltered: ', webDataArrayFiltered);
+			console.log('webDataArrayFiltered: ', webDataArrayFiltered);
 			if(webDataArrayFiltered.length > 0){
+				let dataForHistory = processWebData(webDataArrayFiltered);
+				console.log('dataForHistory: ', dataForHistory);
+
+				if (dataForHistory.length > 0) {
+					for (let i = 0; i < dataForHistory.length; i++) {
+						let entry = dataForHistory[i];
+						clusterManager.processEvent(entry);
+					}
+				}
+
 				// check if webDataArrayFiltered contains a visit to localhost or 127.0.0.1
 				let webDataArrayFilteredContainsLocalhost = webDataArrayFiltered.filter(obj => obj.curUrl.includes('localhost') || containsIPAddresses(obj.curUrl));
 				
