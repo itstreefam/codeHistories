@@ -46,7 +46,7 @@ class Terminal {
 
   getPromptCommand() {
     let promptCommand = '';
-    if (os.platform() === 'darwin') {
+    if (os.platform() === 'darwin' && this.name.includes("bash")) {
       // when open up a new terminal, bash-3.2$ was shown
       // change this to hostname:current_directory username$
       promptCommand = "export PS1='\\h:\\W \\u\\$ '";
