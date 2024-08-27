@@ -16,6 +16,7 @@ const helpers = require('./helpers');
 const GitHistory = require('./dynamic_history_gen/git_history');
 const ClusterManager = require('./clusterManager');
 const { processWebData } = require('./dynamic_history_gen/processLiveWeb');
+const myCustomEmitter = require('./eventEmitter'); // Use the shared emitter
 
 var tracker = null;
 var iter = 0;
@@ -38,6 +39,7 @@ var user = os.userInfo().username;
 var hostname = os.hostname();
 var terminalList;
 var terminalInstance;
+var eventEntry = {};
 
 /**
  * @param {vscode.ExtensionContext} context
@@ -98,15 +100,20 @@ function activate(context) {
 		}
 	}
 
+	const clusterManager = new ClusterManager();
+
 	vscode.window.onDidStartTerminalShellExecution(async event => {
-		await onDidExecuteShellCommandHelper(event);
+		await onDidExecuteShellCommandHelper(event, clusterManager);
+	});
+
+	myCustomEmitter.on('saveAndExecute', async (entry) => {
+		eventEntry = entry;
+		console.log('eventEntry:', eventEntry);
 	});
 
 	// vscode.window.onDidEndTerminalShellExecution(async event => {
 	// 	console.log('event: ', event);
 	// });
-
-	const clusterManager = new ClusterManager();
 
 	let activateCodeHistories = vscode.commands.registerCommand('codeHistories.codeHistories', activateCodeHistoriesHelper);
 	let executeCheckAndCommit = vscode.commands.registerCommand('codeHistories.checkAndCommit', executeCheckAndCommitHelper);
@@ -281,85 +288,6 @@ async function testDBConstructorHelper() {
     }
 }
 
-async function onDidExecuteTerminalCommandHelper(event) {
-	try {
-		let time = Math.floor(Date.now() / 1000);
-		let command = event.commandLine;
-		let cwd = event.cwd;
-		let exitCode = event.exitCode;
-		let output = event.output;
-
-		// console.log('command: ', command);
-		// console.log('cwd: ', cwd);
-		// console.log('exitCode: ', exitCode);
-		// console.log('output: ', output);
-
-		if (user && hostname) {
-			// Define regular expressions with word boundaries
-			let userRegex = new RegExp("\\b" + user + "\\b", "g");
-			let hostnameRegex = new RegExp("\\b" + hostname + "\\b", "g");
-
-			// trim user and hostname from command, cwd, and output
-			if (command) {
-				command = command.replace(hostnameRegex, 'hostname');
-				command = command.replace(userRegex, 'user');
-			}
-			if (cwd) {
-				cwd = cwd.replace(hostnameRegex, 'hostname');
-				cwd = cwd.replace(userRegex, 'user');
-			}
-			if (output) {
-				// Instead of grabbing the entire output with cwd
-				// Just grab the line that starting from Execution Time
-				// Then append the command before it
-				let outputFromExecLine = output.substring(output.indexOf('Execution Time:'));
-				if (outputFromExecLine && (terminalName === "pwsh" || terminalName === "powershell")) {
-					output = '\n' + outputFromExecLine;
-				} else {
-					output = outputFromExecLine;
-				}
-				output = output.replace(hostnameRegex, 'hostname');
-				output = output.replace(userRegex, 'user');
-			}
-		}
-
-		let executionInfo = {
-			command: command,
-			cwd: cwd,
-			exitCode: exitCode,
-			output: output,
-			time: time
-		};
-
-		// Log the execution info to JSON file
-		const currentDir = getCurrentDir();
-		const ndjsonString = JSON.stringify(executionInfo) + '\n'; // Convert to JSON string and add newline
-		const outputPath = path.join(currentDir, 'CH_cfg_and_logs', 'CH_terminal_data.ndjson');
-		await fs.promises.appendFile(outputPath, ndjsonString);
-
-		await tracker.gitAdd();
-
-		// if command contains "codehistories" then we should commit
-		if (command.includes("codehistories")) {
-			if(event.terminal.name === "pwsh" || event.terminal.name === "powershell"){
-				// Write to output to output.txt only for windows since powershell couldn't redirect output well
-				// The setup bash profile redirects solid output, we don't need to do it again
-				const outputTxtFilePath = path.join(currentDir, 'output.txt');
-				await fs.promises.appendFile(outputTxtFilePath, `${output}\n`);
-			}
-			await tracker.gitAddOutput();
-			await tracker.checkWebData();
-			await tracker.gitCommit();
-		} else {
-			await tracker.gitReset();
-		}
-	} catch (error) {
-		console.log("Error occurred:", error);
-		await tracker.gitReset();
-		await vscode.window.showInformationMessage('Error committing to git. Please wait a few seconds and try again.');
-	}
-}
-
 // https://stackoverflow.com/questions/25245716/remove-all-ansi-colors-styles-from-strings
 function removeANSIcodesHelper(txt) {
 	const processedTxt = txt.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
@@ -372,7 +300,7 @@ function removeNonASCIICharsHelper(txt) {
 	return processedTxt;
 }
 
-async function onDidExecuteShellCommandHelper(event) {
+async function onDidExecuteShellCommandHelper(event, clusterManager) {
 	try {
 		// console.log('event.terminal', event.terminal);
 		// console.log('event.shellIntegration', event.shellIntegration);
@@ -498,7 +426,11 @@ async function onDidExecuteShellCommandHelper(event) {
 				await fs.promises.appendFile(outputTxtFilePath, `${finalOutput}\n`);
 				await tracker.gitAddOutput();
 				await tracker.checkWebData();
-				await tracker.gitCommit();
+				// await tracker.gitCommit();
+				if(eventEntry){
+					await clusterManager.processEvent(eventEntry);
+				}
+				vscode.window.showInformationMessage('Commit supposedly executed successfully!');
 			} else {
 				await tracker.gitReset();
 			}

@@ -2,6 +2,7 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 const { getCurrentDir, user, hostname } = require('./helpers');
+const myCustomEmitter = require('./eventEmitter'); // Use the shared emitter
 
 function handleFileSave(document) {
 	const currentDir = getCurrentDir();
@@ -24,11 +25,14 @@ function handleFileSave(document) {
 		document: documentPath,
 		time: Math.floor(Date.now() / 1000),
 		code_text: documentText,
-		notes: `save: ${filename};`,
+		notes: `code: ${filename};`,
 	};
 
+	// emit the save event
+	myCustomEmitter.emit('saveAndExecute', entry);
+
 	// communicate with the extension
-	vscode.commands.executeCommand('codeHistories.historyWebview', entry);
+	// vscode.commands.executeCommand('codeHistories.historyWebview', entry);
 	
 	// check if save_log.ndjson exists
 	const saveLogPath = path.join(currentDir, 'CH_cfg_and_logs', 'CH_save_log.ndjson');
