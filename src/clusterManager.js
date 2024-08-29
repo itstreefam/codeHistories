@@ -2,63 +2,115 @@ const fuzzball = require('fuzzball');
 const vscode = require('vscode');
 const Diff = require('diff');
 const diff2html = require('diff2html');
+const { webViewStyles } = require('./webViewStyles');
 
 class ClusterManager {
     constructor() {
+        this.displayForGroupedEvents = []; // This high-level array will have subgoal for each grouping found
         this.inCluster = false;  // Tracks if we are currently grouping events into a cluster
         this.clusterStartTime = 0;  // Tracks the start time of the current cluster
-        this.groupedEvents = {}; // Stores grouped events with a common cluster identifier
-        this.groupCounter = 0;  // Counter to track the number of groups
+        this.currentGroup = null; // Eventually will store both code and web events
         this.strayEvents = [];  // Stores events that do not fit into any cluster
         this.pastEvent = null;  // Stores the previous event to compare against
         this.MAX_NEW_LINES = 3;  // Maximum number of new lines that can be added/deleted between events
         this.debug = false;  // Debug flag to print out additional information
         this.webviewPanel = null;
+        this.currentCodeEvent = null;
+        this.currentWebEvent = null;
+        this.idCounter = 0;
     }
 
     // Method to process a new event in real-time
-    processEvent(codeEntry) {
-        console.log(codeEntry);
+    processEvent(entry) {
+        const eventType = this.getEventType(entry);
 
-        // only pay attention to code or save events
-        if (!codeEntry.notes.startsWith("code") && !codeEntry.notes.startsWith("save")) {
-            if(codeEntry.notes.startsWith("search") || codeEntry.notes.startsWith("research") || codeEntry.notes.startsWith("revisit") || codeEntry.notes.startsWith("visit")) {
-                // display the event in the web panel
-                this.strayEvents.push(codeEntry);
-                this.updateWebPanel();
-            }
-            return;
+        if(!this.currentGroup) {
+            this.startNewGroup();
         }
 
-        // Only pay attention when there's actually some code
-        if (codeEntry.code_text.trim().length > 0) {
-            const filename = this.getFilename(codeEntry.notes);
+        // console.log('In processEvent', entry, eventType);
 
-            if (this.pastEvent) {
-                const pastFilename = this.getFilename(this.pastEvent.notes);
+        if (eventType === "code") {
+            let filename = this.getFilename(entry.notes);
+            this.currentCodeEvent = {
+                type: "code",
+                file: filename,
+                time: entry.time,
+                code_text: entry.code_text,
+                title: `Code changes in ${filename}`
+            };
 
-                // Finalize the cluster if switching files
-                if (filename !== pastFilename) {
-                    if (this.inCluster) {
-                        this.finalizeGroup(pastFilename);
-                        this.inCluster = false;
-                    }
-                    // Treat the current event as the start of a new cluster
-                    this.strayEvents.push(codeEntry);
-                } else {
-                    // Process as usual if it's the same file
-                    this.match_lines(filename, this.pastEvent, codeEntry);
-                }
-            } else {
-                // If this is the first event, it is treated as a stray until a cluster can be formed
-                this.strayEvents.push(codeEntry);
-            }
+            this.handleCodeEvent(entry); // this takes in raw event
+        } else if (eventType === "search" || eventType === "visit" || eventType === "revisit") {
+            this.currentWebEvent = {
+                type: eventType,
+                time: entry.time,
+                webTitle: entry.notes,
+                webpage: entry.timed_url,
+            };
 
-            // Update the pastEvent with the current event after processing
-            this.pastEvent = codeEntry;
+            this.strayEvents.push(this.currentWebEvent); // this is processed event
         }
 
         this.updateWebPanel();
+    }
+
+    getEventType(event) {
+        // Determine the type of the event based on its attributes
+        if (event.notes.startsWith("code")) {
+            return "code";
+        } 
+
+        if (event.notes.startsWith("search")) {
+            return "search";
+        }
+
+        if (event.notes.startsWith("visit")) {
+            return "visit";
+        }
+
+        if (event.notes.startsWith("revisit")) {
+            return "revisit";
+        }
+
+        return "unknown";
+    }
+
+    startNewGroup() {
+        this.idCounter += 1;
+        this.currentGroup = {
+            type: "subgoal",
+            id: this.idCounter.toString(),
+            title: "Title of the subgoal",
+            actions: [],
+        };
+    }
+
+    handleCodeEvent(event) {
+        const filename = this.getFilename(event.notes);
+        if (this.pastEvent) {
+            const pastFilename = this.getFilename(this.pastEvent.notes);
+
+            // Finalize the cluster if switching files
+            if (filename !== pastFilename) {
+                if (this.inCluster) {
+                    this.finalizeGroup(pastFilename);
+                    this.inCluster = false;
+                }
+                // Treat the current event as the start of a new cluster
+                this.strayEvents.push(this.currentCodeEvent);
+            } else {
+                // Process as usual if it's the same file
+                this.match_lines(filename, this.pastEvent, event);
+                // console.log('In handleCodeEvent', this.currentGroup);
+            }
+        } else {
+            // If this is the first event, it is treated as a stray until a cluster can be formed
+            this.strayEvents.push(this.currentCodeEvent);
+        }
+
+        // Update the pastEvent with the current event after processing
+        this.pastEvent = event;
     }
 
     // Method to match lines between events and determine if they belong in the same cluster
@@ -93,7 +145,7 @@ class ClusterManager {
         }
 
         // Always add the current event to the strayEvents initially
-        this.strayEvents.push(currEvt);
+        this.strayEvents.push(this.currentCodeEvent);
 
         if (this.debug) {
             console.log(currFilename);
@@ -176,6 +228,7 @@ class ClusterManager {
                 console.log(`\t starting new cluster ${pastEvt.time}`)
                 this.clusterStartTime = pastEvt.time;
                 this.inCluster = true;
+                this.startNewGroup();
             }
             else {
                 this.inCluster = false;
@@ -186,16 +239,98 @@ class ClusterManager {
         this.updateWebPanel();
     }
 
-    finalizeGroup(pastFilename) {
-        // console.log(`${this.clusterStartTime},${pastEvt.time},'code',${pastFilename}`);
-        let groupKey = `group-${this.groupCounter++}`;
-        let startTime = this.clusterStartTime;
-        let endTime = this.pastEvent.time;
-        let type = this.pastEvent.notes.substring(0, 4);
-        let filename = pastFilename;
+    finalizeGroup(filename) {
+        // grab the first code event from the stray events
+        const startCodeEvent = this.strayEvents.find(event => event.type === "code");
 
-        this.groupedEvents[groupKey] = { startTime, endTime, type, filename, events: [...this.strayEvents] };
+        // grab the last code event from the stray events
+        const endCodeEvent = [...this.strayEvents].reverse().find(event => event.type === "code");
+
+        let codeActivity = {
+            type: "code",
+            id: (++this.idCounter).toString(),
+            file: filename,
+            time: endCodeEvent.time,
+            before_code: startCodeEvent.code_text,
+            after_code: endCodeEvent.code_text,
+            title: `Code changes in ${filename}`
+        };
+
+        // grab all the web events from the stray events
+        const webEvents = this.strayEvents.filter(event => event.type !== "code");
+
+        // Initialize an empty array to hold structured web events
+        let structureWebEvents = [];
+
+        // Temporary storage for the current search event being structured
+        let currentSearchEvent = null;
+
+        // Iterate over stray events and structure web events
+        for (const event of webEvents) {
+            // console.log('Processing event', event);
+            if (event.type === "search") {
+                // If there's an existing search event, push it to the structured events
+                if (currentSearchEvent) {
+                    structureWebEvents.push(currentSearchEvent);
+                }
+
+                // Start a new search event structure
+                currentSearchEvent = {
+                    type: "search",
+                    query: event.webTitle || "Search query missing",  // Use webTitle instead of notes
+                    time: event.time,
+                    actions: [],
+                };
+            } else if (event.type === "visit" || event.type === "revisit") {
+                 // If the current event is a visit, add it to the current search event's actions
+                if (currentSearchEvent) {
+                    currentSearchEvent.actions.push({
+                        type: event.type,
+                        webTitle: event.webTitle || "Visit title missing",  // Use webTitle instead of notes
+                        webpage: event.webpage || "URL missing",  // Use webpage instead of timed_url
+                        time: event.time,
+                    });
+                } else {
+                    // If there's no search event, treat it as a stray visit
+                    structureWebEvents.push({
+                        type: event.type,
+                        webTitle: event.webTitle || "Visit title missing",  // Use webTitle instead of notes
+                        webpage: event.webpage || "URL missing",  // Use webpage instead of timed_url
+                        time: event.time,
+                    });
+                }
+            }
+        }
+
+        // After iterating, push the last currentSearchEvent if it exists
+        if (currentSearchEvent) {
+            structureWebEvents.push(currentSearchEvent);
+        }
+
+        // Combine code and structured non-code events into the group
+        this.currentGroup.actions = [codeActivity, ...structureWebEvents];
+
+        // Sort the currentGroup actions by time
+        this.currentGroup.actions.sort((a, b) => a.time - b.time);
+
+        // Set the title and add the group to display
+        this.currentGroup.title = this.generateSubGoalTitle(this.currentGroup);
+        this.displayForGroupedEvents.push(this.currentGroup);
+
+        // Clear the stray events and reset the current group
         this.strayEvents = [];
+        this.currentGroup = null;
+    }
+
+    // activity-level subgoal*
+    generateSubGoalTitle(group) {
+        if (group.type === "code") {
+            return `Code changes in ${group.file}`;
+        } else if (group.type === "subgoal") {
+            return `Subgoal ${group.id}`;
+        } else {
+            return "Title placeholder";
+        }
     }
 
     updateWebPanel() {
@@ -220,197 +355,205 @@ class ClusterManager {
                 <script src="https://cdn.jsdelivr.net/npm/diff2html@3.4.48/bundles/js/diff2html-ui.min.js"></script>
                 <link href="https://cdn.jsdelivr.net/npm/diff2html@3.4.48/bundles/css/diff2html.min.css" rel="stylesheet">
                 <style>
-                    body {
-                        font-family: Arial, sans-serif;
-                        background-color: #f5f5f5; /* Light background */
-                        color: #333; /* Darker text for contrast */
-                    }
-                    h1 {
-                        color: #333; /* Darker text for headers */
-                        font-size: 20px;
-                        margin-bottom: 15px;
-                    }
-                    ul {
-                        list-style-type: none;
-                        padding-left: 0;
-                    }
-                    li {
-                        background-color: #ffffff; /* White background for list items */
-                        margin-bottom: 10px;
-                        padding: 10px;
-                        border-radius: 5px;
-                        box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
-                    }
-                    .collapsible {
-                        background-color: #f0f0f0; /* Light grey background for collapsible headers */
-                        color: #333; /* Dark text */
-                        cursor: pointer;
-                        padding: 10px;
-                        width: 100%;
-                        border: none;
-                        text-align: left;
-                        outline: none;
-                        font-size: 15px;
-                        border-radius: 5px;
-                    }
-                    .content {
-                        padding: 10px;
-                        display: none;
-                        overflow: hidden;
-                        background-color: #fafafa; /* Even lighter grey for content */
-                        color: #333; /* Dark text */
-                        margin-top: 5px;
-                        border-radius: 5px;
-                    }
-                    .stray-event {
-                        background-color: #ffffff; /* White background for stray events */
-                        margin: 10px 0;
-                        padding: 10px;
-                        border-radius: 5px;
-                        box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.1);
-                    }
-                    pre {
-                        background-color: #f0f0f0; /* Light grey for code blocks */
-                        padding: 10px;
-                        border-radius: 5px;
-                        overflow-x: auto;
-                    }
-                    .diff-container {
-                        background-color: #ffffff; /* White background for diff container */
-                        padding: 10px;
-                        border-radius: 5px;
-                        box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.1);
-                    }
-
-                    .d2h-wrapper {
-                        background-color: #ffffff;
-                        color: #333;
-                    }
-
+                    ${webViewStyles}
                 </style>
             </head>
             <body>
                 <h1>Grouped Events</h1>
-                <ul>
+                <ul id="grouped-events">
                     ${groupedEventsHTML}
                 </ul>
 
                 <h1>Stray Events</h1>
-                <ul>
+                <ul id="stray-events">
                     ${strayEventsHTML}
                 </ul>
 
                 <script>
-                    document.querySelectorAll('.collapsible').forEach(coll => {
-                        coll.addEventListener('click', function() {
-                            this.classList.toggle('active');
-                            const content = this.nextElementSibling;
-                            if (content.style.display === 'block') {
-                                content.style.display = 'none';
-                            } else {
-                                content.style.display = 'block';
-                            }
+                    (function() {
+                        const vscode = acquireVsCodeApi();
+
+                        window.updateTitle = function(groupKey) {
+                            const titleInput = document.getElementById('title-' + groupKey).value;
+                            vscode.postMessage({
+                                command: 'updateTitle',
+                                groupKey: groupKey,
+                                title: titleInput,
+                            });
+                        };
+
+                        window.updateCodeTitle = function(groupKey, eventId) {
+                            const codeTitleInput = document.getElementById('code-title-' + groupKey + '-' + eventId).value;
+                            vscode.postMessage({
+                                command: 'updateCodeTitle',
+                                groupKey: groupKey,
+                                eventId: eventId,
+                                title: codeTitleInput,
+                            });
+                        };
+
+                        document.querySelectorAll('.collapsible').forEach(collapsibleItem => {
+                            collapsibleItem.addEventListener('click', function() {
+                                this.classList.toggle('active');
+                                const content = this.nextElementSibling;
+                                if (content.style.display === 'block') {
+                                    content.style.display = 'none';
+                                } else {
+                                    content.style.display = 'block';
+                                }
+                            });
                         });
-                    });
+                    })();
                 </script>
             </body>
-            </html>`;
+            </html>
+        `;
     }
+     
 
     generateGroupedEventsHTML() {
-        if (Object.keys(this.groupedEvents).length === 0) {
+        // this.displayForGroupedEvents is an array of objects, each object is a group
+        // each group has a title and an array containing code and web activity
+        let html = '';
+    
+        if (this.displayForGroupedEvents.length === 0) {
             return '<li>No grouped events.</li>';
         }
 
-        return Object.keys(this.groupedEvents).map((groupKey) => {
-            return this.generateGroupHTML(groupKey);
-        }).join('');
+        console.log('In generateGroupedEventsHTML', this.displayForGroupedEvents);
+
+        for (const [groupKey, group] of this.displayForGroupedEvents.entries()) {
+            // this is for subgoal-level grouping
+            // html += `
+            //     <li>
+            //         <!-- Editable title for the subgoal (group) -->
+            //         <input class="editable-title" id="title-${groupKey}" value="${group.title}" onchange="updateTitle('${groupKey}')">
+            //         <button type="button" class="collapsible">Subgoal ${groupKey}</button>
+            //         <div class="content">
+            //             <ul id="group-${groupKey}" data-groupkey="${groupKey}">
+            // `;
+
+            const displayedVisits = new Set();  // To track which visits have been displayed
+    
+            for (const [index, event] of group.actions.entries()) {
+
+                let title = event.title || "Untitled";  // Provide a default title if undefined
+    
+                if (event.type === 'code') {
+                    // Render the code activity with editable title and collapsible diff
+                    const diffHTML = this.generateDiffHTML(event);
+                    html += `
+                        <li data-eventid="${index}">
+                            <!-- Editable title for the code activity -->
+                            <input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')">
+                            <button type="button" class="collapsible">Code Diff</button>
+                            <div class="content">
+                                ${diffHTML}
+                            </div>
+                        </li>
+                    `;
+                } else if (event.type === 'search') {
+                    // Render the search activity with collapsible visit events
+                    title = event.query || "Untitled";  // Ensure search queries are not undefined
+                    html += `
+                        <li data-eventid="${index}">
+                            <button type="button" class="collapsible">${title}</button>
+                            <div class="content">
+                                <ul>
+                    `;
+    
+                    for (const [visitIndex, visit] of event.actions.entries()) {
+                        const visitKey = `${visit.webTitle}-${visit.time}`;  // Unique identifier for each visit
+    
+                        // Only render if this visit has not been displayed
+                        if (!displayedVisits.has(visitKey)) {
+                            const visitTitle = visit.webTitle || "Untitled";  // Ensure visit titles are not undefined
+                            html += `
+                                <li>
+                                    <a href="${visit.webpage}" target="_blank">${visitTitle}</a> - ${new Date(visit.time * 1000).toLocaleString()}
+                                </li>
+                            `;
+                            displayedVisits.add(visitKey);  // Mark this visit as displayed
+                        }
+                    }
+    
+                    html += `
+                                </ul>
+                            </div>
+                        </li>
+                    `;
+                } else if ((event.type === 'visit' || event.type === 'revisit') && !displayedVisits.has(`${event.webTitle}-${event.time}`)) {
+                    // Handle standalone visit and revisit events (not part of a search)
+                    const visitTitle = event.webTitle || "Untitled";
+                    html += `
+                        <li data-eventid="${index}">
+                            <a href="${event.webpage}" target="_blank">${visitTitle}</a> - ${new Date(event.time * 1000).toLocaleString()}
+                        </li>
+                    `;
+                    displayedVisits.add(`${event.webTitle}-${event.time}`);  // Mark this visit as displayed
+                }
+            }
+        }
+    
+        return html;
     }
+    
 
     generateStrayEventsHTML() {
+        // console.log('In generateStrayEventsHTML', this.strayEvents);
+        let html = '';
+
         if (this.strayEvents.length === 0) {
             return '<li>No stray events.</li>';
         }
 
-        return this.strayEvents.map((event, index) => {
+        // the events in strayEvents are in processed form
+        for (const event of this.strayEvents) {
+            // all info is in event.notes
             const humanReadableTime = new Date(event.time * 1000).toLocaleString();
-            const filename = this.getFilename(event.notes);
-            if(event.notes.startsWith("code") || event.notes.startsWith("save")) {
-                return `
+            
+            if(event.type === "code") {
+                html += `
                     <li class="stray-event">
-                        <p><strong>${humanReadableTime}</strong> - <em>${filename}</em></p>
+                        <p><strong>${humanReadableTime}</strong> - <em>${event.file}</em></p>
                     </li>
                 `;
             } else {
-                return `
-                    <li class="stray-event">
-                        <p><strong>${humanReadableTime}</strong> - <em>${event.notes}</em></p>
-                    </li>
-                `;
+                if(event.type === "search") {
+                    html += `
+                        <li class="stray-event">
+                            <p><strong>${humanReadableTime}</strong> - <em>${event.webTitle}</em></p>
+                        </li>
+                    `;
+                } else {
+                    // visit or revisit
+                    // same thing but also including the url link
+                    html += `
+                        <li class="stray-event">
+                            <p><strong>${humanReadableTime}</strong> - <a href="${event.webpage}"<em>${event.webTitle}</em></a></p>
+                        </li>
+                        `;
+                }
             }
-        }).join('');
-    }
-
-    generateGroupHTML(groupKey) {
-        const group = this.groupedEvents[groupKey];
-    
-        // Check if the group has at least two events
-        if (group.events.length < 2) {
-            return '';  // Skip rendering if there are fewer than two events
         }
-    
-        // compare the start code and end code
-        const DiffHTML = this.generateDiffHTML(group.events);
-        
-        return `
-            <li>
-                <button type="button" class="collapsible">Activity ${groupKey}</button>
-                <div class="content">
-                    <p><strong>Start Time:</strong> ${new Date(group.startTime * 1000).toLocaleString()}</p>
-                    <p><strong>End Time:</strong> ${new Date(group.endTime * 1000).toLocaleString()}</p>
-                    <p><strong>File:</strong> ${group.filename}</p>
-                    ${DiffHTML}
-                </div>
-            </li>
-        `;
+
+        return html;
     }
 
-    generateDiffHTML (events) {
+    generateDiffHTML(codeActivity) {
         // Get the event at startTime
-        const startCodeEvent = events[0];
-        const startCodeEventLines = this.get_code_lines(startCodeEvent.code_text);
+        const startCodeEventLines = this.get_code_lines(codeActivity.before_code);
 
         // Get the event at endTime
-        const endCodeEvent = events[events.length - 1];
-        const endCodeEventLines = this.get_code_lines(endCodeEvent.code_text);
-
-        // // Generate diff
-        // const diff = Diff.diffLines(endCodeEventLines.join('\n'), startCodeEventLines.join('\n'));
-    
-        // // Filter out the unchanged lines, leaving only the added and removed ones
-        // const filteredDiff = diff.filter(part => part.added || part.removed);
-    
-        // // Check if there's any diff after filtering
-        // if (filteredDiff.length === 0) {
-        //     return null; // No differences detected, return null
-        // }'
-
-        // // Map through the filtered diff and render only added/removed lines
-        // return `<pre>${filteredDiff.map((part, index) => {
-        //     if (part.added) {
-        //         return `<span class="diff-added">+ ${part.value.replace(/\n/g, '<br>')}</span>`;
-        //     } else if (part.removed) {
-        //         return `<span class="diff-removed">- ${part.value.replace(/\n/g, '<br>')}</span>`;
-        //     }
-        // }).join('<br>')}</pre>`;
+        const endCodeEventLines = this.get_code_lines(codeActivity.after_code);
 
         const diffString = Diff.createTwoFilesPatch(
             'start', 
             'end', 
-            startCodeEvent.code_text, 
-            endCodeEvent.code_text, 
-            startCodeEvent.filename, 
-            endCodeEvent.filename
+            codeActivity.before_code,
+            codeActivity.after_code,
+            codeActivity.file,
+            codeActivity.file
         );
 
         // Render the diff as HTML
@@ -424,6 +567,16 @@ class ClusterManager {
     
         return `<div class="diff-container">${diffHtml}</div>`;
     }  
+
+    updateTitle(groupKey, title) {
+        this.displayForGroupedEvents[groupKey].title = title;
+        this.updateWebPanel();
+    }
+
+    updateCodeTitle(groupKey, eventId, title) {
+        this.displayForGroupedEvents[groupKey].actions[eventId].title = title;
+        this.updateWebPanel();
+    }
 
     best_match(target, lines) {
         if (target.length > 0) {

@@ -108,7 +108,7 @@ function activate(context) {
 
 	myCustomEmitter.on('saveAndExecute', async (entry) => {
 		eventEntry = entry;
-		console.log('eventEntry:', eventEntry);
+		// console.log('eventEntry:', eventEntry);
 	});
 
 	// vscode.window.onDidEndTerminalShellExecution(async event => {
@@ -126,9 +126,29 @@ function activate(context) {
 	let testRunPythonScript = vscode.commands.registerCommand('codeHistories.testRunPythonScript', testRunPythonScriptHelper);
 	let testDBConstructor = vscode.commands.registerCommand('codeHistories.testDBConstructor', testDBConstructorHelper);
 	// historyWebview takes in an object with the following properties: document, time, code_text, notes
-	let historyWebview = vscode.commands.registerCommand('codeHistories.historyWebview', function (entry) {
-        // vscode.window.showInformationMessage(`Webview for ${entry.notes} should be opened.`);
-		clusterManager.processEvent(entry);
+	let historyWebview = vscode.commands.registerCommand('codeHistories.historyWebview', function () {
+        clusterManager.webviewPanel = vscode.window.createWebviewPanel(
+			'historyWebview',
+			'History Webview',
+			vscode.ViewColumn.Beside,
+			{ enableScripts: true }
+		);
+
+		// Set the initial HTML content
+		clusterManager.updateWebPanel();
+
+		// Set up message handling from the webview
+		clusterManager.webviewPanel.webview.postMessage(
+			message => {
+				switch (message.command) {
+					case 'updateTitle':
+						clusterManager.updateGroupTitle(message.groupKey, message.title);
+						break;
+				}
+			},
+			undefined,
+			context.subscriptions
+		);
     });
 
 	context.subscriptions.push(activateCodeHistories);
@@ -218,14 +238,23 @@ function activate(context) {
 			let startTime = timeSwitchedToChrome;
 			let endTime = timeSwitchedToCode;
 
-			// Traverse the array backwards
-			for (let i = webDataArray.length - 1; i >= 0; i--) {
-				let obj = webDataArray[i];
-				
-				if (obj.time <= endTime && obj.time >= startTime) {
-					webDataArrayFiltered.unshift(obj);  // Prepend to maintain order
-				} else if (obj.time < startTime) {
-					break;  // Early exit, no need to check earlier events
+			if (startTime > 0 && endTime > 0) {
+				// Traverse the array backwards
+				for (let i = webDataArray.length - 1; i >= 0; i--) {
+					let obj = webDataArray[i];
+					
+					if (obj.time <= endTime && obj.time >= startTime) {
+						webDataArrayFiltered.unshift(obj);  // Prepend to maintain order
+					} else if (obj.time < startTime) {
+						break;  // Early exit, no need to check earlier events
+					}
+				}
+			} else {
+				if (startTime <= 0) {
+					console.error('Invalid start time:', startTime);
+				}
+				if (endTime <= 0) {
+					console.error('Invalid end time:', endTime);
 				}
 			}
 
@@ -316,7 +345,7 @@ async function onDidExecuteShellCommandHelper(event, clusterManager) {
 				// console.log('data:', data);
 				output += data;
 			}
-			console.log('rawOutput:', output);
+			// console.log('rawOutput:', output);
 
 			// Regex pattern to replace \x5c with \
 			const weirdRegex = /\\x5c/g;
@@ -426,11 +455,11 @@ async function onDidExecuteShellCommandHelper(event, clusterManager) {
 				await fs.promises.appendFile(outputTxtFilePath, `${finalOutput}\n`);
 				await tracker.gitAddOutput();
 				await tracker.checkWebData();
-				// await tracker.gitCommit();
+				await tracker.gitCommit();
 				if(eventEntry){
 					await clusterManager.processEvent(eventEntry);
 				}
-				vscode.window.showInformationMessage('Commit supposedly executed successfully!');
+				// vscode.window.showInformationMessage('Commit supposedly executed successfully!');
 			} else {
 				await tracker.gitReset();
 			}

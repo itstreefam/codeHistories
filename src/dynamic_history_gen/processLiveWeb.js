@@ -21,7 +21,7 @@ function filterUnwantedRows(data) {
 function assignNewActions(data) {
     data.forEach((row, index) => {
         let newAction = row.action;
-        console.log(`Row ${index} before assignNewActions:`, row);
+        // console.log(`Row ${index} before assignNewActions:`, row);
 
         if (row.curTitle.toLowerCase().includes('search') || row.curUrl.includes('https://www.google.com/search')) {
             newAction = 'search';
@@ -33,7 +33,7 @@ function assignNewActions(data) {
 
         row.new_action = newAction;
 
-        console.log(`Row ${index} after assignNewActions:`, row);
+        // console.log(`Row ${index} after assignNewActions:`, row);
     });
 
     return data;
@@ -81,7 +81,7 @@ function prepareOutputData(data) {
 }
 
 function processWebData(dataList) {
-    console.log('dataList:', dataList);
+    // console.log('dataList:', dataList);
     const rawData = initializeColumns(dataList);
     
     if (!rawData) {
@@ -93,20 +93,20 @@ function processWebData(dataList) {
         };
     }
 
-    console.log('After initializeColumns:', rawData);
+    // console.log('After initializeColumns:', rawData);
 
     let data = rawData;
     let afterFilterUnwantedRowsData = filterUnwantedRows(data);
-    console.log('After filterUnwantedRows:', afterFilterUnwantedRowsData);
+    // console.log('After filterUnwantedRows:', afterFilterUnwantedRowsData);
 
     let afterAssignNewActionsData = assignNewActions(afterFilterUnwantedRowsData);
-    console.log('After assignNewActions:', afterAssignNewActionsData);
+    // console.log('After assignNewActions:', afterAssignNewActionsData);
 
     let afterFinalizeActionsData = finalizeActions(afterAssignNewActionsData);
-    console.log('After finalizeActions:', afterFinalizeActionsData);
+    // console.log('After finalizeActions:', afterFinalizeActionsData);
 
     const outputData = prepareOutputData(afterFinalizeActionsData);  
-    console.log('Final outputData:', outputData);
+    // console.log('Final outputData:', outputData);
     return outputData;
 }
 
