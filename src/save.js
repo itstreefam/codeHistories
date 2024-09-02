@@ -22,6 +22,7 @@ function handleFileSave(document) {
 	const filename = path.basename(documentPath);
 
 	const entry = {
+		type: 'save',
 		document: documentPath,
 		time: Math.floor(Date.now() / 1000),
 		code_text: documentText,

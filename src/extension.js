@@ -17,6 +17,7 @@ const GitHistory = require('./dynamic_history_gen/git_history');
 const ClusterManager = require('./clusterManager');
 const { processWebData } = require('./dynamic_history_gen/processLiveWeb');
 const myCustomEmitter = require('./eventEmitter'); // Use the shared emitter
+const ContentTimelineManager = require('./contentTimelineManager');
 
 var tracker = null;
 var iter = 0;
@@ -40,6 +41,8 @@ var hostname = os.hostname();
 var terminalList;
 var terminalInstance;
 var eventEntry = {};
+var usingHistoryView = false;
+var usingContentTimelineView = true;
 
 /**
  * @param {vscode.ExtensionContext} context
@@ -65,6 +68,7 @@ function activate(context) {
 	context.subscriptions.push(vscode.window.onDidChangeTextEditorSelection(event => {
 		const key = event.textEditor.document.uri.fsPath;
 		const debouncedSelectionChangeHandler = debounce(selection.handleTextEditorSelectionChange, 500, key);
+		console.log('Selection event:', event);
 		debouncedSelectionChangeHandler(event.textEditor);
 	}));
 
@@ -101,6 +105,7 @@ function activate(context) {
 	}
 
 	const clusterManager = new ClusterManager();
+	const contentTimelineManager = new ContentTimelineManager();
 
 	vscode.window.onDidStartTerminalShellExecution(async event => {
 		await onDidExecuteShellCommandHelper(event, clusterManager);
@@ -110,6 +115,13 @@ function activate(context) {
 		eventEntry = entry;
 		// console.log('eventEntry:', eventEntry);
 	});
+
+	if(usingContentTimelineView){
+		myCustomEmitter.on('selection', async (entry) => {
+			// console.log('selection:', entry);
+			contentTimelineManager.processEvent(entry);
+		});
+	}
 
 	// vscode.window.onDidEndTerminalShellExecution(async event => {
 	// 	console.log('event: ', event);
@@ -432,6 +444,7 @@ async function onDidExecuteShellCommandHelper(event, clusterManager) {
 			// console.log('exitCode:', exitCode);
 
 			let executionInfo = {
+				type: 'execution',
 				command: command,
 				output: finalOutput,
 				exitCode: exitCode,
@@ -455,11 +468,15 @@ async function onDidExecuteShellCommandHelper(event, clusterManager) {
 				await fs.promises.appendFile(outputTxtFilePath, `${finalOutput}\n`);
 				await tracker.gitAddOutput();
 				await tracker.checkWebData();
-				await tracker.gitCommit();
-				if(eventEntry){
-					await clusterManager.processEvent(eventEntry);
+				if(usingHistoryView) {
+					// await tracker.gitCommit();
+					if(eventEntry){
+						await clusterManager.processEvent(eventEntry);
+					}
+				} else {
+					// await tracker.gitCommit();
 				}
-				// vscode.window.showInformationMessage('Commit supposedly executed successfully!');
+				vscode.window.showInformationMessage('Commit supposedly executed successfully!');
 			} else {
 				await tracker.gitReset();
 			}
