@@ -108,12 +108,14 @@ function activate(context) {
 	const contentTimelineManager = new ContentTimelineManager();
 
 	vscode.window.onDidStartTerminalShellExecution(async event => {
-		await onDidExecuteShellCommandHelper(event, clusterManager);
+		await onDidExecuteShellCommandHelper(event, clusterManager, contentTimelineManager);
 	});
 
-	myCustomEmitter.on('saveAndExecute', async (entry) => {
-		eventEntry = entry;
+	myCustomEmitter.on('save', async (entry) => {
+		eventEntry = entry; // for history view, just need to save and send this entry to clusterManager later after execution
 		// console.log('eventEntry:', eventEntry);
+
+		contentTimelineManager.processEvent(entry); // for content timeline view, process the event immediately
 	});
 
 	if(usingContentTimelineView){
@@ -341,7 +343,7 @@ function removeNonASCIICharsHelper(txt) {
 	return processedTxt;
 }
 
-async function onDidExecuteShellCommandHelper(event, clusterManager) {
+async function onDidExecuteShellCommandHelper(event, clusterManager, contentTimelineManager) {
 	try {
 		// console.log('event.terminal', event.terminal);
 		// console.log('event.shellIntegration', event.shellIntegration);
@@ -473,8 +475,9 @@ async function onDidExecuteShellCommandHelper(event, clusterManager) {
 					if(eventEntry){
 						await clusterManager.processEvent(eventEntry);
 					}
-				} else {
+				} else if(usingContentTimelineView) {
 					// await tracker.gitCommit();
+					await contentTimelineManager.processEvent(executionInfo);
 				}
 				vscode.window.showInformationMessage('Commit supposedly executed successfully!');
 			} else {

@@ -30,7 +30,7 @@ function handleFileSave(document) {
 	};
 
 	// emit the save event
-	myCustomEmitter.emit('saveAndExecute', entry);
+	myCustomEmitter.emit('save', entry);
 
 	// communicate with the extension
 	// vscode.commands.executeCommand('codeHistories.historyWebview', entry);

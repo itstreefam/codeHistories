@@ -106,4 +106,51 @@ const webViewStyles = `
 
 `;
 
-module.exports = webViewStyles;
+const contentTimelineStyles = `
+    body {
+        font-family: Arial, sans-serif;
+        background-color: #f5f5f5; /* Light grey background */
+        color: #333333; /* Dark text color */
+    }
+
+    .event {
+        margin: 10px;
+        padding: 10px;
+        border: 1px solid #ccc;
+        background-color: #f9f9f9;
+    }
+
+    .event-content {
+        padding: 5px 0;
+    }
+
+    .diff-container {
+        font-size: 12px;
+        background-color: #ffffff;
+        color: #333333;
+        padding: 10px;
+        border-radius: 4px;
+        overflow-x: auto;
+        margin-top: 10px;
+    }
+
+    hr {
+        border: none;
+        border-top: 1px solid #ccc;
+        margin: 20px 0;
+    }
+
+    a {
+        color: #1e90ff;
+        text-decoration: none;
+    }
+
+    a:hover {
+        text-decoration: underline;
+    }
+`;
+
+module.exports = {
+    webViewStyles,
+    contentTimelineStyles,
+};

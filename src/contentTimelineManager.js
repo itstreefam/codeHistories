@@ -2,6 +2,7 @@ const vscode = require('vscode');
 const Diff = require('diff');
 const diff2html = require('diff2html');
 const path = require('path');
+const { contentTimelineStyles } = require('./webViewStyles');
 
 class ContentTimelineManager {
     constructor() {
@@ -10,6 +11,7 @@ class ContentTimelineManager {
         this.currentEvent = null;
         this.idCounter = 0;
         this.eventHtmlMap = {}; // Map to track event ID and its corresponding HTML element
+        this.previousSaveContent = {}; // To store the previous version of the file content
     }
 
     processEvent(event) {
@@ -20,59 +22,138 @@ class ContentTimelineManager {
             data: event
         };
 
-        // Treat each event as an individual event
-        this.contentTimeline.push(this.currentEvent);
-        this.eventHtmlMap[this.currentEvent.id] = this.generateEventHTML(this.currentEvent);
+        if (event.type === 'save') {
+            this.handleSaveEvent(this.currentEvent);
+        } else if (event.type === 'execution') {
+            this.handleExecutionEvent(this.currentEvent);
+        } else if (event.type === 'selection') {
+            this.handleSelectionEvent(this.currentEvent);
+        }
 
         this.updateWebPanel();
     }
 
-    generateEventHTML(event) {
+    handleSelectionEvent(event) {
         const fileName = this.getFilename(event.data.document);
         let htmlLines = '';
-    
+
         const startLine = event.data.range[0];
         const endLine = event.data.range[1];
         const startChar = event.data.charRange[0];
         const endChar = event.data.charRange[1];
         const documentText = event.data.allText.split('\n');
-    
+
         htmlLines = documentText.slice(startLine - 1, endLine).map((line, index) => {
             const lineNumber = startLine + index;
-    
+
             if (lineNumber === startLine && lineNumber === endLine) {
-                // Single line selection
                 const highlightedLine = line.substring(0, startChar) +
                     `<strong>${line.substring(startChar, endChar)}</strong>` +
                     line.substring(endChar);
                 return `${lineNumber}: ${highlightedLine}`;
             } else if (lineNumber === startLine) {
-                // Start of a multi-line selection
                 const highlightedLine = line.substring(0, startChar) +
                     `<strong>${line.substring(startChar)}</strong>`;
                 return `${lineNumber}: ${highlightedLine}`;
             } else if (lineNumber === endLine) {
-                // End of a multi-line selection
                 const highlightedLine = `<strong>${line.substring(0, endChar)}</strong>` +
                     line.substring(endChar);
                 return `${lineNumber}: ${highlightedLine}`;
             } else {
-                // Fully selected line in the middle
                 return `${lineNumber}: <strong>${line}</strong>`;
             }
         }).join('<br>');
+
+        event.data.notes = `Click: ${new Date(event.time * 1000).toLocaleDateString()} ${new Date(event.time * 1000).toLocaleTimeString()}`;
+        event.data.diffHtml = htmlLines;
+
+        this.contentTimeline.push(event);
+        this.eventHtmlMap[event.id] = this.generateEventHTML(event);
+    }
+
+    handleSaveEvent(event) {
+        const documentPath = event.data.document;
+        const newContent = event.data.code_text;
     
-        const html = `
-            <div id="event-${event.id}">
-                <strong>${fileName}</strong><br>
-                <code style="color:black;">
-                    ${htmlLines}
-                </code><br>
-                Click: ${new Date(event.time * 1000).toLocaleTimeString()}
+        let diffHtml = '';
+        if (this.previousSaveContent[documentPath]) {
+            const diff = Diff.createTwoFilesPatch(
+                'Previous Version',
+                'Current Version',
+                this.previousSaveContent[documentPath],
+                newContent,
+                '',
+                ''
+            );
+    
+            diffHtml = this.generateDiffHTML(diff);
+        }
+    
+        this.previousSaveContent[documentPath] = newContent;
+    
+        event.data.diffHtml = diffHtml;
+        event.data.notes = `Save at ${new Date(event.time * 1000).toLocaleDateString()} ${new Date(event.time * 1000).toLocaleTimeString()}`;
+    
+        this.contentTimeline.push(event);
+        this.eventHtmlMap[event.id] = this.generateEventHTML(event);
+    }    
+    
+    handleExecutionEvent(event) {
+        const buildEvent = {
+            id: this.idCounter++,
+            time: event.time,
+            type: 'build',
+            data: {
+                document: event.data.document,
+                notes: `Build at ${new Date(event.time * 1000).toLocaleDateString()} ${new Date(event.time * 1000).toLocaleTimeString()}`
+            }
+        };
+
+        this.contentTimeline.push(buildEvent);
+        this.eventHtmlMap[buildEvent.id] = this.generateBuildHTML(buildEvent);
+    }
+
+    generateDiffHTML(diff) {
+        const outputFormat = 'side-by-side';
+    
+        const diff2htmlOutput = diff2html.parse(diff, {
+            drawFileList: false,
+            outputFormat: outputFormat,
+            matching: 'none'
+        });
+    
+        const diffHtml = diff2html.html(diff2htmlOutput);
+    
+        // Wrapping the diff in a styled container to prevent CSS spillover
+        return `
+            <div class="diff-container">
+                ${diffHtml}
             </div>
         `;
-    
-        return html;
+    }    
+
+    generateEventHTML(event) {
+        const fileName = this.getFilename(event.data.document);
+
+        return `
+            <div class="event" id="event-${event.id}">
+                <strong>${fileName}</strong><br>
+                <div class="event-content">
+                    ${event.data.diffHtml || ''}
+                </div>
+                ${event.data.notes}
+            </div>
+        `;
+    }
+
+    generateBuildHTML(event) {
+        return `
+            <hr>
+            <div id="event-${event.id}">
+                <strong>${event.data.notes}</strong>
+            </div>
+            <hr>
+        `;
     }
 
     updateWebPanel() {
@@ -90,20 +171,11 @@ class ContentTimelineManager {
             <html lang="en">
             <head>
                 <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Content Timeline</title>
+                <script src="https://cdn.jsdelivr.net/npm/diff2html@3.4.48/bundles/js/diff2html-ui.min.js"></script>
+                <link href="https://cdn.jsdelivr.net/npm/diff2html@3.4.48/bundles/css/diff2html.min.css" rel="stylesheet">
                 <style>
-                    body {
-                        font-family: Arial, sans-serif;
-                    }
-                    .event {
-                        margin: 10px;
-                        padding: 10px;
-                        border: 1px solid #ccc;
-                    }
-                    .event-type {
-                        font-size: 1.2em;
-                    }
+                    ${contentTimelineStyles}
                 </style>
             </head>
             <body>
@@ -114,7 +186,7 @@ class ContentTimelineManager {
             </body>
             </html>
         `;
-    }
+    }  
 
     getFilename(documentPath) {
         return path.basename(documentPath);
