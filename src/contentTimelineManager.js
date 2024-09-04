@@ -45,22 +45,26 @@ class ContentTimelineManager {
 
         htmlLines = documentText.slice(startLine - 1, endLine).map((line, index) => {
             const lineNumber = startLine + index;
-
+    
             if (lineNumber === startLine && lineNumber === endLine) {
+                // The selection is only on one line
                 const highlightedLine = line.substring(0, startChar) +
                     `<strong>${line.substring(startChar, endChar)}</strong>` +
                     line.substring(endChar);
-                return `${lineNumber}: ${highlightedLine}`;
+                return `<span class="clickable-line" data-line-number="${lineNumber - 1}" data-filename="${fileName}">${lineNumber}: ${highlightedLine}</span>`;
             } else if (lineNumber === startLine) {
+                // The selection starts on this line
                 const highlightedLine = line.substring(0, startChar) +
                     `<strong>${line.substring(startChar)}</strong>`;
-                return `${lineNumber}: ${highlightedLine}`;
+                return `<span class="clickable-line" data-line-number="${lineNumber - 1}" data-filename="${fileName}">${lineNumber}: ${highlightedLine}</span>`;
             } else if (lineNumber === endLine) {
+                // The selection ends on this line
                 const highlightedLine = `<strong>${line.substring(0, endChar)}</strong>` +
                     line.substring(endChar);
-                return `${lineNumber}: ${highlightedLine}`;
+                return `<span class="clickable-line" data-line-number="${lineNumber - 1}" data-filename="${fileName}">${lineNumber}: ${highlightedLine}</span>`;
             } else {
-                return `${lineNumber}: <strong>${line}</strong>`;
+                // Entire line is part of the selection
+                return `<span class="clickable-line" data-line-number="${lineNumber - 1}" data-filename="${fileName}">${lineNumber}: <strong>${line}</strong></span>`;
             }
         }).join('<br>');
 
@@ -74,6 +78,7 @@ class ContentTimelineManager {
     handleSaveEvent(event) {
         const documentPath = event.data.document;
         const newContent = event.data.code_text;
+        const fileName = this.getFilename(documentPath);
     
         let diffHtml = '';
         if (this.previousSaveContent[documentPath]) {
@@ -86,7 +91,7 @@ class ContentTimelineManager {
                 ''
             );
     
-            diffHtml = this.generateDiffHTML(diff);
+            diffHtml = this.generateDiffHTML(diff, fileName);
         }
     
         this.previousSaveContent[documentPath] = newContent;
@@ -113,23 +118,40 @@ class ContentTimelineManager {
         this.eventHtmlMap[buildEvent.id] = this.generateBuildHTML(buildEvent);
     }
 
-    generateDiffHTML(diff) {
-        const outputFormat = 'side-by-side';
-    
-        const diff2htmlOutput = diff2html.parse(diff, {
+    generateDiffHTML(diff, fileName) {
+        const diffHtml = diff2html.html(diff, {
+            outputFormat: 'side-by-side',
             drawFileList: false,
-            outputFormat: outputFormat,
-            matching: 'none'
+            colorScheme: 'auto'
         });
-    
-        const diffHtml = diff2html.html(diff2htmlOutput);
-    
-        // Wrapping the diff in a styled container to prevent CSS spillover
-        return `
-            <div class="diff-container">
-                ${diffHtml}
-            </div>
-        `;
+        // console.log(diffHtml);
+
+        let lastLineNumber = null;
+        const modifiedHtml = diffHtml
+            .replace(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/g, (match, lineNumber) => {
+                lastLineNumber = lineNumber; // Store the current line number for later
+                return `<td class="d2h-code-side-linenumber">
+                            <span class="clickable-line" data-line-number="${lineNumber - 1}" data-filename="${fileName}">${lineNumber}</span>
+                        </td>`;
+            });
+
+        const finalHtml = modifiedHtml.replace(/<span class="d2h-code-line-ctn">(.+?)<\/span>/g, (match, content) => {
+            // Apply the line number to the corresponding code content
+            if (lastLineNumber) {
+                return `<span class="clickable-line d2h-code-line-ctn" data-line-number="${lastLineNumber}" data-filename="${fileName}" data-line-content="${content.trim()}">${content}</span>`;
+            } else {
+                return match; // If no valid line number, return the original match
+            }
+        });
+            
+        // Handle empty placeholder lines for deleted content
+        finalHtml.replace(/<td class="d2h-code-side-linenumber d2h-code-side-emptyplaceholder(?: [\w-]+)*"><\/td>/g, () => {
+                return `<td class="d2h-code-side-linenumber d2h-code-side-emptyplaceholder">
+                            <span class="clickable-line" data-line-number="${lastLineNumber}" data-filename="${fileName}"></span>
+                        </td>`;
+            });
+
+        return `<div class="diff-container">${finalHtml}</div>`;
     }    
 
     generateEventHTML(event) {
@@ -137,11 +159,15 @@ class ContentTimelineManager {
 
         return `
             <div class="event" id="event-${event.id}">
-                <strong>${fileName}</strong><br>
+                <span data-file="${fileName}">
+                    <strong>${fileName}</strong>
+                </span>    
+                <br>
                 <div class="event-content">
                     ${event.data.diffHtml || ''}
                 </div>
                 ${event.data.notes}
+
             </div>
         `;
     }
@@ -172,8 +198,8 @@ class ContentTimelineManager {
             <head>
                 <meta charset="UTF-8">
                 <title>Content Timeline</title>
-                <script src="https://cdn.jsdelivr.net/npm/diff2html@3.4.48/bundles/js/diff2html-ui.min.js"></script>
-                <link href="https://cdn.jsdelivr.net/npm/diff2html@3.4.48/bundles/css/diff2html.min.css" rel="stylesheet">
+                <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/diff2html/bundles/css/diff2html.min.css" />
+                <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/diff2html/bundles/js/diff2html.min.js"></script>
                 <style>
                     ${contentTimelineStyles}
                 </style>
@@ -184,10 +210,78 @@ class ContentTimelineManager {
                     ${Object.values(this.eventHtmlMap).join('')}
                 </div>
             </body>
+            <script>
+                const vscode = acquireVsCodeApi();
+
+                window.addEventListener('click', function(event) {
+                    const target = event.target;
+
+                    // Find the closest clickable-line SPAN or DIV (for both line content and line numbers)
+                    const lineElement = target.closest('.clickable-line');
+                    if (lineElement) {
+                        // Print out the HTML tag of the clicked element for debugging
+                        console.log("Clicked element:", lineElement.outerHTML);
+
+                        // Continue with the existing logic (optional)
+                        const lineNumber = lineElement.getAttribute('data-line-number');
+                        const fileName = lineElement.getAttribute('data-filename');
+
+                        console.log('Line Number:', lineNumber);
+                        console.log('File Name:', fileName);
+
+                        vscode.postMessage({
+                            command: 'navigateToLine',
+                            line: lineNumber,
+                            fileName: fileName
+                        });
+                    }
+                });
+            </script>
             </html>
         `;
-    }  
 
+        this.webviewPanel.webview.onDidReceiveMessage((message) => {
+            if (message.command === 'navigateToLine') {
+                this.navigateToLine(message.fileName, message.line);
+            }
+        });
+    }
+
+    async navigateToLine(fileName, lineNumber) {
+        let fileUri;
+        if(path.isAbsolute(fileName)){
+            fileUri = vscode.Uri.file(fileName);
+        } else {
+            // resolve the filename relative to the workspace
+            const workspaceFolder = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0];
+            if(workspaceFolder){
+                const resolvedPath = path.join(workspaceFolder.uri.fsPath, fileName);
+                fileUri = vscode.Uri.file(resolvedPath);
+            } else {
+                vscode.window.showErrorMessage('No workspace folder is open. Unable to resolve relative file path.');
+                return;
+            }
+        }
+    
+        try {
+            const document = await vscode.workspace.openTextDocument(fileUri);
+            const editor = await vscode.window.showTextDocument(document);
+            const lineCount = document.lineCount;
+    
+            // Validate the line number and find the nearest valid line if necessary
+            const validLine = Math.min(Math.max(0, lineNumber), lineCount - 1);
+    
+            // Create a range for the target line
+            const range = new vscode.Range(validLine, 0, validLine, 0);
+    
+            // Reveal the target line in the editor
+            editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+            editor.selection = new vscode.Selection(range.start, range.end);
+        } catch (error) {
+            vscode.window.showErrorMessage(`Unable to open or navigate to file: ${fileName}. Error: ${error.message}`);
+        }
+    }
+    
     getFilename(documentPath) {
         return path.basename(documentPath);
     }
