@@ -264,19 +264,45 @@ class ContentTimelineManager {
         }
     
         try {
-            const document = await vscode.workspace.openTextDocument(fileUri);
-            const editor = await vscode.window.showTextDocument(document);
-            const lineCount = document.lineCount;
-    
-            // Validate the line number and find the nearest valid line if necessary
-            const validLine = Math.min(Math.max(0, lineNumber), lineCount - 1);
-    
-            // Create a range for the target line
-            const range = new vscode.Range(validLine, 0, validLine, 0);
-    
-            // Reveal the target line in the editor
-            editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
-            editor.selection = new vscode.Selection(range.start, range.end);
+            // Check if the file is already opened in any visible editor
+            const openedEditor = vscode.window.visibleTextEditors.find(editor => {
+                const editorFilePath = editor.document.uri.fsPath;
+                return editorFilePath === fileUri.fsPath;
+            });
+
+            if (openedEditor) {
+                // The file is already opened, navigate to the correct line
+                const document = openedEditor.document;
+                const lineCount = document.lineCount;
+
+                // Validate the line number and find the nearest valid line if necessary
+                const validLine = Math.min(Math.max(0, lineNumber), lineCount - 1);
+
+                // Create a range for the target line
+                const range = new vscode.Range(validLine, 0, validLine, 0);
+
+                // Reveal the target line in the editor
+                openedEditor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+                openedEditor.selection = new vscode.Selection(range.start, range.end);
+            } else {
+                // The file is not opened, open it in a new tab on the main editor (ViewColumn.One)
+                const document = await vscode.workspace.openTextDocument(fileUri);
+                const editor = await vscode.window.showTextDocument(document, {
+                    viewColumn: vscode.ViewColumn.One, // Open in the left/main editor tab
+                    preserveFocus: false // Focus on the new tab
+                });
+                const lineCount = document.lineCount;
+
+                // Validate the line number and find the nearest valid line if necessary
+                const validLine = Math.min(Math.max(0, lineNumber), lineCount - 1);
+
+                // Create a range for the target line
+                const range = new vscode.Range(validLine, 0, validLine, 0);
+
+                // Reveal the target line in the editor
+                editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+                editor.selection = new vscode.Selection(range.start, range.end);
+            }
         } catch (error) {
             vscode.window.showErrorMessage(`Unable to open or navigate to file: ${fileName}. Error: ${error.message}`);
         }
