@@ -44,6 +44,11 @@ var eventEntry = {};
 var usingHistoryView = false;
 var usingContentTimelineView = true;
 
+function updateContextKeys() {
+    vscode.commands.executeCommand('setContext', 'codeHistories.usingContentTimelineView', usingContentTimelineView);
+    vscode.commands.executeCommand('setContext', 'codeHistories.usingHistoryWebview', usingHistoryView);
+}
+
 /**
  * @param {vscode.ExtensionContext} context
  */
@@ -105,7 +110,7 @@ function activate(context) {
 	}
 
 	const clusterManager = new ClusterManager();
-	const contentTimelineManager = new ContentTimelineManager();
+	const contentTimelineManager = new ContentTimelineManager(context);
 
 	vscode.window.onDidStartTerminalShellExecution(async event => {
 		await onDidExecuteShellCommandHelper(event, clusterManager, contentTimelineManager);
@@ -139,7 +144,6 @@ function activate(context) {
 	let selectTerminalProfile = vscode.commands.registerCommand('codeHistories.selectTerminalProfile', showTerminalProfileQuickPick);
 	let testRunPythonScript = vscode.commands.registerCommand('codeHistories.testRunPythonScript', testRunPythonScriptHelper);
 	let testDBConstructor = vscode.commands.registerCommand('codeHistories.testDBConstructor', testDBConstructorHelper);
-	// historyWebview takes in an object with the following properties: document, time, code_text, notes
 	let historyWebview = vscode.commands.registerCommand('codeHistories.historyWebview', function () {
         clusterManager.webviewPanel = vscode.window.createWebviewPanel(
 			'historyWebview',
@@ -165,6 +169,60 @@ function activate(context) {
 		);
     });
 
+	let contentTimelineWebview = vscode.commands.registerCommand('codeHistories.contentTimelineWebview', function () {
+		// Check if the webview is already opened
+		if (contentTimelineManager.webviewPanel) {
+			contentTimelineManager.webviewPanel.reveal(vscode.ViewColumn.Beside);
+			return;
+		}
+	
+		// Retrieve the previous state from Memento (workspace state)
+		let previousState = context.workspaceState.get('contentTimelineWebviewState', null);
+	
+		contentTimelineManager.webviewPanel = vscode.window.createWebviewPanel(
+			'contentTimelineWebview',
+			'Content Timeline Webview',
+			vscode.ViewColumn.Beside,
+			{ 
+				enableScripts: true,
+				enableFindWidget: true
+			}
+		);
+	
+		// If there's a previous state, restore it
+		if (previousState) {
+			contentTimelineManager.webviewPanel.webview.html = previousState.html;
+			contentTimelineManager.webviewPanel.webview.postMessage({ type: 'restoreState', state: previousState });
+		} else {
+			// Set the initial HTML content if no previous state exists
+			contentTimelineManager.updateWebPanel();
+		}
+	
+		// Save the state when the webview is closed
+		contentTimelineManager.webviewPanel.onDidDispose(() => {
+			contentTimelineManager.webviewPanel = null; // Clean up the reference
+		}, null, context.subscriptions);
+	
+		// Send a message to the webview just before it is closed
+		contentTimelineManager.webviewPanel.onDidDispose(() => {
+			// Request the webview to send its current state before closing
+			contentTimelineManager.webviewPanel.webview.postMessage({ type: 'saveStateRequest' });
+	
+			// Set a small timeout to ensure the state is sent before we consider it disposed
+			setTimeout(() => {
+				contentTimelineManager.webviewPanel = null;
+			}, 1000); // Adjust timeout if necessary
+		});
+	
+		// Listen for messages from the webview to save the state
+		contentTimelineManager.webviewPanel.webview.onDidReceiveMessage(message => {
+			if (message.type === 'saveState') {
+				// Save the state returned by the webview (including scroll positions)
+				context.workspaceState.update('contentTimelineWebviewState', message.state);
+			}
+		});
+	});	
+
 	context.subscriptions.push(activateCodeHistories);
 	context.subscriptions.push(executeCheckAndCommit);
 	context.subscriptions.push(selectGitRepo);
@@ -175,7 +233,16 @@ function activate(context) {
 	context.subscriptions.push(selectTerminalProfile);
 	context.subscriptions.push(testRunPythonScript);
 	context.subscriptions.push(testDBConstructor);
-	context.subscriptions.push(historyWebview);
+	
+	if(usingHistoryView){
+		context.subscriptions.push(historyWebview);
+		updateContextKeys();
+	}
+
+	if(usingContentTimelineView){
+		context.subscriptions.push(contentTimelineWebview);
+		updateContextKeys();
+	}
 
 	// this is for web dev heuristics
 	// if user saves a file in the workspace, then they visit chrome to test their program on localhost (require that they do reload the page so that it is recorded as an event in webData)

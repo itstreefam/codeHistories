@@ -70,7 +70,19 @@
       },
       {
         "command": "codeHistories.historyWebview",
-        "title": "Code Histories: History webview"
+        "title": "Code Histories: History webview",
+        "icon": {
+          "light": "assets/history-svgrepo-com.svg",
+          "dark": "assets/history-svgrepo-com.svg"
+        }
+      },
+      {
+        "command": "codeHistories.contentTimelineWebview",
+        "title": "Code Histories: Content timeline webview",
+        "icon": {
+          "light": "assets/code-svgrepo-com.svg",
+          "dark": "assets/code-svgrepo-com.svg"
+        }
       }
     ],
     "keybindings": [
@@ -94,11 +106,21 @@
       "editor/title": [
         {
           "command": "codeHistories.undoCommit",
-          "group": "navigation@0"
+          "group": "navigation@1"
         },
         {
           "command": "codeHistories.checkAndCommit",
-          "group": "navigation@1"
+          "group": "navigation@2"
+        },
+        {
+          "command": "codeHistories.contentTimelineWebview",
+          "group": "navigation@0",
+          "when": "codeHistories.usingContentTimelineView"
+        },
+        {
+          "command": "codeHistories.historyWebview",
+          "group": "navigation@0",
+          "when": "codeHistories.usingHistoryView"
         }
       ],
       "editor/context": [

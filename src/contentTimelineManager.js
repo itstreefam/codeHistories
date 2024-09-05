@@ -3,9 +3,11 @@ const Diff = require('diff');
 const diff2html = require('diff2html');
 const path = require('path');
 const { contentTimelineStyles } = require('./webViewStyles');
+const { type } = require('os');
 
 class ContentTimelineManager {
-    constructor() {
+    constructor(context) {
+        this.context = context;
         this.contentTimeline = [];
         this.webviewPanel = null;
         this.currentEvent = null;
@@ -183,12 +185,15 @@ class ContentTimelineManager {
     }
 
     updateWebPanel() {
-        if (!this.webviewPanel) {
+        if(!this.webviewPanel){
             this.webviewPanel = vscode.window.createWebviewPanel(
-                'contentTimeline',
-                'Content Timeline',
+                'contentTimelineWebview',
+                'Content Timeline Webview',
                 vscode.ViewColumn.Beside,
-                { enableScripts: true }
+                { 
+                    enableScripts: true,
+                    enableFindWidget: true
+                }
             );
         }
 
@@ -211,31 +216,58 @@ class ContentTimelineManager {
                 </div>
             </body>
             <script>
-                const vscode = acquireVsCodeApi();
+                (function() {
+                    const vscode = acquireVsCodeApi();
 
-                window.addEventListener('click', function(event) {
-                    const target = event.target;
+                    window.addEventListener('click', function(event) {
+                        const target = event.target;
 
-                    // Find the closest clickable-line SPAN or DIV (for both line content and line numbers)
-                    const lineElement = target.closest('.clickable-line');
-                    if (lineElement) {
-                        // Print out the HTML tag of the clicked element for debugging
-                        console.log("Clicked element:", lineElement.outerHTML);
+                        // Find the closest clickable-line SPAN or DIV (for both line content and line numbers)
+                        const lineElement = target.closest('.clickable-line');
+                        if (lineElement) {
+                            // Print out the HTML tag of the clicked element for debugging
+                            console.log("Clicked element:", lineElement.outerHTML);
 
-                        // Continue with the existing logic (optional)
-                        const lineNumber = lineElement.getAttribute('data-line-number');
-                        const fileName = lineElement.getAttribute('data-filename');
+                            // Continue with the existing logic (optional)
+                            const lineNumber = lineElement.getAttribute('data-line-number');
+                            const fileName = lineElement.getAttribute('data-filename');
 
-                        console.log('Line Number:', lineNumber);
-                        console.log('File Name:', fileName);
+                            console.log('Line Number:', lineNumber);
+                            console.log('File Name:', fileName);
 
-                        vscode.postMessage({
-                            command: 'navigateToLine',
-                            line: lineNumber,
-                            fileName: fileName
-                        });
-                    }
-                });
+                            vscode.postMessage({
+                                command: 'navigateToLine',
+                                line: lineNumber,
+                                fileName: fileName
+                            });
+                        }
+                    });
+
+                    // Listen for messages from the extension
+                    window.addEventListener('message', event => {
+                        const message = event.data;
+
+                        if (message.type === 'restoreState') {
+                            const previousState = message.state;
+                            if (previousState) {
+                                document.body.innerHTML = previousState.html || '';
+
+                                // Restore scroll position
+                                window.scrollTo(previousState.scrollX || 0, previousState.scrollY || 0);
+                            }
+                        } else if (message.type === 'saveStateRequest') {
+                            // Send the current state (HTML content and scroll positions) back to the extension
+                            vscode.postMessage({
+                                type: 'saveState',
+                                state: {
+                                    html: document.body.innerHTML,
+                                    scrollX: window.scrollX,
+                                    scrollY: window.scrollY
+                                }
+                            });
+                        }
+                    });
+                })();
             </script>
             </html>
         `;
