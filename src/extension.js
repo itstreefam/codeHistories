@@ -109,7 +109,7 @@ function activate(context) {
 		}
 	}
 
-	const clusterManager = new ClusterManager();
+	const clusterManager = new ClusterManager(context);
 	const contentTimelineManager = new ContentTimelineManager(context);
 
 	vscode.window.onDidStartTerminalShellExecution(async event => {
@@ -120,7 +120,9 @@ function activate(context) {
 		eventEntry = entry; // for history view, just need to save and send this entry to clusterManager later after execution
 		// console.log('eventEntry:', eventEntry);
 
-		contentTimelineManager.processEvent(entry); // for content timeline view, process the event immediately
+		if(usingContentTimelineView){
+			contentTimelineManager.processEvent(entry); // for content timeline view, process the event immediately
+		}
 	});
 
 	if(usingContentTimelineView){

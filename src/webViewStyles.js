@@ -1,16 +1,19 @@
-const webViewStyles = `
-    /* General body styling for light theme */
+// Light theme styles for history view
+const historyStyles = `
+    html {
+        scrollbar-color: var(--vscode-editor-foreground) !important;
+    }
+
     body {
         font-family: Arial, sans-serif;
         background-color: #f5f5f5; /* Light grey background */
         color: #333333; /* Dark text color */
     }
 
-    /* Grouped Events styling */
     h1 {
         font-size: 24px;
         margin-bottom: 20px;
-        color: #333333; /* Darker color for headers */
+        color: #333333;
     }
 
     ul {
@@ -22,81 +25,42 @@ const webViewStyles = `
         margin-bottom: 15px;
     }
 
-    /* Editable title input */
     .editable-title {
-        background-color: #ffffff; /* White background */
-        color: #333333; /* Dark text */
-        border: 1px solid #ccc; /* Light grey border */
+        background-color: #ffffff;
+        color: #333333;
+        border: 1px solid #ccc;
         padding: 5px 10px;
         border-radius: 3px;
         margin-right: 10px;
     }
 
-    /* Collapsible button styling */
     .collapsible {
-        background-color: #e7e7e7; /* Light grey background */
-        color: #333333; /* Dark text */
+        background-color: #e7e7e7;
+        color: #333333;
         cursor: pointer;
         padding: 10px;
-        width: auto;
-        border: 1px solid #ccc; /* Light grey border */
-        text-align: left;
-        outline: none;
+        border: 1px solid #ccc;
         font-size: 16px;
         border-radius: 3px;
         margin-bottom: 5px;
     }
 
     .collapsible.active, .collapsible:hover {
-        background-color: #dcdcdc; /* Darker grey on hover */
+        background-color: #dcdcdc;
     }
 
     .content {
         padding: 0 18px;
         display: none;
         overflow: hidden;
-        background-color: #ffffff; /* White background for content */
+        background-color: #ffffff;
         border-radius: 3px;
         margin-top: 5px;
-        border-left: 4px solid #007acc; /* Blue accent border */
+        border-left: 4px solid #007acc;
     }
 
-    /* diff2html styling */
-    .d2h-wrapper {
-        background-color: #ffffff !important; /* White background */
-        color: #333333 !important; /* Dark text */
-    }
-
-    .d2h-file-header {
-        background-color: #f7f7f7 !important; /* Light grey header */
-        color: #333333 !important; /* Dark text */
-        border: 1px solid #ddd !important; /* Light grey border */
-    }
-
-    .d2h-file-diff {
-        background-color: #ffffff !important; /* White background for diff content */
-        color: #333333 !important; /* Dark text */
-        border-radius: 3px;
-    }
-
-    .d2h-code-side-line {
-        background-color: #f7f7f7 !important; /* Light grey for line numbers */
-        color: #555555 !important; /* Darker text for line numbers */
-    }
-
-    .d2h-del {
-        background-color: #ffdddd !important; /* Light red for deletions */
-        color: #a33a3a !important; /* Dark red text for readability */
-    }
-
-    .d2h-ins {
-        background-color: #ddffdd !important; /* Light green for insertions */
-        color: #3a7a3a !important; /* Dark green text for readability */
-    }
-
-    /* Link styling */
     a {
-        color: #007acc; /* Blue for links */
+        color: #007acc;
         text-decoration: none;
     }
 
@@ -104,13 +68,22 @@ const webViewStyles = `
         text-decoration: underline;
     }
 
+    // reset scroll bar color
+    .scrollbar {
+        scrollbar-color: #ccc #f5f5f5;
+    }
 `;
 
+// Light theme styles for content timeline
 const contentTimelineStyles = `
+    html {
+        scrollbar-color: var(--vscode-editor-foreground) !important;
+    }
+
     body {
         font-family: Arial, sans-serif;
-        background-color: #f5f5f5; /* Light grey background */
-        color: #333333; /* Dark text color */
+        background-color: #f5f5f5;
+        color: #333333;
     }
 
     .event {
@@ -122,16 +95,6 @@ const contentTimelineStyles = `
 
     .event-content {
         padding: 5px 0;
-    }
-
-    .diff-container {
-        font-size: 12px;
-        background-color: #ffffff;
-        color: #333333;
-        padding: 10px;
-        border-radius: 4px;
-        overflow-x: auto;
-        margin-top: 10px;
     }
 
     hr {
@@ -151,6 +114,6 @@ const contentTimelineStyles = `
 `;
 
 module.exports = {
-    webViewStyles,
+    historyStyles,
     contentTimelineStyles,
 };

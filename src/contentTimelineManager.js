@@ -3,7 +3,6 @@ const Diff = require('diff');
 const diff2html = require('diff2html');
 const path = require('path');
 const { contentTimelineStyles } = require('./webViewStyles');
-const { type } = require('os');
 
 class ContentTimelineManager {
     constructor(context) {
@@ -14,6 +13,7 @@ class ContentTimelineManager {
         this.idCounter = 0;
         this.eventHtmlMap = {}; // Map to track event ID and its corresponding HTML element
         this.previousSaveContent = {}; // To store the previous version of the file content
+        this.styles = contentTimelineStyles;
     }
 
     processEvent(event) {
@@ -124,7 +124,7 @@ class ContentTimelineManager {
         const diffHtml = diff2html.html(diff, {
             outputFormat: 'side-by-side',
             drawFileList: false,
-            colorScheme: 'auto'
+            colorScheme: 'light' // using light theme to be consistent with other webview styles
         });
         // console.log(diffHtml);
 
@@ -206,7 +206,7 @@ class ContentTimelineManager {
                 <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/diff2html/bundles/css/diff2html.min.css" />
                 <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/diff2html/bundles/js/diff2html.min.js"></script>
                 <style>
-                    ${contentTimelineStyles}
+                    ${this.styles}
                 </style>
             </head>
             <body>

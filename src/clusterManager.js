@@ -2,10 +2,11 @@ const fuzzball = require('fuzzball');
 const vscode = require('vscode');
 const Diff = require('diff');
 const diff2html = require('diff2html');
-const { webViewStyles } = require('./webViewStyles');
+const { historyStyles } = require('./webViewStyles');
 
 class ClusterManager {
-    constructor() {
+    constructor(context) {
+        this.context = context;
         this.displayForGroupedEvents = []; // This high-level array will have subgoal for each grouping found
         this.inCluster = false;  // Tracks if we are currently grouping events into a cluster
         this.clusterStartTime = 0;  // Tracks the start time of the current cluster
@@ -18,6 +19,7 @@ class ClusterManager {
         this.currentCodeEvent = null;
         this.currentWebEvent = null;
         this.idCounter = 0;
+        this.styles = historyStyles;
     }
 
     // Method to process a new event in real-time
@@ -352,10 +354,10 @@ class ClusterManager {
             <head>
                 <meta charset="UTF-8">
                 <title>Code Clusters</title>
-                <script src="https://cdn.jsdelivr.net/npm/diff2html@3.4.48/bundles/js/diff2html-ui.min.js"></script>
-                <link href="https://cdn.jsdelivr.net/npm/diff2html@3.4.48/bundles/css/diff2html.min.css" rel="stylesheet">
+                <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/diff2html/bundles/css/diff2html.min.css" />
+                <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/diff2html/bundles/js/diff2html.min.js"></script>
                 <style>
-                    ${webViewStyles}
+                    ${this.styles}
                 </style>
             </head>
             <body>
@@ -558,11 +560,9 @@ class ClusterManager {
 
         // Render the diff as HTML
         const diffHtml = diff2html.html(diffString, {
-            inputFormat: 'diff',
-            showFiles: false,
-            matching: 'lines',
-            outputFormat: 'side-by-side', // or 'line-by-line'
-            diffStyle: 'word', // 'word' or 'char' level diff
+            outputFormat: 'side-by-side',
+            drawFileList: false,
+            colorScheme: 'light'
         });
     
         return `<div class="diff-container">${diffHtml}</div>`;
