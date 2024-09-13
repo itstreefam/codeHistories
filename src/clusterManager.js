@@ -70,13 +70,12 @@ class ClusterManager {
         // Listen for messages from the webview to save the state
         this.webviewPanel.webview.onDidReceiveMessage(message => {
             if (message.type === 'saveState') {
-                // Save the state returned by the webview (including scroll positions)
+                // Save the state returned by the webview
                 this.context.globalState.update('historyWebviewState', message.state);
             }
 
-            if (message.command === 'updateTitle') {
-                console.log('Received updateTitle', message);
-                this.updateTitle(message.groupKey, message.title);
+            if (message.command === 'updateCodeTitle') {
+                this.updateCodeTitle(message.groupKey, message.eventId, message.title);
             }
         });
     }
@@ -459,19 +458,53 @@ class ClusterManager {
                             });
                         };
 
-                        document.querySelectorAll('.collapsible').forEach(collapsibleItem => {
-                            collapsibleItem.addEventListener('click', function() {
-                                this.classList.toggle('active');
-                                const content = this.nextElementSibling;
-                                if (content.style.display === 'block') {
-                                    content.style.display = 'none';
-                                } else {
-                                    content.style.display = 'block';
+                        // Function to get the state of all collapsible elements
+                        function getCollapsibleState() {
+                            const collapsibleElements = document.querySelectorAll('.collapsible');
+                            const collapsibleState = [];
+
+                            collapsibleElements.forEach((element, index) => {
+                                collapsibleState.push({
+                                    index: index,
+                                    isActive: element.classList.contains('active') // Track if it's active (expanded)
+                                });
+                            });
+
+                            return collapsibleState;
+                        }
+
+                        // Function to restore the state of collapsible elements
+                        function restoreCollapsibleState(collapsibleState) {
+                            const collapsibleElements = document.querySelectorAll('.collapsible');
+
+                            collapsibleState.forEach(state => {
+                                const element = collapsibleElements[state.index];
+                                if (element && state.isActive) {
+                                    element.classList.add('active'); // Reapply the active state
+                                    const content = element.nextElementSibling;
+                                    if (content) {
+                                        content.style.display = 'block'; // Ensure content is visible if active
+                                    }
                                 }
                             });
-                        });
+                        }
 
-                         // Listen for messages from the extension
+                        // Attach collapsible event listeners
+                        function attachCollapsibleListeners() {
+                            document.querySelectorAll('.collapsible').forEach(collapsibleItem => {
+                                collapsibleItem.addEventListener('click', function() {
+                                    this.classList.toggle('active');
+                                    const content = this.nextElementSibling;
+                                    if (content.style.display === 'block') {
+                                        content.style.display = 'none';
+                                    } else {
+                                        content.style.display = 'block';
+                                    }
+                                });
+                            });
+                        }
+
+                        // Listen for messages from the extension
                         window.addEventListener('message', event => {
                             const message = event.data;
 
@@ -482,19 +515,34 @@ class ClusterManager {
 
                                     // Restore scroll position
                                     window.scrollTo(previousState.scrollX || 0, previousState.scrollY || 0);
+
+                                    // Reattach collapsible listeners after HTML restoration
+                                    attachCollapsibleListeners();
+
+                                    // Restore collapsible state
+                                    if (previousState.collapsibleState) {
+                                        restoreCollapsibleState(previousState.collapsibleState);
+                                    }
                                 }
                             } else if (message.type === 'saveStateRequest') {
-                                // Send the current state (HTML content and scroll positions) back to the extension
+                                // Get the current state of collapsible elements
+                                const collapsibleState = getCollapsibleState();
+
+                                // Send the current state back to the extension
                                 vscode.postMessage({
                                     type: 'saveState',
                                     state: {
                                         html: document.body.innerHTML,
                                         scrollX: window.scrollX,
-                                        scrollY: window.scrollY
+                                        scrollY: window.scrollY,
+                                        collapsibleState: collapsibleState // Include the collapsible state
                                     }
                                 });
                             }
                         });
+
+                        // Initial listener attachment on page load
+                        attachCollapsibleListeners();
                     })();
                 </script>
             </body>
