@@ -16,6 +16,60 @@ class ContentTimelineManager {
         this.styles = contentTimelineStyles;
     }
 
+    initializeWebview(){
+        // Check if the webview is already opened
+        if (this.webviewPanel) {
+            this.webviewPanel.reveal(vscode.ViewColumn.Beside);
+            return;
+        }
+
+        // Retrieve the previous state from globalState
+        this.previousState = this.context.globalState.get('contentTimelineWebviewState', null);
+
+        this.webviewPanel = vscode.window.createWebviewPanel(
+            'contentTimelineWebview',
+            'Content Timeline Webview',
+            vscode.ViewColumn.Beside,
+            {
+                enableScripts: true,
+                enableFindWidget: true
+            }
+        );
+
+        // If there's a previous state, restore it
+        if (this.previousState) {
+            this.webviewPanel.webview.html = this.previousState.html;
+            this.webviewPanel.webview.postMessage({ type: 'restoreState', state: this.previousState });
+        } else {
+            // Set the initial HTML content if no previous state exists
+            this.updateWebPanel();
+        }
+
+        // Save the state when the webview is closed
+        this.webviewPanel.onDidDispose(() => {
+            this.webviewPanel = null; // Clean up the reference
+        });
+
+        // Send a message to the webview just before it is closed
+        this.webviewPanel.onDidDispose(() => {
+            // Request the webview to send its current state before closing
+            this.webviewPanel.webview.postMessage({ type: 'saveStateRequest' });
+
+            // Set a small timeout to ensure the state is sent before we consider it disposed
+            setTimeout(() => {
+                this.webviewPanel = null;
+            }, 1000); // Adjust timeout if necessary
+        });
+
+        // Listen for messages from the webview to save the state
+        this.webviewPanel.webview.onDidReceiveMessage(message => {
+            if (message.type === 'saveState') {
+                // Save the state returned by the webview (including scroll positions)
+                this.context.globalState.update('contentTimelineWebviewState', message.state);
+            }
+        });
+    }
+
     processEvent(event) {
         this.currentEvent = {
             id: this.idCounter++,
@@ -32,7 +86,13 @@ class ContentTimelineManager {
             this.handleSelectionEvent(this.currentEvent);
         }
 
-        this.updateWebPanel();
+        // Trigger webview if not opened
+        if (!this.webviewPanel) {
+            this.initializeWebview();
+        } else {
+            // If webview is already opened, just update the content
+            this.updateWebPanel();
+        }
     }
 
     handleSelectionEvent(event) {

@@ -41,8 +41,8 @@ var hostname = os.hostname();
 var terminalList;
 var terminalInstance;
 var eventEntry = {};
-var usingHistoryView = false;
-var usingContentTimelineView = true;
+var usingHistoryView = true;
+var usingContentTimelineView = false;
 
 function updateContextKeys() {
     vscode.commands.executeCommand('setContext', 'codeHistories.usingContentTimelineView', usingContentTimelineView);
@@ -147,82 +147,11 @@ function activate(context) {
 	let testRunPythonScript = vscode.commands.registerCommand('codeHistories.testRunPythonScript', testRunPythonScriptHelper);
 	let testDBConstructor = vscode.commands.registerCommand('codeHistories.testDBConstructor', testDBConstructorHelper);
 	let historyWebview = vscode.commands.registerCommand('codeHistories.historyWebview', function () {
-        clusterManager.webviewPanel = vscode.window.createWebviewPanel(
-			'historyWebview',
-			'History Webview',
-			vscode.ViewColumn.Beside,
-			{ enableScripts: true }
-		);
-
-		// Set the initial HTML content
-		clusterManager.updateWebPanel();
-
-		// Set up message handling from the webview
-		clusterManager.webviewPanel.webview.postMessage(
-			message => {
-				switch (message.command) {
-					case 'updateTitle':
-						clusterManager.updateGroupTitle(message.groupKey, message.title);
-						break;
-				}
-			},
-			undefined,
-			context.subscriptions
-		);
+		clusterManager.initializeWebview();
     });
 
 	let contentTimelineWebview = vscode.commands.registerCommand('codeHistories.contentTimelineWebview', function () {
-		// Check if the webview is already opened
-		if (contentTimelineManager.webviewPanel) {
-			contentTimelineManager.webviewPanel.reveal(vscode.ViewColumn.Beside);
-			return;
-		}
-	
-		// Retrieve the previous state from Memento (workspace state)
-		let previousState = context.workspaceState.get('contentTimelineWebviewState', null);
-	
-		contentTimelineManager.webviewPanel = vscode.window.createWebviewPanel(
-			'contentTimelineWebview',
-			'Content Timeline Webview',
-			vscode.ViewColumn.Beside,
-			{ 
-				enableScripts: true,
-				enableFindWidget: true
-			}
-		);
-	
-		// If there's a previous state, restore it
-		if (previousState) {
-			contentTimelineManager.webviewPanel.webview.html = previousState.html;
-			contentTimelineManager.webviewPanel.webview.postMessage({ type: 'restoreState', state: previousState });
-		} else {
-			// Set the initial HTML content if no previous state exists
-			contentTimelineManager.updateWebPanel();
-		}
-	
-		// Save the state when the webview is closed
-		contentTimelineManager.webviewPanel.onDidDispose(() => {
-			contentTimelineManager.webviewPanel = null; // Clean up the reference
-		}, null, context.subscriptions);
-	
-		// Send a message to the webview just before it is closed
-		contentTimelineManager.webviewPanel.onDidDispose(() => {
-			// Request the webview to send its current state before closing
-			contentTimelineManager.webviewPanel.webview.postMessage({ type: 'saveStateRequest' });
-	
-			// Set a small timeout to ensure the state is sent before we consider it disposed
-			setTimeout(() => {
-				contentTimelineManager.webviewPanel = null;
-			}, 1000); // Adjust timeout if necessary
-		});
-	
-		// Listen for messages from the webview to save the state
-		contentTimelineManager.webviewPanel.webview.onDidReceiveMessage(message => {
-			if (message.type === 'saveState') {
-				// Save the state returned by the webview (including scroll positions)
-				context.workspaceState.update('contentTimelineWebviewState', message.state);
-			}
-		});
+		contentTimelineManager.initializeWebview();
 	});	
 
 	context.subscriptions.push(activateCodeHistories);

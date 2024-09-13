@@ -22,6 +22,65 @@ class ClusterManager {
         this.styles = historyStyles;
     }
 
+    initializeWebview(){
+        // Check if the webview is already opened
+        if (this.webviewPanel) {
+            this.webviewPanel.reveal(vscode.ViewColumn.Beside);
+            return;
+        }
+
+        // Retrieve the previous state from globalState
+        this.previousState = this.context.globalState.get('historyWebviewState', null);
+
+        this.webviewPanel = vscode.window.createWebviewPanel(
+            'historyWebview',
+			'History Webview',
+			vscode.ViewColumn.Beside,
+			{ 
+                enableScripts: true,
+                enableFindWidget: true
+            }
+		);
+
+        // If there's a previous state, restore it
+        if (this.previousState) {
+            this.webviewPanel.webview.html = this.previousState.html;
+            this.webviewPanel.webview.postMessage({ command: 'restoreState', state: this.previousState });
+        } else {
+            // Set the initial HTML content if no previous state exists
+            this.updateWebPanel();
+        }
+
+        // Save the state when the webview is closed
+        this.webviewPanel.onDidDispose(() => {
+            this.webviewPanel = null; // Clean up the reference
+        });
+
+        // Send a message to the webview just before it is closed
+        this.webviewPanel.onDidDispose(() => {
+            // Request the webview to send its current state before closing
+            this.webviewPanel.webview.postMessage({ type: 'saveStateRequest' });
+
+            // Set a small timeout to ensure the state is sent before we consider it disposed
+            setTimeout(() => {
+                this.webviewPanel = null;
+            }, 1000); // Adjust timeout if necessary
+        });
+
+        // Listen for messages from the webview to save the state
+        this.webviewPanel.webview.onDidReceiveMessage(message => {
+            if (message.type === 'saveState') {
+                // Save the state returned by the webview (including scroll positions)
+                this.context.globalState.update('historyWebviewState', message.state);
+            }
+
+            if (message.command === 'updateTitle') {
+                console.log('Received updateTitle', message);
+                this.updateTitle(message.groupKey, message.title);
+            }
+        });
+    }
+
     // Method to process a new event in real-time
     processEvent(entry) {
         const eventType = this.getEventType(entry);
@@ -54,7 +113,13 @@ class ClusterManager {
             this.strayEvents.push(this.currentWebEvent); // this is processed event
         }
 
-        this.updateWebPanel();
+        // Trigger webview if not opened
+        if (!this.webviewPanel) {
+            this.initializeWebview();
+        } else {
+            // If webview is already opened, just update the content
+            this.updateWebPanel();
+        }
     }
 
     getEventType(event) {
@@ -404,6 +469,31 @@ class ClusterManager {
                                     content.style.display = 'block';
                                 }
                             });
+                        });
+
+                         // Listen for messages from the extension
+                        window.addEventListener('message', event => {
+                            const message = event.data;
+
+                            if (message.type === 'restoreState') {
+                                const previousState = message.state;
+                                if (previousState) {
+                                    document.body.innerHTML = previousState.html || '';
+
+                                    // Restore scroll position
+                                    window.scrollTo(previousState.scrollX || 0, previousState.scrollY || 0);
+                                }
+                            } else if (message.type === 'saveStateRequest') {
+                                // Send the current state (HTML content and scroll positions) back to the extension
+                                vscode.postMessage({
+                                    type: 'saveState',
+                                    state: {
+                                        html: document.body.innerHTML,
+                                        scrollX: window.scrollX,
+                                        scrollY: window.scrollY
+                                    }
+                                });
+                            }
                         });
                     })();
                 </script>

@@ -72,8 +72,8 @@
         "command": "codeHistories.historyWebview",
         "title": "Code Histories: History webview",
         "icon": {
-          "light": "assets/history-svgrepo-com.svg",
-          "dark": "assets/history-svgrepo-com.svg"
+          "light": "assets/code-svgrepo-com.svg",
+          "dark": "assets/code-svgrepo-com.svg"
         }
       },
       {
@@ -120,7 +120,7 @@
         {
           "command": "codeHistories.historyWebview",
           "group": "navigation@0",
-          "when": "codeHistories.usingHistoryView"
+          "when": "codeHistories.usingHistoryWebview"
         }
       ],
       "editor/context": [
