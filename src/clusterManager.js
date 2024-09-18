@@ -4,16 +4,15 @@ const Diff = require('diff');
 const diff2html = require('diff2html');
 const { historyStyles } = require('./webViewStyles');
 const express = require("express");
-require("dotenv").config;
+require('dotenv').config({ path: __dirname + '/../.env' });
 const { OpenAI } = require("openai");
-
 const app = express();
 
 app.use(express.json());
 
 const openai = new OpenAI({
-    apiKey: ''
-})
+    apiKey: process.env.OPENAI_API_KEY,
+});
 
 class ClusterManager {
     constructor(context) {
@@ -334,20 +333,6 @@ class ClusterManager {
         };
 
         codeActivity.title = await this.generateSubGoalTitle(codeActivity);
-        // this.generateSubGoalTitle(codeActivity);
-        // this.generateSubGoalTitle(codeActivity).then((generatedTitle) => {
-        //     console.log('generated title:', generatedTitle);
-        
-        //     // Post a message to the webview with the updated title
-        //     // this.webviewPanel.webview.postMessage({
-        //     //     command: 'updateCodeTitle',
-        //     //     groupKey: this.idCounter.toString(),
-        //     //     eventId: codeActivity.id,
-        //     //     title: generatedTitle,
-        //     // });
-        //     // this.updateCodeTitle(this.idCounter.toString(), codeActivity.id, generatedTitle);
-        //     // codeActivity.title = generatedTitle;
-        // });
 
         // grab all the web events from the stray events
         const webEvents = this.strayEvents.filter(event => event.type !== "code");
@@ -415,29 +400,21 @@ class ClusterManager {
         this.currentGroup = null;
     }
 
-    // activity-level subgoal*
-    // generateSubGoalTitle(group) {
-    //     var before_code = this.currentGroup.before_code
-    //     var after_code = this.currentGroup.after_code
-    //     var prompt = `Please summarize the code change from "${before_code}" to "${after_code}" in one simple and easy to understand sentence`; 
-
-    //     var subgoalName = response.data;
-
-    //     if (group.type === "code") {
-    //         return `Code changes in ${group.file}`;
-    //     } else if (group.type === "subgoal") {
-    //         return `Subgoal ${group.id}`;
-    //     } else {
-    //         return "Title placeholder";
-    //     }
-    // }
-
     async generateSubGoalTitle(activity) {
         try {
             const before_code = activity.before_code;
             const after_code = activity.after_code;
-            const prompt = `Please summarize the code change from "${before_code}" to "${after_code}" in one one-liner, simple, fast to read, and easy-to-understand phrase, does not have to be complete sentence and can be a very general description`;
-            console.log('Prompt:', prompt); 
+            // const prompt = `Please summarize the code change from "${before_code}" to "${after_code}" in one one-liner, simple, fast to read, and easy-to-understand phrase, does not have to be complete sentence and can be a very general description`;
+            // console.log('Prompt:', prompt); 
+
+            const prompt = `Compare the following code snippets of the file "${activity.file}":
+
+Code A (before): "${before_code}"
+Code B (after): "${after_code}"
+
+Summarize the change in a single, simple, easy-to-read line. It can be a general description but make it is complete and coherent.`;
+
+            console.log('Prompt:', prompt);
 
             const completions = await openai.chat.completions.create({
                 model: 'gpt-3.5-turbo',
@@ -465,6 +442,7 @@ class ClusterManager {
     
         } catch (error) {
             console.error("Error generating title:", error.message);
+            return `Code changes in ${activity.file}`;
         }
     }
 
