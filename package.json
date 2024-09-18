@@ -159,9 +159,13 @@
   },
   "dependencies": {
     "active-win": "^8.2.1",
+    "body-parser": "^1.20.3",
     "diff": "^6.0.0-beta",
     "diff2html": "^3.4.48",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
     "fuzzball": "^2.1.2",
+    "openai": "^4.62.0",
     "simple-git": "^3.5.0",
     "sqlite3": "^5.1.7"
   }

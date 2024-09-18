@@ -3,6 +3,17 @@ const vscode = require('vscode');
 const Diff = require('diff');
 const diff2html = require('diff2html');
 const { historyStyles } = require('./webViewStyles');
+const express = require("express");
+require("dotenv").config;
+const { OpenAI } = require("openai");
+
+const app = express();
+
+app.use(express.json());
+
+const openai = new OpenAI({
+    apiKey: ''
+})
 
 class ClusterManager {
     constructor(context) {
@@ -81,7 +92,7 @@ class ClusterManager {
     }
 
     // Method to process a new event in real-time
-    processEvent(entry) {
+    async processEvent(entry) {
         const eventType = this.getEventType(entry);
 
         if(!this.currentGroup) {
@@ -100,7 +111,7 @@ class ClusterManager {
                 title: `Code changes in ${filename}`
             };
 
-            this.handleCodeEvent(entry); // this takes in raw event
+            await this.handleCodeEvent(entry); // this takes in raw event
         } else if (eventType === "search" || eventType === "visit" || eventType === "revisit") {
             this.currentWebEvent = {
                 type: eventType,
@@ -152,7 +163,7 @@ class ClusterManager {
         };
     }
 
-    handleCodeEvent(event) {
+    async handleCodeEvent(event) {
         const filename = this.getFilename(event.notes);
         if (this.pastEvent) {
             const pastFilename = this.getFilename(this.pastEvent.notes);
@@ -160,14 +171,14 @@ class ClusterManager {
             // Finalize the cluster if switching files
             if (filename !== pastFilename) {
                 if (this.inCluster) {
-                    this.finalizeGroup(pastFilename);
+                    await this.finalizeGroup(pastFilename);
                     this.inCluster = false;
                 }
                 // Treat the current event as the start of a new cluster
                 this.strayEvents.push(this.currentCodeEvent);
             } else {
                 // Process as usual if it's the same file
-                this.match_lines(filename, this.pastEvent, event);
+                await this.match_lines(filename, this.pastEvent, event);
                 // console.log('In handleCodeEvent', this.currentGroup);
             }
         } else {
@@ -180,7 +191,7 @@ class ClusterManager {
     }
 
     // Method to match lines between events and determine if they belong in the same cluster
-    match_lines(filename, pastEvt, currEvt) {
+    async match_lines(filename, pastEvt, currEvt) {
         const pastLines = this.get_code_lines(pastEvt.code_text);
         const currentLines = this.get_code_lines(currEvt.code_text);
 
@@ -230,7 +241,7 @@ class ClusterManager {
         if (pastFilename !== currFilename) {
             if (this.inCluster) {
                 console.log(`${this.clusterStartTime},${pastEvt.time},'code',${pastFilename}`);
-                this.finalizeGroup(pastFilename);
+                await this.finalizeGroup(pastFilename);
                 this.inCluster = false;
             } else if (this.debug) {
                 console.log(`\tDEBUG ${pastEvt.time}-${currEvt.time}: not in cluster ${pastFilename} != ${currFilename}`);
@@ -282,7 +293,7 @@ class ClusterManager {
             // we've just come out of a cluster, so print it out
             if (this.inCluster) {
                 console.log(`${this.clusterStartTime},${pastEvt.time},'code',${pastFilename}`);
-                this.finalizeGroup(pastFilename);
+                await this.finalizeGroup(pastFilename);
                 if (this.debug) {
                     console.log(`${currTime}: partialMatches=${partialMatches} perfectMatches=${perfectMatches.length} newLines=${newLines.length} currLineLength=${currentLines.length} pastLineLength=${pastLines.length}`);
                     console.log("\n");
@@ -305,7 +316,7 @@ class ClusterManager {
         this.updateWebPanel();
     }
 
-    finalizeGroup(filename) {
+    async finalizeGroup(filename) {
         // grab the first code event from the stray events
         const startCodeEvent = this.strayEvents.find(event => event.type === "code");
 
@@ -319,8 +330,24 @@ class ClusterManager {
             time: endCodeEvent.time,
             before_code: startCodeEvent.code_text,
             after_code: endCodeEvent.code_text,
-            title: `Code changes in ${filename}`
+            // title: `Code changes in ${filename}`
         };
+
+        codeActivity.title = await this.generateSubGoalTitle(codeActivity);
+        // this.generateSubGoalTitle(codeActivity);
+        // this.generateSubGoalTitle(codeActivity).then((generatedTitle) => {
+        //     console.log('generated title:', generatedTitle);
+        
+        //     // Post a message to the webview with the updated title
+        //     // this.webviewPanel.webview.postMessage({
+        //     //     command: 'updateCodeTitle',
+        //     //     groupKey: this.idCounter.toString(),
+        //     //     eventId: codeActivity.id,
+        //     //     title: generatedTitle,
+        //     // });
+        //     // this.updateCodeTitle(this.idCounter.toString(), codeActivity.id, generatedTitle);
+        //     // codeActivity.title = generatedTitle;
+        // });
 
         // grab all the web events from the stray events
         const webEvents = this.strayEvents.filter(event => event.type !== "code");
@@ -380,7 +407,7 @@ class ClusterManager {
         this.currentGroup.actions.sort((a, b) => a.time - b.time);
 
         // Set the title and add the group to display
-        this.currentGroup.title = this.generateSubGoalTitle(this.currentGroup);
+        // this.currentGroup.title = this.generateSubGoalTitle(this.currentGroup);
         this.displayForGroupedEvents.push(this.currentGroup);
 
         // Clear the stray events and reset the current group
@@ -389,16 +416,59 @@ class ClusterManager {
     }
 
     // activity-level subgoal*
-    generateSubGoalTitle(group) {
-        if (group.type === "code") {
-            return `Code changes in ${group.file}`;
-        } else if (group.type === "subgoal") {
-            return `Subgoal ${group.id}`;
-        } else {
-            return "Title placeholder";
+    // generateSubGoalTitle(group) {
+    //     var before_code = this.currentGroup.before_code
+    //     var after_code = this.currentGroup.after_code
+    //     var prompt = `Please summarize the code change from "${before_code}" to "${after_code}" in one simple and easy to understand sentence`; 
+
+    //     var subgoalName = response.data;
+
+    //     if (group.type === "code") {
+    //         return `Code changes in ${group.file}`;
+    //     } else if (group.type === "subgoal") {
+    //         return `Subgoal ${group.id}`;
+    //     } else {
+    //         return "Title placeholder";
+    //     }
+    // }
+
+    async generateSubGoalTitle(activity) {
+        try {
+            const before_code = activity.before_code;
+            const after_code = activity.after_code;
+            const prompt = `Please summarize the code change from "${before_code}" to "${after_code}" in one one-liner, simple, fast to read, and easy-to-understand phrase, does not have to be complete sentence and can be a very general description`;
+            console.log('Prompt:', prompt); 
+
+            const completions = await openai.chat.completions.create({
+                model: 'gpt-3.5-turbo',
+                max_tokens: 25,
+                messages: [
+                    { 
+                        role: "system", 
+                        content: "You are a code change history summarizer that helps programmers that get interrupted from coding, and the programmers you are helping require simple and prcise points that they can glance over and understand your point" 
+                    }, 
+                    { role: "user", content: prompt }
+                ]
+            });
+            console.log('API Response:', completions);
+
+            const summary = completions?.choices?.[0]?.message?.content || "Summary not available";
+            console.log('Summary:', summary);
+            
+            if (activity.type === "code") {
+                return `${summary}`;
+            } else if (activity.type === "subgoal") {
+                return `test subgoal ${activity.id}: ${summary}`;
+            } else {
+                return `test placeholder test: ${summary}`;
+            }
+    
+        } catch (error) {
+            console.error("Error generating title:", error.message);
         }
     }
 
+    
     updateWebPanel() {
         if (!this.webviewPanel) {
             this.webviewPanel = vscode.window.createWebviewPanel(
@@ -585,7 +655,7 @@ class ClusterManager {
                     html += `
                         <li data-eventid="${index}">
                             <!-- Editable title for the code activity -->
-                            <input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')">
+                            <input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')" size="50">
                             <button type="button" class="collapsible">Code Diff</button>
                             <div class="content">
                                 ${diffHTML}

@@ -118,7 +118,7 @@ function activate(context) {
 
 	myCustomEmitter.on('save', async (entry) => {
 		eventEntry = entry; // for history view, just need to save and send this entry to clusterManager later after execution
-		// console.log('eventEntry:', eventEntry);
+		console.log('eventEntry:', eventEntry);
 
 		if(usingContentTimelineView){
 			contentTimelineManager.processEvent(entry); // for content timeline view, process the event immediately
