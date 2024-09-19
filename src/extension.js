@@ -13,6 +13,11 @@ const navigation = require('./navigation');
 const selection = require('./selection');
 const save = require('./save');
 const helpers = require('./helpers');
+const GitHistory = require('./dynamic_history_gen/git_history');
+const ClusterManager = require('./clusterManager');
+const { processWebData } = require('./dynamic_history_gen/processLiveWeb');
+const myCustomEmitter = require('./eventEmitter'); // Use the shared emitter
+const ContentTimelineManager = require('./contentTimelineManager');
 
 var tracker = null;
 var iter = 0;
@@ -35,6 +40,14 @@ var user = os.userInfo().username;
 var hostname = os.hostname();
 var terminalList;
 var terminalInstance;
+var eventEntry = {};
+var usingHistoryView = false;
+var usingContentTimelineView = false;
+
+function updateContextKeys() {
+    vscode.commands.executeCommand('setContext', 'codeHistories.usingContentTimelineView', usingContentTimelineView);
+    vscode.commands.executeCommand('setContext', 'codeHistories.usingHistoryWebview', usingHistoryView);
+}
 
 /**
  * @param {vscode.ExtensionContext} context
@@ -60,6 +73,7 @@ function activate(context) {
 	context.subscriptions.push(vscode.window.onDidChangeTextEditorSelection(event => {
 		const key = event.textEditor.document.uri.fsPath;
 		const debouncedSelectionChangeHandler = debounce(selection.handleTextEditorSelectionChange, 500, key);
+		console.log('Selection event:', event);
 		debouncedSelectionChangeHandler(event.textEditor);
 	}));
 
@@ -95,9 +109,28 @@ function activate(context) {
 		}
 	}
 
+	const clusterManager = new ClusterManager(context);
+	const contentTimelineManager = new ContentTimelineManager(context);
+
 	vscode.window.onDidStartTerminalShellExecution(async event => {
-		await onDidExecuteShellCommandHelper(event);
+		await onDidExecuteShellCommandHelper(event, clusterManager, contentTimelineManager);
 	});
+
+	myCustomEmitter.on('save', async (entry) => {
+		eventEntry = entry; // for history view, just need to save and send this entry to clusterManager later after execution
+		console.log('eventEntry:', eventEntry);
+
+		if(usingContentTimelineView){
+			contentTimelineManager.processEvent(entry); // for content timeline view, process the event immediately
+		}
+	});
+
+	if(usingContentTimelineView){
+		myCustomEmitter.on('selection', async (entry) => {
+			// console.log('selection:', entry);
+			contentTimelineManager.processEvent(entry);
+		});
+	}
 
 	// vscode.window.onDidEndTerminalShellExecution(async event => {
 	// 	console.log('event: ', event);
@@ -111,6 +144,15 @@ function activate(context) {
 	let enterGoal = vscode.commands.registerCommand('codeHistories.enterGoal', enterGoalHelper);
 	let quickAutoCommit = vscode.commands.registerCommand('codeHistories.quickAutoCommit', quickAutoCommitHelper);
 	let selectTerminalProfile = vscode.commands.registerCommand('codeHistories.selectTerminalProfile', showTerminalProfileQuickPick);
+	let testRunPythonScript = vscode.commands.registerCommand('codeHistories.testRunPythonScript', testRunPythonScriptHelper);
+	let testDBConstructor = vscode.commands.registerCommand('codeHistories.testDBConstructor', testDBConstructorHelper);
+	let historyWebview = vscode.commands.registerCommand('codeHistories.historyWebview', function () {
+		clusterManager.initializeWebview();
+    });
+
+	let contentTimelineWebview = vscode.commands.registerCommand('codeHistories.contentTimelineWebview', function () {
+		contentTimelineManager.initializeWebview();
+	});	
 
 	context.subscriptions.push(activateCodeHistories);
 	context.subscriptions.push(executeCheckAndCommit);
@@ -120,6 +162,18 @@ function activate(context) {
 	context.subscriptions.push(enterGoal);
 	context.subscriptions.push(quickAutoCommit);
 	context.subscriptions.push(selectTerminalProfile);
+	context.subscriptions.push(testRunPythonScript);
+	context.subscriptions.push(testDBConstructor);
+	
+	if(usingHistoryView){
+		context.subscriptions.push(historyWebview);
+		updateContextKeys();
+	}
+
+	if(usingContentTimelineView){
+		context.subscriptions.push(contentTimelineWebview);
+		updateContextKeys();
+	}
 
 	// this is for web dev heuristics
 	// if user saves a file in the workspace, then they visit chrome to test their program on localhost (require that they do reload the page so that it is recorded as an event in webData)
@@ -189,24 +243,47 @@ function activate(context) {
 		try {
 			// search between timeSwitchedToChrome and timeSwitchedToCode in webData
 			let webData = fs.readFileSync(path.join(currentDir, 'webData'), 'utf8');
+
 			let webDataArray = JSON.parse(webData);
 
 			let webDataArrayFiltered = [];
 			let startTime = timeSwitchedToChrome;
 			let endTime = timeSwitchedToCode;
 
-			for (let i = webDataArray.length - 1; i >= 0; i--) {
-				let obj = webDataArray[i];
-				if(obj.time < startTime){
-					break;
+			if (startTime > 0 && endTime > 0) {
+				// Traverse the array backwards
+				for (let i = webDataArray.length - 1; i >= 0; i--) {
+					let obj = webDataArray[i];
+					
+					if (obj.time <= endTime && obj.time >= startTime) {
+						webDataArrayFiltered.unshift(obj);  // Prepend to maintain order
+					} else if (obj.time < startTime) {
+						break;  // Early exit, no need to check earlier events
+					}
 				}
-				if (obj.time >= startTime && obj.time <= endTime) {
-					webDataArrayFiltered.unshift(obj);
+			} else {
+				if (startTime <= 0) {
+					console.error('Invalid start time:', startTime);
+				}
+				if (endTime <= 0) {
+					console.error('Invalid end time:', endTime);
 				}
 			}
 
-			// console.log('webDataArrayFiltered: ', webDataArrayFiltered);
+			console.log('webDataArrayFiltered: ', webDataArrayFiltered);
 			if(webDataArrayFiltered.length > 0){
+				if(usingHistoryView){
+					let dataForHistory = processWebData(webDataArrayFiltered);
+					console.log('dataForHistory: ', dataForHistory);
+
+					if (dataForHistory.length > 0) {
+						for (let i = 0; i < dataForHistory.length; i++) {
+							let entry = dataForHistory[i];
+							clusterManager.processEvent(entry);
+						}
+					}
+				}
+
 				// check if webDataArrayFiltered contains a visit to localhost or 127.0.0.1
 				let webDataArrayFilteredContainsLocalhost = webDataArrayFiltered.filter(obj => obj.curUrl.includes('localhost') || containsIPAddresses(obj.curUrl));
 				
@@ -214,6 +291,9 @@ function activate(context) {
 					await tracker.gitAdd();
 					await tracker.checkWebData();
 					await tracker.gitCommit();
+					if(usingHistoryView && eventEntry){ // for test event of web app (similar to execution event, save needed to happen first)
+						await clusterManager.processEvent(eventEntry);
+					}
 					// let currentTime = Math.floor(Date.now() / 1000);
 					// console.log('currentTime: ', currentTime);
 				}
@@ -230,83 +310,28 @@ function activate(context) {
 	activateCodeHistoriesHelper();
 }
 
-async function onDidExecuteTerminalCommandHelper(event) {
+async function testRunPythonScriptHelper() {
+	const scriptPath = path.join(__dirname, 'dynamic_history_gen', 'generate_events_from_git.py');
+	const webDataPath = path.join(getCurrentDir(), 'webData');
+	const preprocessedWebData = helpers.runPythonScript(scriptPath, [webDataPath], console.log);
+}
+
+async function testDBConstructorHelper() {
+	const scriptPath = path.join(__dirname, 'dynamic_history_gen', 'generate_events_from_git.py');
+	const webDataPath = path.join(getCurrentDir(), 'webData');
 	try {
-		let time = Math.floor(Date.now() / 1000);
-		let command = event.commandLine;
-		let cwd = event.cwd;
-		let exitCode = event.exitCode;
-		let output = event.output;
+        const preprocessedWebData = await helpers.runPythonScript(scriptPath, [webDataPath]);
 
-		// console.log('command: ', command);
-		// console.log('cwd: ', cwd);
-		// console.log('exitCode: ', exitCode);
-		// console.log('output: ', output);
-
-		if (user && hostname) {
-			// Define regular expressions with word boundaries
-			let userRegex = new RegExp("\\b" + user + "\\b", "g");
-			let hostnameRegex = new RegExp("\\b" + hostname + "\\b", "g");
-
-			// trim user and hostname from command, cwd, and output
-			if (command) {
-				command = command.replace(hostnameRegex, 'hostname');
-				command = command.replace(userRegex, 'user');
-			}
-			if (cwd) {
-				cwd = cwd.replace(hostnameRegex, 'hostname');
-				cwd = cwd.replace(userRegex, 'user');
-			}
-			if (output) {
-				// Instead of grabbing the entire output with cwd
-				// Just grab the line that starting from Execution Time
-				// Then append the command before it
-				let outputFromExecLine = output.substring(output.indexOf('Execution Time:'));
-				if (outputFromExecLine && (terminalName === "pwsh" || terminalName === "powershell")) {
-					output = '\n' + outputFromExecLine;
-				} else {
-					output = outputFromExecLine;
-				}
-				output = output.replace(hostnameRegex, 'hostname');
-				output = output.replace(userRegex, 'user');
-			}
-		}
-
-		let executionInfo = {
-			command: command,
-			cwd: cwd,
-			exitCode: exitCode,
-			output: output,
-			time: time
-		};
-
-		// Log the execution info to JSON file
-		const currentDir = getCurrentDir();
-		const ndjsonString = JSON.stringify(executionInfo) + '\n'; // Convert to JSON string and add newline
-		const outputPath = path.join(currentDir, 'CH_cfg_and_logs', 'CH_terminal_data.ndjson');
-		await fs.promises.appendFile(outputPath, ndjsonString);
-
-		await tracker.gitAdd();
-
-		// if command contains "codehistories" then we should commit
-		if (command.includes("codehistories")) {
-			if(event.terminal.name === "pwsh" || event.terminal.name === "powershell"){
-				// Write to output to output.txt only for windows since powershell couldn't redirect output well
-				// The setup bash profile redirects solid output, we don't need to do it again
-				const outputTxtFilePath = path.join(currentDir, 'output.txt');
-				await fs.promises.appendFile(outputTxtFilePath, `${output}\n`);
-			}
-			await tracker.gitAddOutput();
-			await tracker.checkWebData();
-			await tracker.gitCommit();
-		} else {
-			await tracker.gitReset();
-		}
-	} catch (error) {
-		console.log("Error occurred:", error);
-		await tracker.gitReset();
-		await vscode.window.showInformationMessage('Error committing to git. Please wait a few seconds and try again.');
-	}
+        if (preprocessedWebData && preprocessedWebData.trim()) {
+            let gitDB = new GitHistory(getCurrentDir(), preprocessedWebData);
+            console.log('GitHistory instance created successfully');
+        } else {
+            console.error('Error: Preprocessed web data is empty or invalid.');
+            throw new Error('Preprocessed web data is empty. Unable to construct GitHistory instance.');
+        }
+    } catch (error) {
+        console.error('Failed to run the Python script:', error.message);
+    }
 }
 
 // https://stackoverflow.com/questions/25245716/remove-all-ansi-colors-styles-from-strings
@@ -321,7 +346,7 @@ function removeNonASCIICharsHelper(txt) {
 	return processedTxt;
 }
 
-async function onDidExecuteShellCommandHelper(event) {
+async function onDidExecuteShellCommandHelper(event, clusterManager, contentTimelineManager) {
 	try {
 		// console.log('event.terminal', event.terminal);
 		// console.log('event.shellIntegration', event.shellIntegration);
@@ -337,7 +362,7 @@ async function onDidExecuteShellCommandHelper(event) {
 				// console.log('data:', data);
 				output += data;
 			}
-			console.log('rawOutput:', output);
+			// console.log('rawOutput:', output);
 
 			// Regex pattern to replace \x5c with \
 			const weirdRegex = /\\x5c/g;
@@ -418,12 +443,13 @@ async function onDidExecuteShellCommandHelper(event) {
 				}
 			}
 	
-			console.log('command:', command);
-			console.log('output:', finalOutput);
-			console.log('cwd:', cwd);
-			console.log('exitCode:', exitCode);
+			// console.log('command:', command);
+			// console.log('output:', finalOutput);
+			// console.log('cwd:', cwd);
+			// console.log('exitCode:', exitCode);
 
 			let executionInfo = {
+				type: 'execution',
 				command: command,
 				output: finalOutput,
 				exitCode: exitCode,
@@ -447,7 +473,18 @@ async function onDidExecuteShellCommandHelper(event) {
 				await fs.promises.appendFile(outputTxtFilePath, `${finalOutput}\n`);
 				await tracker.gitAddOutput();
 				await tracker.checkWebData();
-				await tracker.gitCommit();
+				if(usingHistoryView) {
+					await tracker.gitCommit();
+					if(eventEntry){
+						await clusterManager.processEvent(eventEntry);
+					}
+				} else if(usingContentTimelineView) {
+					await tracker.gitCommit();
+					await contentTimelineManager.processEvent(executionInfo);
+				} else {
+					await tracker.gitCommit();
+				}
+				// vscode.window.showInformationMessage('Commit supposedly executed successfully!');
 			} else {
 				await tracker.gitReset();
 			}

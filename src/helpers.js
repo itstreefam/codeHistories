@@ -2,6 +2,7 @@ const vscode = require('vscode');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { spawn } = require('child_process');
 
 const debounceTimers = new Map(); // For debouncing per document
 const user = os.userInfo().username;
@@ -47,11 +48,43 @@ function removeBackspaces(str) {
     return str;
 }
 
+function runPythonScript(scriptPath, args) {
+    return new Promise((resolve, reject) => {
+        let pythonPath = vscode.workspace.getConfiguration("python").get("pythonPath");
+        if (!pythonPath) {
+            pythonPath = "python";
+        }
+        let options = {
+            cwd: path.dirname(scriptPath)
+        };
+        let process = spawn(pythonPath, [scriptPath, ...args], options);
+        let result = "";
+
+        process.stdout.on('data', function(data) {
+            result += data.toString();
+        });
+
+        process.stderr.on('data', function(data) {
+            console.error(data.toString());
+        });
+
+        process.on('exit', function(code) {
+            if (code !== 0) {
+                console.error("Error running Python script:", code);
+                reject(new Error(`Python script exited with code ${code}`));
+                return;
+            }
+            resolve(result);
+        });
+    });
+}
+
 module.exports = {
     getCurrentDir,
     debounce,
     debounceTimers,
     removeBackspaces,
     user,
-    hostname
+    hostname,
+    runPythonScript
 };

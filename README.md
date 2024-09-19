@@ -1,37 +1,29 @@
 # codeHistories
 
-A VS Code extension that aims to capture the information needed to generate usable code histories (capturing code state and output). This work remains a prototype as the tool is utilizing VS Code Proposed APIs.
+A VS Code extension that aims to capture the information needed to generate usable code histories (capturing code state and output). The extension is designed to help users keep track of their code changes and outputs in a more granular way than traditional version control systems. The extension is currently in active development, so to use it you can install from the vsix package included in this repo.
 
 ## Requirements
 
-* VS Code Insiders version (https://code.visualstudio.com/insiders/) to use their proposed API
 * Node JS + simple-git (https://github.com/steveukx/git-js) to incorporate git in the output tracking process
 * active-win (https://github.com/sindresorhus/active-win) to detect application switch between VS Code and Chrome
-* Git Bash for Windows user
+* Git Bash (https://gitforwindows.org) for Windows user
+* PowerShell (https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell)
 
 ## Extension Setup
 
 1.  Download the file ```code-histories.vsix``` from this repository.
 
-2.  Download the Insiders version of VSCode: https://code.visualstudio.com/insiders/
+2.  Open your project folder in VSCode.
 
-3.  Open VSCode Insiders. You can determine whether you’ve gotten Insiders based on the icon color, which should be jade green for Insiders (rather than blue).
-
-4.  Open your project folder in VSCode Insiders.
-
-5.  Go into the Extensions view ![](assets/extensions_icon.jpg), select the ... ellipsis View and More Actions button, and select Install from VSIX. Then find and open the file ```code-histories.vsix```.
+3.  Go into the Extensions view ![](assets/extensions_icon.jpg), select the ... ellipsis View and More Actions button, and select Install from VSIX. Then find and open the file ```code-histories.vsix```.
 
 <p align="center">
   <img src="assets/locating_install_from_vsix.png" style='height: 50%; width: 50%; object-fit: contain' alt="Install from vsix"/>
 </p>
 
-6.  After installing from the vsix, you need to quit and relaunch VS Code Insiders from command line with ```code-insiders . --enable-proposed-api=code-histories.code-histories``` in your project folder.
+4.  Once the extension is installed, you will be prompted to use either a bash profile or a PowerShell profile. Make sure those shells are already installed on your system
 
-7.  Press Ctrl + Shift + P (Cmd + Shift + P for Mac) to bring up a menu of options. Look for and choose "Code Histories".
-
-9.  You should see a “Code Histories activated.” message on the bottom right of the screen when it is running.
-
-10. Press on the multi-play button ![](assets/codehistories_run_icon.png) (which says “Code Histories commit” if you hover over it) for the first time to enter a bash terminal with .bash_profile automatically loaded in the terminal session for you; for subsequent "bash" terminal sessions, if you want to use "codehistories" prefix to trigger auto-commit mechanism, you need to run ```source .bash_profile``` first. 
+5.  Upon choosing one of the profiles, a new terminal will be opened and the profile will be automatically loaded into the terminal. This profile essentially allows you to use the keyword ```codehistories``` (e.g. ```codehistories python main.py```) to capture the code state and output.
 
 ## Important notes
 
@@ -47,15 +39,9 @@ A VS Code extension that aims to capture the information needed to generate usab
   <img src="assets/how_to_enter_goal.gif" alt="How to Enter Goal"/>
 </p>
 
-5. When starting up codeHistories extension, codeHistories.git will be created and set as default. The intention here is to have a git repo solely for codeHistories commits which would not interfere with the commonly known .git repo (that might contain more meaningful, containing larger changes commits, especially if user starts out with repos cloned online).The user can switch back and forth between .git and codeHistories.git using Ctrl + Shift + G (or CMD + Shift + G on Mac) or searching for Code Histories: Select git repo (from VS Code View tab -> Command Palette.. option).
+5. To use git commands that are related to codeHistories.git, you need to add ```--git-dir=codeHistories.git --work-tree=.``` between ```git``` and the command. For e.g. ```git --git-dir=codeHistories.git --work-tree=. log --pretty=oneline``` to view the codeHistories commits. Occasionally checking this would be a good idea since the files color change only corresponds to normal .git repo.
 
-<p align="center">
-  <img src="assets/select_git_repo_to_track.png" style='height: 50%; width: 50%; object-fit: contain' alt="Select git repo to track"/>
-</p>
-
-6. To use git commands that are related to codeHistories.git, you need to add ```--git-dir=codeHistories.git --work-tree=.``` between ```git``` and the command. For e.g. ```git --git-dir=codeHistories.git --work-tree=. log --pretty=oneline``` to view the codeHistories commits. Occasionally checking this would be a good idea since the files color change only corresponds to normal .git repo.
-
-7. For complex web project example, refer to line 376-396 in src/extension.js. In general, for execution run, add ```codehistories``` prefix to the command. For web dev run, no need to really use ```codehistories``` prefix. Instead, make use of tee command to log output continuously while the capturing mechanism happens when user moves away from VS Code to Chrome to (re)load localhost. E.g. ```npm start | while IFS= read -r line; do echo "[$(date '+%m/%d/%Y, %I:%M:%S %p')] $line"; done | tee -a server2.txt```, ```python -u -m http.server 8000 2>&1 | tee >(awk '{ print $0; fflush(); }' >> server2.txt)```
+6. For complex web project example, refer to line 178-198 in src/extension.js. In general, for execution run, add ```codehistories``` prefix to the command. For web dev run, no need to really use ```codehistories``` prefix. Instead, make use of tee command to log output continuously while the capturing mechanism happens when user moves away from VS Code to Chrome to (re)load localhost. E.g. ```npm start | while IFS= read -r line; do echo "[$(date '+%m/%d/%Y, %I:%M:%S %p')] $line"; done | tee -a server2.txt```, ```python -u -m http.server 8000 2>&1 | tee >(awk '{ print $0; fflush(); }' >> server2.txt)```
 
 ## Release Notes
 
@@ -82,6 +68,10 @@ Removed the need for code-runner extension. Using ```codehistories``` as a prefi
 ### V3.x
 
 Added application switch checking to help with web dev heuristic when user is gone from vs code to visit chrome and if they load localhost to test their program. Added right click option to context menu for user to quickly write down their goals/subgoals for record. Undo commit button is now a standalone button placed to the left of the commit button. ```codehistories```prefix is now combined with tee in Unix-like environment to optimize piping result to output.txt. "Code Histories" terminal is now generic "bash" terminal given that user should run ```source .bash_profile``` to be able to use ```codehistories``` prefix. Released vsix package for easier installation.
+
+### V4
+
+Detached from proposed APIs --> Simplified installation process. Added tracking for other background events such as navigation and selection. Currently adding support for live history webview.
 
 ## Contact
 

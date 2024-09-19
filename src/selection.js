@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { getCurrentDir, user, hostname } = require('./helpers');
 let selectionHistory = [];
+const myCustomEmitter = require('./eventEmitter'); // Use the shared emitter
 
 function handleTextEditorSelectionChange(editor) {
     // Ensure there is a valid selection
@@ -17,6 +18,13 @@ function handleTextEditorSelectionChange(editor) {
 
     const selectedText = document.getText(selection);
     // console.log('Selected Text:', selectedText);
+
+    const visibleRanges = editor.visibleRanges.map(range => {
+        return [range.start.line + 1, range.end.line + 1];
+    });
+    
+    const startChar = selection.start.character;
+    const endChar = selection.end.character;
 
     // Define the range for capturing text around the selection
     const startLineIndex = selection.start.line;
@@ -61,13 +69,19 @@ function handleTextEditorSelectionChange(editor) {
 	}
 
     const entry = {
+        type: 'selection',
         selectedText: selectedText,
         selectedLinesText: linesText, // Capture the lines of text around the selection
         range: [selection.start.line + 1, selection.end.line + 1],
 		document: documentPath,
         allText: document.getText(),
+        visibleRanges: visibleRanges,
+        charRange: [startChar, endChar],
         time: Math.floor(Date.now() / 1000),
     };
+
+    // Emit the selection event
+    myCustomEmitter.emit('selection', entry);
 
     // Log the execution info to JSON file
 	const currentDir = getCurrentDir();
