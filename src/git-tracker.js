@@ -132,14 +132,27 @@ class gitTracker {
                 console.log("codeHistories.git folder does not exist");
                 this.git = simpleGit(this._currentDir);
                 await this.isGitInitialized(this.git);
-                // Create or copy to codeHistories.git based on git log
+                // Create or copy to codeHistories.git based on .git latest commit
                 const log = await this.git.log().catch(() => ({ total: 0 }));
-                if (log.total === 0) {
-                    this.codeHistoriesGit = simpleGit(this._currentDir).env({'GIT_DIR': `${this._currentDir}/codeHistories.git`, 'GIT_WORK_TREE': this._currentDir});
+                if (log.total > 0) {
+                    const latestCommitHash = log.latest.hash;
+                    console.log(`Checking out files from the latest commit (${latestCommitHash}) in .git`);
+            
+                    // Checkout the files from the latest commit in .git (not the whole history)
+                    await this.git.checkout(latestCommitHash, ['--', '.']);
+            
+                    // Initialize codeHistories.git and stage the current files
+                    this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': `${this._currentDir}/codeHistories.git`, 'GIT_WORK_TREE': this._currentDir });
                     await this.isGitInitialized(this.codeHistoriesGit);
+                    
+                    // Stage the current files (which are now at the state of the latest commit in .git)
+                    await this.codeHistoriesGit.add('./*');
+                    await this.codeHistoriesGit.commit('Initial commit based on the latest commit of .git');
+                    
+                    console.log("codeHistories.git initialized with the staged files from the latest commit of .git");            
                 } else {
-                    // Logic for copying .git content to codeHistories.git
-                    await fs.promises.cp(`${this._currentDir}/.git`, `${this._currentDir}/codeHistories.git`, { recursive: true });
+                    this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': `${this._currentDir}/codeHistories.git`, 'GIT_WORK_TREE': this._currentDir });
+                    await this.isGitInitialized(this.codeHistoriesGit);
                 }
                 break;
             case "case 4":
