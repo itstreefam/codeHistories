@@ -41,7 +41,7 @@ var hostname = os.hostname();
 var terminalList;
 var terminalInstance;
 var eventEntry = {};
-var usingHistoryView = true;
+var usingHistoryView = false;
 var usingContentTimelineView = false;
 
 function updateContextKeys() {
@@ -272,13 +272,15 @@ function activate(context) {
 
 			console.log('webDataArrayFiltered: ', webDataArrayFiltered);
 			if(webDataArrayFiltered.length > 0){
-				let dataForHistory = processWebData(webDataArrayFiltered);
-				console.log('dataForHistory: ', dataForHistory);
+				if(usingHistoryView){
+					let dataForHistory = processWebData(webDataArrayFiltered);
+					console.log('dataForHistory: ', dataForHistory);
 
-				if (dataForHistory.length > 0) {
-					for (let i = 0; i < dataForHistory.length; i++) {
-						let entry = dataForHistory[i];
-						clusterManager.processEvent(entry);
+					if (dataForHistory.length > 0) {
+						for (let i = 0; i < dataForHistory.length; i++) {
+							let entry = dataForHistory[i];
+							clusterManager.processEvent(entry);
+						}
 					}
 				}
 
@@ -289,6 +291,9 @@ function activate(context) {
 					await tracker.gitAdd();
 					await tracker.checkWebData();
 					await tracker.gitCommit();
+					if(usingHistoryView && eventEntry){ // for test event of web app (similar to execution event, save needed to happen first)
+						await clusterManager.processEvent(eventEntry);
+					}
 					// let currentTime = Math.floor(Date.now() / 1000);
 					// console.log('currentTime: ', currentTime);
 				}
@@ -469,15 +474,17 @@ async function onDidExecuteShellCommandHelper(event, clusterManager, contentTime
 				await tracker.gitAddOutput();
 				await tracker.checkWebData();
 				if(usingHistoryView) {
-					// await tracker.gitCommit();
+					await tracker.gitCommit();
 					if(eventEntry){
 						await clusterManager.processEvent(eventEntry);
 					}
 				} else if(usingContentTimelineView) {
-					// await tracker.gitCommit();
+					await tracker.gitCommit();
 					await contentTimelineManager.processEvent(executionInfo);
+				} else {
+					await tracker.gitCommit();
 				}
-				vscode.window.showInformationMessage('Commit supposedly executed successfully!');
+				// vscode.window.showInformationMessage('Commit supposedly executed successfully!');
 			} else {
 				await tracker.gitReset();
 			}
