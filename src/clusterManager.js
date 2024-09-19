@@ -412,7 +412,11 @@ class ClusterManager {
 Code A (before): "${before_code}"
 Code B (after): "${after_code}"
 
-Summarize the change in a single, simple, easy-to-read line. It can be a general description but make it is complete and coherent.`;
+Identify whether the changes are addition, deletion, or modification without explicitly stating them.
+Also do not explicitly mention Code A or Code B.
+Summarize the changes in a single, simple, easy-to-read line. So no listing or bullet points. 
+Start out with a verb and no need to end with a period.
+Make sure it sound like a natural conversation.`;
 
             console.log('Prompt:', prompt);
 
@@ -429,8 +433,11 @@ Summarize the change in a single, simple, easy-to-read line. It can be a general
             });
             console.log('API Response:', completions);
 
-            const summary = completions?.choices?.[0]?.message?.content || "Summary not available";
+            let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
             console.log('Summary:', summary);
+
+            // if summary contains double quotes, make them single quotes
+            summary = summary.replace(/"/g, "'");
             
             if (activity.type === "code") {
                 return `${summary}`;

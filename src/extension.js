@@ -41,7 +41,7 @@ var hostname = os.hostname();
 var terminalList;
 var terminalInstance;
 var eventEntry = {};
-var usingHistoryView = false;
+var usingHistoryView = true;
 var usingContentTimelineView = false;
 
 function updateContextKeys() {
@@ -474,17 +474,17 @@ async function onDidExecuteShellCommandHelper(event, clusterManager, contentTime
 				await tracker.gitAddOutput();
 				await tracker.checkWebData();
 				if(usingHistoryView) {
-					await tracker.gitCommit();
+					// await tracker.gitCommit();
 					if(eventEntry){
 						await clusterManager.processEvent(eventEntry);
 					}
 				} else if(usingContentTimelineView) {
-					await tracker.gitCommit();
+					// await tracker.gitCommit();
 					await contentTimelineManager.processEvent(executionInfo);
 				} else {
 					await tracker.gitCommit();
 				}
-				// vscode.window.showInformationMessage('Commit supposedly executed successfully!');
+				vscode.window.showInformationMessage('Commit supposedly executed successfully!');
 			} else {
 				await tracker.gitReset();
 			}
