@@ -13,7 +13,6 @@ class gitTracker {
         this.git = null;
         this.codeHistoriesGit = null;
         this.isUsingCodeHistoriesGit = true;
-        this.initGitignore();
     }
 
     async initGitignore() {
@@ -26,6 +25,7 @@ class gitTracker {
                     await fs.promises.appendFile(gitignorePath, `${item}\n`);
                 }
             }
+            console.log('Updated .gitignore');
         } catch (error) {
             console.error('Error updating .gitignore:', error);
         }
@@ -118,20 +118,25 @@ class gitTracker {
                 console.log("both .git and codeHistories.git folders do not exist");
                 this.git = simpleGit(this._currentDir);
                 await this.isGitInitialized(this.git);
+                await this.initGitignore();
                 this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': `${this._currentDir}/codeHistories.git`, 'GIT_WORK_TREE': this._currentDir });
                 await this.isGitInitialized(this.codeHistoriesGit);
+                await this.copyGitIgnore();
                 break;
             case "case 2":
                 console.log(".git folder does not exist");
                 this.git = simpleGit(this._currentDir);
                 await this.isGitInitialized(this.git);
+                await this.initGitignore();
                 this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': `${this._currentDir}/codeHistories.git`, 'GIT_WORK_TREE': this._currentDir });
                 await this.isGitInitialized(this.codeHistoriesGit);
+                await this.copyGitIgnore();
                 break;
             case "case 3":
                 console.log("codeHistories.git folder does not exist");
                 this.git = simpleGit(this._currentDir);
                 await this.isGitInitialized(this.git);
+                await this.initGitignore();
                 // Create or copy to codeHistories.git based on .git latest commit
                 const log = await this.git.log().catch(() => ({ total: 0 }));
                 if (log.total > 0) {
@@ -154,14 +159,29 @@ class gitTracker {
                     this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': `${this._currentDir}/codeHistories.git`, 'GIT_WORK_TREE': this._currentDir });
                     await this.isGitInitialized(this.codeHistoriesGit);
                 }
+                await this.copyGitIgnore();
                 break;
             case "case 4":
                 console.log("both .git and codeHistories.git folders exist");
                 this.git = simpleGit(this._currentDir);
                 await this.isGitInitialized(this.git);
+                await this.initGitignore();
                 this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': `${this._currentDir}/codeHistories.git`, 'GIT_WORK_TREE': this._currentDir });
                 await this.isGitInitialized(this.codeHistoriesGit);
+                await this.copyGitIgnore();
                 break;
+        }
+    }
+
+    // link .gitingore to codeHistories.git
+    async copyGitIgnore() {
+        const gitignorePath = `${this._currentDir}/.gitignore`;
+        const codeHistoriesGitignorePath = `${this._currentDir}/codeHistories.git/.gitignore`;
+        try {
+            await fs.promises.copyFile(gitignorePath, codeHistoriesGitignorePath);
+            console.log('Linked .gitignore to codeHistories.git');
+        } catch (error) {
+            console.error('Error linking .gitignore to codeHistories.git:', error);
         }
     }
 
@@ -193,11 +213,12 @@ class gitTracker {
             if (this.isUsingCodeHistoriesGit) {
                 const gitDir = path.join(this._currentDir, 'codeHistories.git');
                 const workTree = this._currentDir;
-                const resetCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" reset`;
+                const resetCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" reset HEAD -- .`;
                 await exec(resetCmd, { cwd: workTree });
                 console.log(`Successfully reset all files in codeHistories.git`);
             } else {
-                await this.git.reset(['./*']);
+                const resetCmd = `git reset HEAD -- .`;
+                await exec(resetCmd, { cwd: this._currentDir });
                 console.log(`Successfully reset all files in .git`);
             }
         } catch (err) {

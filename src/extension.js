@@ -116,6 +116,18 @@ function activate(context) {
 		await onDidExecuteShellCommandHelper(event, clusterManager, contentTimelineManager);
 	});
 
+	vscode.window.onDidOpenTerminal(event => {
+	
+		console.log('event:', event);
+
+		// let terminalName = terminal.name;
+		// let terminalId = terminal.processId;
+
+		// if (!terminalOpenedFirstTime[terminalId]) {
+		// 	terminalOpenedFirstTime[terminalId] = true;
+		// }
+	});
+
 	myCustomEmitter.on('save', async (entry) => {
 		eventEntry = entry; // for history view, just need to save and send this entry to clusterManager later after execution
 		console.log('eventEntry:', eventEntry);
@@ -464,29 +476,40 @@ async function onDidExecuteShellCommandHelper(event, clusterManager, contentTime
 			const ndjsonString = JSON.stringify(executionInfo) + '\n'; // Convert to JSON string and add newline
 			const outputPath = path.join(currentDir, 'CH_cfg_and_logs', 'CH_terminal_data.ndjson');
 			await fs.promises.appendFile(outputPath, ndjsonString);
-	
-			await tracker.gitAdd();
-	
-			// if command contains "codehistories" then we should commit
-			if (command.includes("codehistories")) {
-				const outputTxtFilePath = path.join(currentDir, 'output.txt');
-				await fs.promises.appendFile(outputTxtFilePath, `${finalOutput}\n`);
-				await tracker.gitAddOutput();
-				await tracker.checkWebData();
-				if(usingHistoryView) {
-					// await tracker.gitCommit();
-					if(eventEntry){
-						await clusterManager.processEvent(eventEntry);
+
+			// read the content of .gitignore in codeHistories folder
+			const gitIgnorePath = path.join(currentDir, '.codeHistories.git', '.gitignore');
+			let gitIgnoreContent = '';
+			if(fs.existsSync(gitIgnorePath)){
+				gitIgnoreContent = fs.readFileSync(gitIgnorePath, 'utf8');
+				console.log('gitIgnoreContent:', gitIgnoreContent);
+			}
+
+			// if this is the first time the terminal is opened, then we should not ignore the reset
+			if(!terminalOpenedFirstTime[event.terminal.processId]){
+				await tracker.gitAdd();
+		
+				// if command contains "codehistories" then we should commit
+				if (command.includes("codehistories")) {
+					const outputTxtFilePath = path.join(currentDir, 'output.txt');
+					await fs.promises.appendFile(outputTxtFilePath, `${finalOutput}\n`);
+					await tracker.gitAddOutput();
+					await tracker.checkWebData();
+					if(usingHistoryView) {
+						await tracker.gitCommit();
+						if(eventEntry){
+							await clusterManager.processEvent(eventEntry);
+						}
+					} else if(usingContentTimelineView) {
+						// await tracker.gitCommit();
+						await contentTimelineManager.processEvent(executionInfo);
+					} else {
+						await tracker.gitCommit();
 					}
-				} else if(usingContentTimelineView) {
-					// await tracker.gitCommit();
-					await contentTimelineManager.processEvent(executionInfo);
+					// vscode.window.showInformationMessage('Commit supposedly executed successfully!');
 				} else {
-					await tracker.gitCommit();
+					await tracker.gitReset();
 				}
-				vscode.window.showInformationMessage('Commit supposedly executed successfully!');
-			} else {
-				await tracker.gitReset();
 			}
 		}
 	} catch (error) {
