@@ -353,6 +353,54 @@ class gitTracker {
             console.error(`Error checking if output.txt is modified: ${err}`);
         }
     }
+
+    // this function should grab the latest commit from codeHistories.git
+    // and see what files were changed in that commit
+    // then it should process those files into a list of events
+    async grabLatestCommitFiles(){
+        try {
+            const gitDir = path.join(this._currentDir, 'codeHistories.git');
+            const workTree = this._currentDir;
+            const logCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" log -1 --name-only --format="%H%n%ct"`;
+            const { stdout } = await exec(logCmd, { cwd: workTree });
+            const outputLines = stdout.trim().split('\n');
+            const commitHash = outputLines[0];
+            const commitTime = parseInt(outputLines[1]);
+            const changedFiles = outputLines.slice(2);
+
+            let filesToConsider = ['output.txt', '.py', '.js', '.html', '.css'];
+            let entries = [];
+
+            for(const file of changedFiles){
+                if(file === 'output.txt'){
+                    let documentText = await fs.promises.readFile(`${this._currentDir}/output.txt`, 'utf8');
+                    let entry = {
+                        type: 'code',
+                        document: 'output.txt',
+                        time: commitTime,
+                        code_text: documentText,
+                        notes: `output: output.txt;`,
+                    };
+                    entries.push(entry);
+                } else if(filesToConsider.some(ext => file.endsWith(ext))){
+                    let documentText = await fs.promises.readFile(`${this._currentDir}/${file}`, 'utf8');
+                    let entry = {
+                        type: 'code',
+                        document: file,
+                        time: commitTime,
+                        code_text: documentText,
+                        notes: `code: ${file};`,
+                    };
+                    entries.push(entry);
+                }
+            }
+            
+            console.log(`Latest commit hash: ${commitHash}`);
+            return entries;
+        } catch (err) {
+            console.error(`Error grabbing latest commit from codeHistories.git: ${err}`);
+        }
+    }
 }
 
 module.exports = gitTracker;

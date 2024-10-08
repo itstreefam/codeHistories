@@ -475,6 +475,8 @@ async function onDidExecuteShellCommandHelper(event, clusterManager, contentTime
 				await tracker.checkWebData();
 				if(usingHistoryView) {
 					await tracker.gitCommit();
+					let entriesForClusterManager = await tracker.grabLatestCommitFiles();
+					console.log('entriesForClusterManager:', entriesForClusterManager);
 					if(eventEntry){
 						await clusterManager.processEvent(eventEntry);
 					}
