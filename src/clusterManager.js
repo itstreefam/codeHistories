@@ -3,6 +3,7 @@ const vscode = require('vscode');
 const Diff = require('diff');
 const diff2html = require('diff2html');
 const { historyStyles } = require('./webViewStyles');
+const temporaryTest = require('./temporaryTest');
 const express = require("express");
 require('dotenv').config({ path: __dirname + '/../.env' });
 const { OpenAI } = require("openai");
@@ -30,6 +31,14 @@ class ClusterManager {
         this.currentWebEvent = null;
         this.idCounter = 0;
         this.styles = historyStyles;
+    }
+
+    initializeTemporaryTest(){
+        const testData = new temporaryTest(String.raw`C:\Users\Tin Pham\Downloads\wordleStory.json`); // change path of test data here
+        // codeActivities has id, title, and code changes
+        // the focus atm would be code changes array which contains smaller codeActivity objects
+        // for eg, to access before_code, we would do this.codeActivities[0].codeChanges[0].before_code
+        this.codeActivities = testData.processSubgoals(testData.data);
     }
 
     initializeWebview(){
