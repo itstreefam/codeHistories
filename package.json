@@ -165,7 +165,7 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
     "fuzzball": "^2.1.2",
-    "openai": "^4.62.0",
+    "openai": "^4.63.0",
     "simple-git": "^3.5.0",
     "sqlite3": "^5.1.7"
   }
