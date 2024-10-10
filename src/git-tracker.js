@@ -13,7 +13,6 @@ class gitTracker {
         this.git = null;
         this.codeHistoriesGit = null;
         this.isUsingCodeHistoriesGit = true;
-        this.initGitignore();
     }
 
     async initGitignore() {
@@ -26,6 +25,7 @@ class gitTracker {
                     await fs.promises.appendFile(gitignorePath, `${item}\n`);
                 }
             }
+            console.log('Updated .gitignore');
         } catch (error) {
             console.error('Error updating .gitignore:', error);
         }
@@ -118,6 +118,7 @@ class gitTracker {
                 console.log("both .git and codeHistories.git folders do not exist");
                 this.git = simpleGit(this._currentDir);
                 await this.isGitInitialized(this.git);
+                await this.initGitignore();
                 this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': `${this._currentDir}/codeHistories.git`, 'GIT_WORK_TREE': this._currentDir });
                 await this.isGitInitialized(this.codeHistoriesGit);
                 break;
@@ -125,6 +126,7 @@ class gitTracker {
                 console.log(".git folder does not exist");
                 this.git = simpleGit(this._currentDir);
                 await this.isGitInitialized(this.git);
+                await this.initGitignore();
                 this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': `${this._currentDir}/codeHistories.git`, 'GIT_WORK_TREE': this._currentDir });
                 await this.isGitInitialized(this.codeHistoriesGit);
                 break;
@@ -140,17 +142,22 @@ class gitTracker {
             
                     // Checkout the files from the latest commit in .git (not the whole history)
                     await this.git.checkout(latestCommitHash, ['--', '.']);
+
+                    // update gitignore here instead of earlier to avoid reverting changes from checkout
+                    // we want the files to be from the latest commit in .git and they should not include those rules in .gitignore
+                    await this.initGitignore();
             
                     // Initialize codeHistories.git and stage the current files
                     this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': `${this._currentDir}/codeHistories.git`, 'GIT_WORK_TREE': this._currentDir });
                     await this.isGitInitialized(this.codeHistoriesGit);
-                    
+
                     // Stage the current files (which are now at the state of the latest commit in .git)
                     await this.codeHistoriesGit.add('./*');
                     await this.codeHistoriesGit.commit('Initial commit based on the latest commit of .git');
                     
                     console.log("codeHistories.git initialized with the staged files from the latest commit of .git");            
                 } else {
+                    await this.initGitignore();
                     this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': `${this._currentDir}/codeHistories.git`, 'GIT_WORK_TREE': this._currentDir });
                     await this.isGitInitialized(this.codeHistoriesGit);
                 }
@@ -159,6 +166,7 @@ class gitTracker {
                 console.log("both .git and codeHistories.git folders exist");
                 this.git = simpleGit(this._currentDir);
                 await this.isGitInitialized(this.git);
+                await this.initGitignore();
                 this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': `${this._currentDir}/codeHistories.git`, 'GIT_WORK_TREE': this._currentDir });
                 await this.isGitInitialized(this.codeHistoriesGit);
                 break;
@@ -193,11 +201,13 @@ class gitTracker {
             if (this.isUsingCodeHistoriesGit) {
                 const gitDir = path.join(this._currentDir, 'codeHistories.git');
                 const workTree = this._currentDir;
-                const resetCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" reset`;
+                const resetCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" reset HEAD -- .`;
                 await exec(resetCmd, { cwd: workTree });
                 console.log(`Successfully reset all files in codeHistories.git`);
             } else {
-                await this.git.reset(['./*']);
+                console.log(`Resetting all files in .git`);
+                const resetCmd = `git reset HEAD -- .`;
+                await exec(resetCmd, { cwd: this._currentDir });
                 console.log(`Successfully reset all files in .git`);
             }
         } catch (err) {

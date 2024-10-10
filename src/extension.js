@@ -464,7 +464,7 @@ async function onDidExecuteShellCommandHelper(event, clusterManager, contentTime
 			const ndjsonString = JSON.stringify(executionInfo) + '\n'; // Convert to JSON string and add newline
 			const outputPath = path.join(currentDir, 'CH_cfg_and_logs', 'CH_terminal_data.ndjson');
 			await fs.promises.appendFile(outputPath, ndjsonString);
-	
+
 			await tracker.gitAdd();
 	
 			// if command contains "codehistories" then we should commit
@@ -474,7 +474,7 @@ async function onDidExecuteShellCommandHelper(event, clusterManager, contentTime
 				await tracker.gitAddOutput();
 				await tracker.checkWebData();
 				if(usingHistoryView) {
-					// await tracker.gitCommit();
+					await tracker.gitCommit();
 					if(eventEntry){
 						await clusterManager.processEvent(eventEntry);
 					}
@@ -484,7 +484,7 @@ async function onDidExecuteShellCommandHelper(event, clusterManager, contentTime
 				} else {
 					await tracker.gitCommit();
 				}
-				vscode.window.showInformationMessage('Commit supposedly executed successfully!');
+				// vscode.window.showInformationMessage('Commit supposedly executed successfully!');
 			} else {
 				await tracker.gitReset();
 			}
