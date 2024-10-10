@@ -490,13 +490,13 @@ class ClusterManager {
                         ${groupedEventsHTML}
                     </ul>
                 </div>
+                <div class="handler"></div>
                 <div class="box"> 
                     <h2>Unsorted Changes</h2>
                     <ul id="stray-events">
                         ${strayEventsHTML}
                     </ul>
                 </div>
-                <div class="handler"></div>
             </div>
                 
 
