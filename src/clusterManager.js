@@ -18,11 +18,11 @@ class ClusterManager {
     constructor(context) {
         this.context = context;
         this.displayForGroupedEvents = []; // This high-level array will have subgoal for each grouping found
-        this.inCluster = false;  // Tracks if we are currently grouping events into a cluster
-        this.clusterStartTime = 0;  // Tracks the start time of the current cluster
+        this.inCluster = {};  // Store a map where the key is a filename and the value tracks if we are currently grouping events into a cluster for that file
+        this.clusterStartTime = {};  // Store a map where the key is a filename and the value tracks the start time of the current cluster for that file
         this.currentGroup = null; // Eventually will store both code and web events
         this.strayEvents = [];  // Stores events that do not fit into any cluster
-        this.pastEvent = null;  // Stores the previous event to compare against
+        this.pastEvents = null;  // Stores a map where the key is a filename and the value is the last event for that specific file
         this.MAX_NEW_LINES = 3;  // Maximum number of new lines that can be added/deleted between events
         this.debug = false;  // Debug flag to print out additional information
         this.webviewPanel = null;
@@ -88,6 +88,51 @@ class ClusterManager {
                 this.updateCodeTitle(message.groupKey, message.eventId, message.title);
             }
         });
+    }
+
+    // Method to process a list of events in real-time
+    async processEvents(eventList){
+        if (!eventList || eventList.length === 0) {
+            return;
+        }
+
+        for (const entry of eventList){
+            const eventType = this.getEventType(entry);
+
+            if(!this.currentGroup) {
+                this.startNewGroup();
+            }
+
+            if (eventType === "code") {
+                let filename = this.getFilename(entry.notes);
+                this.currentCodeEvent = {
+                    type: "code",
+                    file: filename,
+                    time: entry.time,
+                    code_text: entry.code_text,
+                    title: `Code changes in ${filename}`
+                };
+
+                await this.handleCodeEvent(entry); // this takes in raw event
+            } else if (eventType === "search" || eventType === "visit" || eventType === "revisit") {
+                this.currentWebEvent = {
+                    type: eventType,
+                    time: entry.time,
+                    webTitle: entry.notes,
+                    webpage: entry.timed_url,
+                };
+
+                this.strayEvents.push(this.currentWebEvent); // this is processed event
+            }
+        }
+
+        // Trigger webview if not opened
+        if (!this.webviewPanel) {
+            this.initializeWebview();
+        } else {
+            // If webview is already opened, just update the content
+            this.updateWebPanel();
+        }
     }
 
     // Method to process a new event in real-time
@@ -164,20 +209,28 @@ class ClusterManager {
 
     async handleCodeEvent(event) {
         const filename = this.getFilename(event.notes);
-        if (this.pastEvent) {
-            const pastFilename = this.getFilename(this.pastEvent.notes);
+
+        // Init pastEvents if it doesnt exist for this file
+        if (!this.pastEvents) {
+            this.pastEvents = {};
+        }
+
+        const pastEvent = this.pastEvents[filename];
+
+        if (pastEvent) {
+            const pastFilename = this.getFilename(pastEvent.notes);
 
             // Finalize the cluster if switching files
             if (filename !== pastFilename) {
-                if (this.inCluster) {
+                if (this.inCluster[pastFilename]) {
                     await this.finalizeGroup(pastFilename);
-                    this.inCluster = false;
+                    this.inCluster[pastFilename] = false;
                 }
                 // Treat the current event as the start of a new cluster
                 this.strayEvents.push(this.currentCodeEvent);
             } else {
                 // Process as usual if it's the same file
-                await this.match_lines(filename, this.pastEvent, event);
+                await this.match_lines(filename, pastEvent, event);
                 // console.log('In handleCodeEvent', this.currentGroup);
             }
         } else {
@@ -186,17 +239,14 @@ class ClusterManager {
         }
 
         // Update the pastEvent with the current event after processing
-        this.pastEvent = event;
+        this.pastEvents[filename] = event;
     }
 
     // Method to match lines between events and determine if they belong in the same cluster
+    // ensure that the comparison and clustering are done independently per file
     async match_lines(filename, pastEvt, currEvt) {
         const pastLines = this.get_code_lines(pastEvt.code_text);
         const currentLines = this.get_code_lines(currEvt.code_text);
-
-        const pastFilename = this.getFilename(pastEvt.notes);
-        const currFilename = this.getFilename(currEvt.notes);
-        const currTime = currEvt.time;
 
         let idx = 0;
         let partialMatches = 0;
@@ -223,37 +273,11 @@ class ClusterManager {
         // Always add the current event to the strayEvents initially
         this.strayEvents.push(this.currentCodeEvent);
 
-        if (this.debug) {
-            console.log(currFilename);
-            if (pastFilename === currFilename) {
-                console.log(`\tDEBUG ${pastEvt.time}-${currEvt.time} (${currFilename}): partialMatches=${partialMatches} perfectMatches=${perfectMatches.length} newLines=${newLines.length} currLineLength=${currentLines.length} pastLineLength=${pastLines.length}`);
-            } else {
-                console.log(`\tDEBUG ${pastEvt.time}-${currEvt.time}: Filename mismatch ${pastFilename} != ${currFilename}`);
-            }
-
-            if (pastEvt.time === currEvt.time) {
-                console.log(`\tPAST ${pastEvt}\n`);
-                console.log(`\tCURR ${currEvt}\n`);
-            }
-        }
-
-        if (pastFilename !== currFilename) {
-            if (this.inCluster) {
-                console.log(`${this.clusterStartTime},${pastEvt.time},'code',${pastFilename}`);
-                await this.finalizeGroup(pastFilename);
-                this.inCluster = false;
-            } else if (this.debug) {
-                console.log(`\tDEBUG ${pastEvt.time}-${currEvt.time}: not in cluster ${pastFilename} != ${currFilename}`);
-            }
-            return;
-        }
-
-        // continue existing clusters only....
-        // no changes made, don't start a cluster, but continue if there's an existing one.
+        // Continue cluster based on match conditions
         if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length === 0 && currentLines.length === pastLines.length) {
             if (this.debug) console.log("\tcontinue cluster");
-            if (this.inCluster) {
-                this.inCluster = true;
+            if (this.inCluster[filename]) {
+                this.inCluster[filename] = true;
             }
         }
 
@@ -261,53 +285,43 @@ class ClusterManager {
         // at least one line has been edited, but nothing has been added/deleted
         else if (partialMatches > 0 && currentLines.length === pastLines.length) {
             if (this.debug) console.log("\t>=1 line edited; start new cluster");
-            if (!this.inCluster) {
-                this.inCluster = true;
-                this.clusterStartTime = pastEvt.time;
+            if (!this.inCluster[filename]) {
+                this.inCluster[filename] = true;
+                this.clusterStartTime[filename] = pastEvt.time;
             }
         // at least one line has been added or deleted, but fewer than 4 new lines.
         } else if (perfectMatches.length > 0 && currentLines.length !== pastLines.length && (currentLines.length - pastLines.length <= this.MAX_NEW_LINES) && newLines.length <= this.MAX_NEW_LINES) {
             if (this.debug) console.log("\t1-3 lines added/deleted; start new cluster");
-            if (!this.inCluster) {
-                this.inCluster = true;
-                this.clusterStartTime = pastEvt.time;
+            if (!this.inCluster[filename]) {
+                this.inCluster[filename] = true;
+                this.clusterStartTime[filename] = pastEvt.time;
             }
         } 
         // at least one line has been replaced, but code is the same length
         else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length > 0 && currentLines.length === pastLines.length) {
             if (this.debug) console.log("\t>= 1 line replaced; start new cluster");
-            if (!this.inCluster) {
-                this.inCluster = true;
-                this.clusterStartTime = pastEvt.time;
+            if (!this.inCluster[filename]) {
+                this.inCluster[filename] = true;
+                this.clusterStartTime[filename] = pastEvt.time;
             }
         } 
         // only white space changes, no edits or additions/deletions
         else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length === 0 && currentLines.length !== pastLines.length) {
             if (this.debug) console.log("\twhitespace changes only; start new cluster");
-            if (!this.inCluster) {
-                this.inCluster = true;
-                this.clusterStartTime = pastEvt.time;
+            if (!this.inCluster[filename]) {
+                this.inCluster[filename] = true;
+                this.clusterStartTime[filename] = pastEvt.time;
             }
         } else {
             // we've just come out of a cluster, so print it out
-            if (this.inCluster) {
-                console.log(`${this.clusterStartTime},${pastEvt.time},'code',${pastFilename}`);
-                await this.finalizeGroup(pastFilename);
+            if (this.inCluster[filename]) {
+                console.log(`${this.clusterStartTime[filename]},${pastEvt.time},'code',${filename}`);
+                await this.finalizeGroup(filename);
                 if (this.debug) {
                     console.log(`${currTime}: partialMatches=${partialMatches} perfectMatches=${perfectMatches.length} newLines=${newLines.length} currLineLength=${currentLines.length} pastLineLength=${pastLines.length}`);
                     console.log("\n");
                 }
-            }
-
-            // if there's a big clump that's come in, then we should start another cluster immediately
-            if ( (pastFilename === currFilename) && (perfectMatches.length > 0) && (currentLines.length - pastLines.length > this.MAX_NEW_LINES) ) {
-                console.log(`\t starting new cluster ${pastEvt.time}`)
-                this.clusterStartTime = pastEvt.time;
-                this.inCluster = true;
-                this.startNewGroup();
-            }
-            else {
-                this.inCluster = false;
+                this.inCluster[filename] = false;
             }
         }
 
@@ -317,10 +331,10 @@ class ClusterManager {
 
     async finalizeGroup(filename) {
         // grab the first code event from the stray events
-        const startCodeEvent = this.strayEvents.find(event => event.type === "code");
+        const startCodeEvent = this.strayEvents.find(event => event.type === "code" && event.file === filename);
 
         // grab the last code event from the stray events
-        const endCodeEvent = [...this.strayEvents].reverse().find(event => event.type === "code");
+        const endCodeEvent = [...this.strayEvents].reverse().find(event => event.type === "code" && event.file === filename);
 
         let codeActivity = {
             type: "code",
@@ -396,7 +410,7 @@ class ClusterManager {
         this.displayForGroupedEvents.push(this.currentGroup);
 
         // Clear the stray events and reset the current group
-        this.strayEvents = [];
+        this.strayEvents = this.strayEvents.filter(event => event.type === "code" && event.file !== filename);
         this.currentGroup = null;
     }
 
