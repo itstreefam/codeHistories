@@ -273,15 +273,9 @@ function activate(context) {
 			console.log('webDataArrayFiltered: ', webDataArrayFiltered);
 			if(webDataArrayFiltered.length > 0){
 				if(usingHistoryView){
-					let dataForHistory = processWebData(webDataArrayFiltered);
-					console.log('dataForHistory: ', dataForHistory);
-
-					if (dataForHistory.length > 0) {
-						for (let i = 0; i < dataForHistory.length; i++) {
-							let entry = dataForHistory[i];
-							clusterManager.processEvent(entry);
-						}
-					}
+					let webEntriesForHistory = processWebData(webDataArrayFiltered);
+					console.log('webEntriesForHistory: ', webEntriesForHistory);
+					await clusterManager.processEvents(webEntriesForHistory);
 				}
 
 				// check if webDataArrayFiltered contains a visit to localhost or 127.0.0.1
@@ -291,8 +285,10 @@ function activate(context) {
 					await tracker.gitAdd();
 					await tracker.checkWebData();
 					await tracker.gitCommit();
-					if(usingHistoryView && eventEntry){ // for test event of web app (similar to execution event, save needed to happen first)
-						await clusterManager.processEvent(eventEntry);
+					if(usingHistoryView){
+						let entriesForClusterManager = await tracker.grabLatestCommitFiles();
+						let codeEntries = [...entriesForClusterManager]; // Collect code events
+						await clusterManager.processEvents(codeEntries);
 					}
 					// let currentTime = Math.floor(Date.now() / 1000);
 					// console.log('currentTime: ', currentTime);
@@ -475,9 +471,11 @@ async function onDidExecuteShellCommandHelper(event, clusterManager, contentTime
 				await tracker.checkWebData();
 				if(usingHistoryView) {
 					await tracker.gitCommit();
-					if(eventEntry){
-						await clusterManager.processEvent(eventEntry);
-					}
+					let codeEntries = await tracker.grabLatestCommitFiles();
+					await clusterManager.processEvents(codeEntries);
+					// if(eventEntry){
+					// 	await clusterManager.processEvent(eventEntry);
+					// }
 				} else if(usingContentTimelineView) {
 					// await tracker.gitCommit();
 					await contentTimelineManager.processEvent(executionInfo);
