@@ -94,6 +94,18 @@ const historyStyles = `
         border-left: 4px solid #007acc;
     }
 
+    .diff-container {
+        max-height: 400px;
+        overflow: auto;
+        border: 1px solid #ccc;
+
+        padding: 0 18px;
+        display: none;
+        background-color: #ffffff;
+        border-radius: 3px;
+        margin-top: 5px;
+    }
+
     a {
         color: #007acc;
         text-decoration: none;

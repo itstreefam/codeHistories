@@ -506,7 +506,7 @@ class ClusterManager {
                 </style>
             </head>
             <body>
-            <h1 class="title">Goal: make a Wordle clone</h1>
+            <!-- <h1 class="title">Goal: make a Wordle clone</h1> -->
             <div class="wrapper">
                 <div class="box">
                     <h2>Subgoals</h2>
@@ -715,7 +715,7 @@ class ClusterManager {
                             <!-- Editable title for the code activity -->
                             <b>${event.file}: </b><input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')" size="50">
                             <button type="button" class="collapsible">+</button>
-                            <div class="content">
+                            <div class="diff-container">
                                 ${diffHTML}
                             </div>
                         </li>
@@ -828,10 +828,11 @@ class ClusterManager {
         const diffHtml = diff2html.html(diffString, {
             outputFormat: 'side-by-side',
             drawFileList: false,
-            colorScheme: 'light'
+            colorScheme: 'light',
+            showFiles: false,
         });
 
-        return `<div class="diff-container">${diffHtml}</div>`;
+        return diffHtml;
     }
 
     updateTitle(groupKey, title) {
