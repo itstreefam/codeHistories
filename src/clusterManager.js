@@ -508,14 +508,14 @@ class ClusterManager {
             <body>
             <!-- <h1 class="title">Goal: make a Wordle clone</h1> -->
             <div class="wrapper">
-                <div class="box">
+                <div class="box" id="upper">
                     <h2>Subgoals</h2>
                     <ul id="grouped-events">
                         ${groupedEventsHTML}
                     </ul>
                 </div>
                 <div class="handler"></div>
-                <div class="box"> 
+                <div class="box" id="lower"> 
                     <h2>Unsorted Changes</h2>
                     <ul id="stray-events">
                         ${strayEventsHTML}
@@ -715,7 +715,7 @@ class ClusterManager {
                             <!-- Editable title for the code activity -->
                             <b>${event.file}: </b><input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')" size="50">
                             <button type="button" class="collapsible">+</button>
-                            <div class="diff-container">
+                            <div class="content">
                                 ${diffHTML}
                             </div>
                         </li>

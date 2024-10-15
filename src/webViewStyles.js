@@ -8,21 +8,18 @@ const historyStyles = `
         font-family: Arial, sans-serif;
         background-color: #F5F5DC;
         color: #333333;
-        height: 500px;
+        height: auto;
         margin: 0px;
     }
 
     body, html {
             margin: 0;
-            height: 100%;
         }
 
         .wrapper {
             display: flex;
             flex-direction: column;
-            height: 100vh;
             width: 100%;
-            overflow: hidden; 
         }
 
         .box {
@@ -31,10 +28,22 @@ const historyStyles = `
             display: flex;
             flex-direction: column;
             transition: height 0.05s linear;
+            ovverflow: auto;
+        }
+
+        #upper{
+            height: 50vh;
+        }
+
+        #lower{
+            z-index: 999;
+            position: relative;
+            top: 50%;          / Starts at 50% height of the viewport /
+            left: 0;           / Starts at the left side of the screen /
         }
 
         .handler {
-            height: 4px;
+            height: 6px;
             background-color: #2e2e2e;
             cursor: ns-resize; 
             flex-shrink: 0;
@@ -87,23 +96,16 @@ const historyStyles = `
     .content {
         padding: 0 18px;
         display: none;
-        overflow: hidden;
+        overflow: auto;
         background-color: #ffffff;
         border-radius: 3px;
         margin-top: 5px;
         border-left: 4px solid #007acc;
+        max-height: 250px;
     }
 
-    .diff-container {
-        max-height: 400px;
-        overflow: auto;
-        border: 1px solid #ccc;
-
-        padding: 0 18px;
-        display: none;
-        background-color: #ffffff;
-        border-radius: 3px;
-        margin-top: 5px;
+    .d2h-code-side-linenumber{
+        position: relative !important;
     }
 
     a {
