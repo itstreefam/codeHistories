@@ -110,6 +110,7 @@ function activate(context) {
 	}
 
 	const clusterManager = new ClusterManager(context);
+	clusterManager.initializeTemporaryTest();
 	const contentTimelineManager = new ContentTimelineManager(context);
 
 	vscode.window.onDidStartTerminalShellExecution(async event => {

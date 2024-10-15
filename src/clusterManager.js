@@ -31,14 +31,16 @@ class ClusterManager {
         this.currentWebEvent = null;
         this.idCounter = 0;
         this.styles = historyStyles;
+        this.initializeTemporaryTest();
     }
 
     initializeTemporaryTest(){
-        const testData = new temporaryTest(String.raw`C:\Users\Tin Pham\Downloads\wordleStory.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\Users\zhouh\Downloads\wordleStory.json`); // change path of test data here
         // codeActivities has id, title, and code changes
         // the focus atm would be code changes array which contains smaller codeActivity objects
         // for eg, to access before_code, we would do this.codeActivities[0].codeChanges[0].before_code
         this.codeActivities = testData.processSubgoals(testData.data);
+        console.log(this.codeActivities);
     }
 
     initializeWebview(){
@@ -340,8 +342,10 @@ class ClusterManager {
             after_code: endCodeEvent.code_text,
             // title: `Code changes in ${filename}`
         };
-
+        
+        //commented out for test only
         codeActivity.title = await this.generateSubGoalTitle(codeActivity);
+
 
         // grab all the web events from the stray events
         const webEvents = this.strayEvents.filter(event => event.type !== "code");
@@ -489,15 +493,22 @@ Make sure it sound like a natural conversation.`;
                 </style>
             </head>
             <body>
-                <h1>Grouped Events</h1>
-                <ul id="grouped-events">
-                    ${groupedEventsHTML}
-                </ul>
-
-                <h1>Stray Events</h1>
-                <ul id="stray-events">
-                    ${strayEventsHTML}
-                </ul>
+             <!-- <h1 class="title">Goal: make a Wordle clone</h1> -->
+            <div class="wrapper">
+                <div class="box" id="upper">
+                    <h2>Subgoals</h2>
+                    <ul id="grouped-events">
+                        ${groupedEventsHTML}
+                    </ul>
+                </div>
+                <div class="handler"></div>
+                <div class="box" id="lower"> 
+                    <h2>Unsorted Changes</h2>
+                    <ul id="stray-events">
+                        ${strayEventsHTML}
+                    </ul>
+                </div>
+            </div>
 
                 <script>
                     (function() {
@@ -607,6 +618,45 @@ Make sure it sound like a natural conversation.`;
 
                         // Initial listener attachment on page load
                         attachCollapsibleListeners();
+
+                        var handler = document.querySelector('.handler');
+                        var wrapper = handler.closest('.wrapper');
+                        var boxA = wrapper.querySelector('.box');
+                        var isHandlerDragging = false;
+
+                        function handleMouseMove(e) {
+                            if (!isHandlerDragging) {
+                                return;
+                            }
+
+                            var containerOffsetTop = wrapper.offsetTop;
+                            var pointerRelativeXpos = e.clientY - containerOffsetTop;
+                            var boxAminHeight = 60;
+
+                            boxA.style.height = (Math.max(boxAminHeight, pointerRelativeXpos - 8)) + 'px';
+                            boxA.style.flexGrow = 0;
+                        }
+
+
+                        document.addEventListener('mousedown', function (e) {
+                            // If mousedown event is fired from .handler, toggle flag to true
+                            if (e.target === handler) {
+                                isHandlerDragging = !isHandlerDragging;
+
+                                if (isHandlerDragging) {
+                                    document.addEventListener('mousemove', handleMouseMove);
+                                } else {
+                                    document.removeEventListener('mousemove', handleMouseMove);
+                                }
+                            }
+                        });
+
+                        document.addEventListener('mouseup', function () {
+                            if (isHandlerDragging) {
+                                isHandlerDragging = false;
+                                document.removeEventListener('mousemove', handleMouseMove);
+                            }
+                        });
                     })();
                 </script>
             </body>
@@ -616,86 +666,32 @@ Make sure it sound like a natural conversation.`;
      
 
     generateGroupedEventsHTML() {
-        // this.displayForGroupedEvents is an array of objects, each object is a group
-        // each group has a title and an array containing code and web activity
         let html = '';
-    
-        if (this.displayForGroupedEvents.length === 0) {
+
+        if (!this.codeActivities || this.codeActivities.length === 0) {
+            console.error("codeActivities is undefined or empty");
             return '<li>No grouped events.</li>';
         }
-
-        console.log('In generateGroupedEventsHTML', this.displayForGroupedEvents);
-
-        for (const [groupKey, group] of this.displayForGroupedEvents.entries()) {
-            // this is for subgoal-level grouping
-            // html += `
-            //     <li>
-            //         <!-- Editable title for the subgoal (group) -->
-            //         <input class="editable-title" id="title-${groupKey}" value="${group.title}" onchange="updateTitle('${groupKey}')">
-            //         <button type="button" class="collapsible">Subgoal ${groupKey}</button>
-            //         <div class="content">
-            //             <ul id="group-${groupKey}" data-groupkey="${groupKey}">
-            // `;
-
-            const displayedVisits = new Set();  // To track which visits have been displayed
     
-            for (const [index, event] of group.actions.entries()) {
-
-                let title = event.title || "Untitled";  // Provide a default title if undefined
+        console.log('In generateGroupedEventsHTML, codeActivities', this.codeActivities);
     
-                if (event.type === 'code') {
-                    // Render the code activity with editable title and collapsible diff
-                    const diffHTML = this.generateDiffHTML(event);
+        for (let groupKey = 0; groupKey < 9; groupKey++) {
+            const group = this.codeActivities[groupKey];
+    
+            for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
+                const subgoal = group.codeChanges[subgoalKey];
+
+                const diffHTML = this.generateDiffHTML(subgoal);
                     html += `
-                        <li data-eventid="${index}">
+                        <li data-eventid="${subgoalKey}">
                             <!-- Editable title for the code activity -->
-                            <input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')" size="50">
-                            <button type="button" class="collapsible">Code Diff</button>
+                            <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
+                            <button type="button" class="collapsible">+</button>
                             <div class="content">
                                 ${diffHTML}
                             </div>
                         </li>
                     `;
-                } else if (event.type === 'search') {
-                    // Render the search activity with collapsible visit events
-                    title = event.query || "Untitled";  // Ensure search queries are not undefined
-                    html += `
-                        <li data-eventid="${index}">
-                            <button type="button" class="collapsible">${title}</button>
-                            <div class="content">
-                                <ul>
-                    `;
-    
-                    for (const [visitIndex, visit] of event.actions.entries()) {
-                        const visitKey = `${visit.webTitle}-${visit.time}`;  // Unique identifier for each visit
-    
-                        // Only render if this visit has not been displayed
-                        if (!displayedVisits.has(visitKey)) {
-                            const visitTitle = visit.webTitle || "Untitled";  // Ensure visit titles are not undefined
-                            html += `
-                                <li>
-                                    <a href="${visit.webpage}" target="_blank">${visitTitle}</a> - ${new Date(visit.time * 1000).toLocaleString()}
-                                </li>
-                            `;
-                            displayedVisits.add(visitKey);  // Mark this visit as displayed
-                        }
-                    }
-    
-                    html += `
-                                </ul>
-                            </div>
-                        </li>
-                    `;
-                } else if ((event.type === 'visit' || event.type === 'revisit') && !displayedVisits.has(`${event.webTitle}-${event.time}`)) {
-                    // Handle standalone visit and revisit events (not part of a search)
-                    const visitTitle = event.webTitle || "Untitled";
-                    html += `
-                        <li data-eventid="${index}">
-                            <a href="${event.webpage}" target="_blank">${visitTitle}</a> - ${new Date(event.time * 1000).toLocaleString()}
-                        </li>
-                    `;
-                    displayedVisits.add(`${event.webTitle}-${event.time}`);  // Mark this visit as displayed
-                }
             }
         }
     
