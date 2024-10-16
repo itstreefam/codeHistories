@@ -723,9 +723,14 @@ class ClusterManager {
                 } else if (event.type === 'search') {
                     // Render the search activity with collapsible visit events
                     title = event.query || "Untitled";  // Ensure search queries are not undefined
+
+                    if(title === "Untitled") return;
+
+                    const searchedTitle = title.substring(title.indexOf(":") + 1, title.lastIndexOf("-")).trim();
+
                     html += `
                         <li data-eventid="${index}">
-                            <button type="button" class="collapsible">${title}</button>
+                            <button type="button" class="collapsible">You search for "${searchedTitle}"</button>
                             <div class="content">
                                 <ul>
                     `;
@@ -736,9 +741,15 @@ class ClusterManager {
                         // Only render if this visit has not been displayed
                         if (!displayedVisits.has(visitKey)) {
                             const visitTitle = visit.webTitle || "Untitled";  // Ensure visit titles are not undefined
+
+                            if(visitTitle === "Untitled") return;
+
+                            // grab the the title between : and ; if it exists
+                            const pageTitle = visitTitle.substring(visitTitle.indexOf(":") + 1, visitTitle.lastIndexOf(";")).trim();
+
                             html += `
                                 <li>
-                                    <a href="${visit.webpage}" target="_blank">${visitTitle}</a> - ${new Date(visit.time * 1000).toLocaleString()}
+                                    You visit the site <a href="${visit.webpage}" target="_blank">${pageTitle}</a> 
                                 </li>
                             `;
                             displayedVisits.add(visitKey);  // Mark this visit as displayed
@@ -753,9 +764,14 @@ class ClusterManager {
                 } else if ((event.type === 'visit' || event.type === 'revisit') && !displayedVisits.has(`${event.webTitle}-${event.time}`)) {
                     // Handle standalone visit and revisit events (not part of a search)
                     const visitTitle = event.webTitle || "Untitled";
+
+                    if(visitTitle === "Untitled") return;
+
+                    const pageTitle = visitTitle.substring(visitTitle.indexOf(":") + 1, visitTitle.lastIndexOf(";")).trim();
+
                     html += `
                         <li data-eventid="${index}">
-                            <a href="${event.webpage}" target="_blank">${visitTitle}</a> - ${new Date(event.time * 1000).toLocaleString()}
+                            You visit the site <a href="${visit.webpage}" target="_blank">${pageTitle}</a> 
                         </li>
                     `;
                     displayedVisits.add(`${event.webTitle}-${event.time}`);  // Mark this visit as displayed
@@ -788,17 +804,25 @@ class ClusterManager {
                 `;
             } else {
                 if (event.type === "search") {
+                    if (event.webTitle === "Untitled") return;
+
+                    const searchedTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf("-")).trim();
+
                     html += `
                         <li class="stray-event">
-                            <p><em>${event.webTitle}</em></p>
+                            <p>You search for "${searchedTitle}"</p>
                         </li>
                     `;
                 } else {
                     // visit or revisit
                     // same thing but also including the url link
+                    if (event.webTitle === "Untitled") return;
+
+                    const pageTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf(";")).trim();
+
                     html += `
                         <li class="stray-event">
-                            <p><a href="${event.webpage}"<em>${event.webTitle}</em></a></p>
+                            <p>You visit the site <a href="${event.webpage}" target="_blank">${pageTitle}</a></p>
                         </li>
                         `;
                 }
