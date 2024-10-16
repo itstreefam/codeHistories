@@ -3,6 +3,12 @@ const vscode = require('vscode');
 const Diff = require('diff');
 const diff2html = require('diff2html');
 const { historyStyles } = require('./webViewStyles');
+const fs = require('fs');
+const cp = require('child_process');
+const path = require('path');
+const util = require('util');
+const exec = util.promisify(cp.exec);
+const { getCurrentDir } = require('./helpers');
 const express = require("express");
 require('dotenv').config({ path: __dirname + '/../.env' });
 const { OpenAI } = require("openai");
@@ -32,9 +38,10 @@ class ClusterManager {
         this.currentWebEvent = null;
         this.idCounter = 0;
         this.styles = historyStyles;
+        this.debugging = true;
     }
 
-    initializeWebview() {
+    async initializeWebview() {
         // Check if the webview is already opened
         if (this.webviewPanel) {
             this.webviewPanel.reveal(vscode.ViewColumn.Beside);
@@ -60,7 +67,7 @@ class ClusterManager {
             this.webviewPanel.webview.postMessage({ command: 'restoreState', state: this.previousState });
         } else {
             // Set the initial HTML content if no previous state exists
-            this.updateWebPanel();
+            await this.updateWebPanel();
         }
 
         // Save the state when the webview is closed
@@ -130,10 +137,10 @@ class ClusterManager {
 
         // Trigger webview if not opened
         if (!this.webviewPanel) {
-            this.initializeWebview();
+            await this.initializeWebview();
         } else {
             // If webview is already opened, just update the content
-            this.updateWebPanel();
+            await this.updateWebPanel();
         }
     }
 
@@ -171,10 +178,10 @@ class ClusterManager {
 
         // Trigger webview if not opened
         if (!this.webviewPanel) {
-            this.initializeWebview();
+            await this.initializeWebview();
         } else {
             // If webview is already opened, just update the content
-            this.updateWebPanel();
+            await this.updateWebPanel();
         }
     }
 
@@ -338,7 +345,7 @@ class ClusterManager {
         }
 
         // update the web panel after processing the event
-        this.updateWebPanel();
+        await this.updateWebPanel();
     }
 
     async finalizeGroup(filename) {
@@ -480,7 +487,7 @@ class ClusterManager {
     }
 
 
-    updateWebPanel() {
+    async updateWebPanel() {
         if (!this.webviewPanel) {
             this.webviewPanel = vscode.window.createWebviewPanel(
                 'historyWebview',
@@ -490,8 +497,8 @@ class ClusterManager {
             );
         }
 
-        const groupedEventsHTML = this.generateGroupedEventsHTML();
-        const strayEventsHTML = this.generateStrayEventsHTML();
+        const groupedEventsHTML = await this.generateGroupedEventsHTML();
+        const strayEventsHTML = await this.generateStrayEventsHTML();
 
         this.webviewPanel.webview.html = `
             <!DOCTYPE html>
@@ -679,7 +686,7 @@ class ClusterManager {
     }
 
 
-    generateGroupedEventsHTML() {
+    async generateGroupedEventsHTML() {
         // this.displayForGroupedEvents is an array of objects, each object is a group
         // each group has a title and an array containing code and web activity
         let html = '';
@@ -783,7 +790,44 @@ class ClusterManager {
     }
 
 
-    generateStrayEventsHTML() {
+    async testDiffHTML(anEvent){
+        try {
+            const currentDir = getCurrentDir();
+            const gitDir = path.join(currentDir, 'codeHistories.git');
+            const workTree = currentDir;
+
+            // checkout the second to last commit
+            const checkoutCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" checkout HEAD~1 -- ${anEvent.file}`;
+            await exec(checkoutCmd, { cwd: workTree });
+
+            // read the file content
+            const fileContentStr = fs.readFileSync(path.join(workTree, anEvent.file), 'utf8');
+
+            const diffString = Diff.createTwoFilesPatch(
+                'start',
+                'end',
+                fileContentStr,
+                anEvent.code_text,
+                anEvent.file,
+                anEvent.file
+            );
+
+            // Render the diff as HTML
+            const diffHtml = diff2html.html(diffString, {
+                outputFormat: 'side-by-side',
+                drawFileList: false,
+                colorScheme: 'light',
+                showFiles: false,
+            });
+
+            return diffHtml;
+        } catch (err) {
+            console.error(`Error grabbing latest commit from codeHistories.git: ${err}`);
+            return 'Error generating diff';
+        }
+    }
+
+    async generateStrayEventsHTML() {
         // console.log('In generateStrayEventsHTML', this.strayEvents);
         let html = '';
 
@@ -797,11 +841,25 @@ class ClusterManager {
             // const humanReadableTime = new Date(event.time * 1000).toLocaleString();
 
             if (event.type === "code") {
-                html += `
-                    <li class="stray-event">
-                        <p><em>${event.file}</em></p>
-                    </li>
-                `;
+                if(this.debugging){
+                    const diffHTMLForStrayChanges = await this.testDiffHTML(event);
+
+                    html += `
+                        <li class="stray-event">
+                            <p><em>${event.file}</em></p>
+                            <button type="button" class="collapsible">+</button>
+                            <div class="content">
+                                ${diffHTMLForStrayChanges}
+                            </div>
+                        </li>
+                    `;
+                } else {
+                    html += `
+                        <li class="stray-event">
+                            <p><em>${event.file}</em></p>
+                        </li>
+                    `;
+                }
             } else {
                 if (event.type === "search") {
                     if (event.webTitle === "Untitled") return;
@@ -859,14 +917,14 @@ class ClusterManager {
         return diffHtml;
     }
 
-    updateTitle(groupKey, title) {
+    async updateTitle(groupKey, title) {
         this.displayForGroupedEvents[groupKey].title = title;
-        this.updateWebPanel();
+        await this.updateWebPanel();
     }
 
-    updateCodeTitle(groupKey, eventId, title) {
+    async updateCodeTitle(groupKey, eventId, title) {
         this.displayForGroupedEvents[groupKey].actions[eventId].title = title;
-        this.updateWebPanel();
+        await this.updateWebPanel();
     }
 
     best_match(target, lines) {
