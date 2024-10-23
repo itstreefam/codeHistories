@@ -77,6 +77,29 @@ class temporaryTest {
 
         return codeActivities;
     }
+
+    processResources(data) {
+        if (!data || !data.subgoals) {
+            console.log('No subgoals found in the data.');
+            return;
+        }
+
+        let resourceList = [];
+
+        data.subgoals.forEach(subgoal => {
+            const searchHistory = this.constructSearchHistoryArrary(subgoal);
+
+            const codeActivity = {
+                id: subgoal.id,
+                title: subgoal.title,
+                resources: searchHistory
+            };
+
+            resourceList.push(codeActivity);
+        });
+
+        return resourceList;
+    }
     
     // Function to construct the codeChange array from subgoal actions
     constructCodeChangeArray(subgoal) {
@@ -98,6 +121,36 @@ class temporaryTest {
         });
 
         return codeChanges;
+    }
+
+    //for searches 
+    constructSearchHistoryArrary(research) {
+        let resources = [];
+        
+        research.actions.forEach(action => {
+            if (action.type === 'search') {
+                let searchHistory = {
+                    type: "search",
+                    query: action.query,
+                    time: action.time, 
+                    actions: []
+                };
+
+                action.actions.forEach(subAction => {
+                    let actionDetail = {
+                        type: subAction.type,
+                        webTitle: subAction.webTitle,
+                        webpage: subAction.webpage,
+                        time: subAction.time
+                    };
+                    
+                    searchHistory.actions.push(actionDetail);
+                });
+                
+                resources.push(searchHistory);
+            }
+        });
+        return resources;
     }
 }
 
