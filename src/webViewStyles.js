@@ -7,7 +7,6 @@ const historyStyles = `
     body {
         font-family: Arial, sans-serif;
         background-color: #ffffff;
-        // background-image: url("C:\Users\zhouh\OneDrive\Documents\GitHub\codeHistories\paper background.jpg");
         color: #333333;
         height: auto;
         margin: 0px;

@@ -52,17 +52,17 @@ function finalizeActions(data) {
             arr.splice(index, 1);
         }
 
-        row.dwell_time = 0;
+        // row.dwell_time = 0;
 
-        // Calculate dwell time
-        if (row.new_action.includes('visit') && index < arr.length - 1) {
-            row.dwell_time = arr[index + 1].time - row.time;
-        }
+        // // Calculate dwell time
+        // if (row.new_action.includes('visit') && index < arr.length - 1) {
+        //     row.dwell_time = arr[index + 1].time - row.time;
+        // }
 
-        // Add dwell time to notes for visit actions and in seconds
-        if (row.new_action.includes('visit')) {
-            row.info += ` (${row.dwell_time / 1000}s)`;
-        }
+        // // Add dwell time to notes for visit actions and in seconds
+        // if (row.new_action.includes('visit')) {
+        //     row.info += ` (${row.dwell_time / 1000}s)`;
+        // }
 
         // Remove double quotes from info
         row.info = row.info.replace(/"/g, '').trim();

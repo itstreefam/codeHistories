@@ -4,12 +4,20 @@ const Diff = require('diff');
 const diff2html = require('diff2html');
 const { historyStyles } = require('./webViewStyles');
 const temporaryTest = require('./temporaryTest');
+const fs = require('fs');
+const cp = require('child_process');
+const path = require('path');
+const util = require('util');
+const exec = util.promisify(cp.exec);
+const { getCurrentDir } = require('./helpers');
 const express = require("express");
 require('dotenv').config({ path: __dirname + '/../.env' });
 const { OpenAI } = require("openai");
 const app = express();
 
 app.use(express.json());
+
+console.log(process.env.OPENAI_API_KEY);
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -19,11 +27,11 @@ class ClusterManager {
     constructor(context) {
         this.context = context;
         this.displayForGroupedEvents = []; // This high-level array will have subgoal for each grouping found
-        this.inCluster = false;  // Tracks if we are currently grouping events into a cluster
-        this.clusterStartTime = 0;  // Tracks the start time of the current cluster
+        this.inCluster = {};  // Store a map where the key is a filename and the value tracks if we are currently grouping events into a cluster for that file
+        this.clusterStartTime = {};  // Store a map where the key is a filename and the value tracks the start time of the current cluster for that file
         this.currentGroup = null; // Eventually will store both code and web events
         this.strayEvents = [];  // Stores events that do not fit into any cluster
-        this.pastEvent = null;  // Stores the previous event to compare against
+        this.pastEvents = null;  // Stores a map where the key is a filename and the value is the last event for that specific file
         this.MAX_NEW_LINES = 3;  // Maximum number of new lines that can be added/deleted between events
         this.debug = false;  // Debug flag to print out additional information
         this.webviewPanel = null;
@@ -33,6 +41,7 @@ class ClusterManager {
         this.styles = historyStyles;
         this.initializeTemporaryTest();
         this.initializeResourcesTemporaryTest();
+        this.debugging = true;
     }
 
     initializeTemporaryTest(){
@@ -50,7 +59,7 @@ class ClusterManager {
         console.log(this.codeResources);
     }
 
-    async initializeWebview(){
+    async initializeWebview() {
         // Check if the webview is already opened
         if (this.webviewPanel) {
             this.webviewPanel.reveal(vscode.ViewColumn.Beside);
@@ -62,13 +71,13 @@ class ClusterManager {
 
         this.webviewPanel = vscode.window.createWebviewPanel(
             'historyWebview',
-			'History Webview',
-			vscode.ViewColumn.Beside,
-			{ 
+            'History Webview',
+            vscode.ViewColumn.Beside,
+            {
                 enableScripts: true,
                 enableFindWidget: true
             }
-		);
+        );
 
         // If there's a previous state, restore it
         if (this.previousState) {
@@ -108,11 +117,56 @@ class ClusterManager {
         });
     }
 
+    // Method to process a list of events in real-time
+    async processEvents(eventList){
+        if (!eventList || eventList.length === 0) {
+            return;
+        }
+
+        for (const entry of eventList){
+            const eventType = this.getEventType(entry);
+
+            if(!this.currentGroup) {
+                this.startNewGroup();
+            }
+
+            if (eventType === "code") {
+                let filename = this.getFilename(entry.notes);
+                this.currentCodeEvent = {
+                    type: "code",
+                    file: filename,
+                    time: entry.time,
+                    code_text: entry.code_text,
+                    title: `Code changes in ${filename}`
+                };
+
+                await this.handleCodeEvent(entry); // this takes in raw event
+            } else if (eventType === "search" || eventType === "visit" || eventType === "revisit") {
+                this.currentWebEvent = {
+                    type: eventType,
+                    time: entry.time,
+                    webTitle: entry.notes,
+                    webpage: entry.timed_url,
+                };
+
+                this.strayEvents.push(this.currentWebEvent); // this is processed event
+            }
+        }
+
+        // Trigger webview if not opened
+        if (!this.webviewPanel) {
+            await this.initializeWebview();
+        } else {
+            // If webview is already opened, just update the content
+            await this.updateWebPanel();
+        }
+    }
+
     // Method to process a new event in real-time
     async processEvent(entry) {
         const eventType = this.getEventType(entry);
 
-        if(!this.currentGroup) {
+        if (!this.currentGroup) {
             this.startNewGroup();
         }
 
@@ -153,7 +207,7 @@ class ClusterManager {
         // Determine the type of the event based on its attributes
         if (event.notes.startsWith("code")) {
             return "code";
-        } 
+        }
 
         if (event.notes.startsWith("search")) {
             return "search";
@@ -182,20 +236,28 @@ class ClusterManager {
 
     async handleCodeEvent(event) {
         const filename = this.getFilename(event.notes);
-        if (this.pastEvent) {
-            const pastFilename = this.getFilename(this.pastEvent.notes);
+
+        // Init pastEvents if it doesnt exist for this file
+        if (!this.pastEvents) {
+            this.pastEvents = {};
+        }
+
+        const pastEvent = this.pastEvents[filename];
+
+        if (pastEvent) {
+            const pastFilename = this.getFilename(pastEvent.notes);
 
             // Finalize the cluster if switching files
             if (filename !== pastFilename) {
-                if (this.inCluster) {
+                if (this.inCluster[pastFilename]) {
                     await this.finalizeGroup(pastFilename);
-                    this.inCluster = false;
+                    this.inCluster[pastFilename] = false;
                 }
                 // Treat the current event as the start of a new cluster
                 this.strayEvents.push(this.currentCodeEvent);
             } else {
                 // Process as usual if it's the same file
-                await this.match_lines(filename, this.pastEvent, event);
+                await this.match_lines(filename, pastEvent, event);
                 // console.log('In handleCodeEvent', this.currentGroup);
             }
         } else {
@@ -204,17 +266,14 @@ class ClusterManager {
         }
 
         // Update the pastEvent with the current event after processing
-        this.pastEvent = event;
+        this.pastEvents[filename] = event;
     }
 
     // Method to match lines between events and determine if they belong in the same cluster
+    // ensure that the comparison and clustering are done independently per file
     async match_lines(filename, pastEvt, currEvt) {
         const pastLines = this.get_code_lines(pastEvt.code_text);
         const currentLines = this.get_code_lines(currEvt.code_text);
-
-        const pastFilename = this.getFilename(pastEvt.notes);
-        const currFilename = this.getFilename(currEvt.notes);
-        const currTime = currEvt.time;
 
         let idx = 0;
         let partialMatches = 0;
@@ -241,37 +300,11 @@ class ClusterManager {
         // Always add the current event to the strayEvents initially
         this.strayEvents.push(this.currentCodeEvent);
 
-        if (this.debug) {
-            console.log(currFilename);
-            if (pastFilename === currFilename) {
-                console.log(`\tDEBUG ${pastEvt.time}-${currEvt.time} (${currFilename}): partialMatches=${partialMatches} perfectMatches=${perfectMatches.length} newLines=${newLines.length} currLineLength=${currentLines.length} pastLineLength=${pastLines.length}`);
-            } else {
-                console.log(`\tDEBUG ${pastEvt.time}-${currEvt.time}: Filename mismatch ${pastFilename} != ${currFilename}`);
-            }
-
-            if (pastEvt.time === currEvt.time) {
-                console.log(`\tPAST ${pastEvt}\n`);
-                console.log(`\tCURR ${currEvt}\n`);
-            }
-        }
-
-        if (pastFilename !== currFilename) {
-            if (this.inCluster) {
-                console.log(`${this.clusterStartTime},${pastEvt.time},'code',${pastFilename}`);
-                await this.finalizeGroup(pastFilename);
-                this.inCluster = false;
-            } else if (this.debug) {
-                console.log(`\tDEBUG ${pastEvt.time}-${currEvt.time}: not in cluster ${pastFilename} != ${currFilename}`);
-            }
-            return;
-        }
-
-        // continue existing clusters only....
-        // no changes made, don't start a cluster, but continue if there's an existing one.
+        // Continue cluster based on match conditions
         if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length === 0 && currentLines.length === pastLines.length) {
             if (this.debug) console.log("\tcontinue cluster");
-            if (this.inCluster) {
-                this.inCluster = true;
+            if (this.inCluster[filename]) {
+                this.inCluster[filename] = true;
             }
         }
 
@@ -279,38 +312,38 @@ class ClusterManager {
         // at least one line has been edited, but nothing has been added/deleted
         else if (partialMatches > 0 && currentLines.length === pastLines.length) {
             if (this.debug) console.log("\t>=1 line edited; start new cluster");
-            if (!this.inCluster) {
-                this.inCluster = true;
-                this.clusterStartTime = pastEvt.time;
+            if (!this.inCluster[filename]) {
+                this.inCluster[filename] = true;
+                this.clusterStartTime[filename] = pastEvt.time;
             }
-        // at least one line has been added or deleted, but fewer than 4 new lines.
+            // at least one line has been added or deleted, but fewer than 4 new lines.
         } else if (perfectMatches.length > 0 && currentLines.length !== pastLines.length && (currentLines.length - pastLines.length <= this.MAX_NEW_LINES) && newLines.length <= this.MAX_NEW_LINES) {
             if (this.debug) console.log("\t1-3 lines added/deleted; start new cluster");
-            if (!this.inCluster) {
-                this.inCluster = true;
-                this.clusterStartTime = pastEvt.time;
+            if (!this.inCluster[filename]) {
+                this.inCluster[filename] = true;
+                this.clusterStartTime[filename] = pastEvt.time;
             }
-        } 
+        }
         // at least one line has been replaced, but code is the same length
         else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length > 0 && currentLines.length === pastLines.length) {
             if (this.debug) console.log("\t>= 1 line replaced; start new cluster");
-            if (!this.inCluster) {
-                this.inCluster = true;
-                this.clusterStartTime = pastEvt.time;
+            if (!this.inCluster[filename]) {
+                this.inCluster[filename] = true;
+                this.clusterStartTime[filename] = pastEvt.time;
             }
-        } 
+        }
         // only white space changes, no edits or additions/deletions
         else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length === 0 && currentLines.length !== pastLines.length) {
             if (this.debug) console.log("\twhitespace changes only; start new cluster");
-            if (!this.inCluster) {
-                this.inCluster = true;
-                this.clusterStartTime = pastEvt.time;
+            if (!this.inCluster[filename]) {
+                this.inCluster[filename] = true;
+                this.clusterStartTime[filename] = pastEvt.time;
             }
         } else {
             // we've just come out of a cluster, so print it out
-            if (this.inCluster) {
-                console.log(`${this.clusterStartTime},${pastEvt.time},'code',${pastFilename}`);
-                await this.finalizeGroup(pastFilename);
+            if (this.inCluster[filename]) {
+                console.log(`${this.clusterStartTime[filename]},${pastEvt.time},'code',${filename}`);
+                await this.finalizeGroup(filename);
                 if (this.debug) {
                     console.log(`${currTime}: partialMatches=${partialMatches} perfectMatches=${perfectMatches.length} newLines=${newLines.length} currLineLength=${currentLines.length} pastLineLength=${pastLines.length}`);
                     console.log("\n");
@@ -318,14 +351,14 @@ class ClusterManager {
             }
 
             // if there's a big clump that's come in, then we should start another cluster immediately
-            if ( (pastFilename === currFilename) && (perfectMatches.length > 0) && (currentLines.length - pastLines.length > this.MAX_NEW_LINES) ) {
+            if ((filename === pastEvt.file) && (perfectMatches.length > 0) && (currentLines.length - pastLines.length > this.MAX_NEW_LINES)) {
                 console.log(`\t starting new cluster ${pastEvt.time}`)
-                this.clusterStartTime = pastEvt.time;
-                this.inCluster = true;
+                this.clusterStartTime[filename] = pastEvt.time;
+                this.inCluster[filename] = true;
                 this.startNewGroup();
             }
             else {
-                this.inCluster = false;
+                this.inCluster[filename] = false;
             }
         }
 
@@ -335,10 +368,10 @@ class ClusterManager {
 
     async finalizeGroup(filename) {
         // grab the first code event from the stray events
-        const startCodeEvent = this.strayEvents.find(event => event.type === "code");
+        const startCodeEvent = this.strayEvents.find(event => event.type === "code" && event.file === filename);
 
         // grab the last code event from the stray events
-        const endCodeEvent = [...this.strayEvents].reverse().find(event => event.type === "code");
+        const endCodeEvent = [...this.strayEvents].reverse().find(event => event.type === "code" && event.file === filename);
 
         let codeActivity = {
             type: "code",
@@ -380,7 +413,7 @@ class ClusterManager {
                     actions: [],
                 };
             } else if (event.type === "visit" || event.type === "revisit") {
-                 // If the current event is a visit, add it to the current search event's actions
+                // If the current event is a visit, add it to the current search event's actions
                 if (currentSearchEvent) {
                     currentSearchEvent.actions.push({
                         type: event.type,
@@ -416,7 +449,7 @@ class ClusterManager {
         this.displayForGroupedEvents.push(this.currentGroup);
 
         // Clear the stray events and reset the current group
-        this.strayEvents = [];
+        this.strayEvents = this.strayEvents.filter(event => event.type === "code" && event.file !== filename);
         this.currentGroup = null;
     }
 
@@ -429,14 +462,14 @@ class ClusterManager {
 
             const prompt = `Compare the following code snippets of the file "${activity.file}":
 
-Code A (before): "${before_code}"
-Code B (after): "${after_code}"
+    Code A (before): "${before_code}"
+    Code B (after): "${after_code}"
 
-Identify whether the changes are addition, deletion, or modification without explicitly stating them.
-Also do not explicitly mention Code A or Code B.
-Summarize the changes in a single, simple, easy-to-read line. So no listing or bullet points. 
-Start out with a verb and no need to end with a period.
-Make sure it sound like a natural conversation.`;
+    Identify whether the changes are addition, deletion, or modification without explicitly stating them.
+    Also do not explicitly mention Code A or Code B.
+    Summarize the changes in a single, simple, easy-to-read line. So no listing or bullet points. 
+    Start out with a verb and no need to end with a period.
+    Make sure it sound like a natural conversation.`;
 
             console.log('Prompt:', prompt);
 
@@ -444,10 +477,10 @@ Make sure it sound like a natural conversation.`;
                 model: 'gpt-3.5-turbo',
                 max_tokens: 25,
                 messages: [
-                    { 
-                        role: "system", 
-                        content: "You are a code change history summarizer that helps programmers that get interrupted from coding, and the programmers you are helping require simple and prcise points that they can glance over and understand your point" 
-                    }, 
+                    {
+                        role: "system",
+                        content: "You are a code change history summarizer that helps programmers that get interrupted from coding, and the programmers you are helping require simple and prcise points that they can glance over and understand your point"
+                    },
                     { role: "user", content: prompt }
                 ]
             });
@@ -458,7 +491,7 @@ Make sure it sound like a natural conversation.`;
 
             // if summary contains double quotes, make them single quotes
             summary = summary.replace(/"/g, "'");
-            
+
             if (activity.type === "code") {
                 return `${summary}`;
             } else if (activity.type === "subgoal") {
@@ -466,7 +499,7 @@ Make sure it sound like a natural conversation.`;
             } else {
                 return `test placeholder test: ${summary}`;
             }
-    
+
         } catch (error) {
             console.error("Error generating title:", error.message);
             return `Code changes in ${activity.file}`;
@@ -511,7 +544,6 @@ Make sure it sound like a natural conversation.`;
         }
     }
 
-    
     async updateWebPanel() {
         if (!this.webviewPanel) {
             this.webviewPanel = vscode.window.createWebviewPanel(
@@ -561,16 +593,28 @@ Make sure it sound like a natural conversation.`;
                 </div>
             </div>
 
-                    <script>
-        (function () {
+        <script>
+            (function() {
+                const vscode = acquireVsCodeApi();
 
-            window.updateTitle = function (groupKey) {
-                const titleInput = document.getElementById('title-' + groupKey).value;
-            };
+                window.updateTitle = function(groupKey) {
+                    const titleInput = document.getElementById('title-' + groupKey).value;
+                    vscode.postMessage({
+                        command: 'updateTitle',
+                        groupKey: groupKey,
+                        title: titleInput,
+                    });
+                };
 
-            window.updateCodeTitle = function (groupKey, eventId) {
-                const codeTitleInput = document.getElementById('code-title-' + groupKey + '-' + eventId).value;
-            };
+                window.updateCodeTitle = function(groupKey, eventId) {
+                    const codeTitleInput = document.getElementById('code-title-' + groupKey + '-' + eventId).value;
+                    vscode.postMessage({
+                        command: 'updateCodeTitle',
+                        groupKey: groupKey,
+                        eventId: eventId,
+                        title: codeTitleInput,
+                    });
+                };
 
             // Function to get the state of all collapsible elements
             function getCollapsibleState() {
@@ -635,7 +679,6 @@ Make sure it sound like a natural conversation.`;
                 var containerOffsetTop = wrapper.offsetTop;
                 var pointerRelativeXpos = e.clientY - containerOffsetTop;
                 var boxAminHeight = 60;
-
                 boxA.style.height = (Math.max(boxAminHeight, pointerRelativeXpos - 8)) + 'px';
                 boxA.style.flexGrow = 0;
             }
@@ -675,9 +718,8 @@ Make sure it sound like a natural conversation.`;
             </html>
         `;
     }
-     
-
-    async generateGroupedEventsHTML() {
+  
+  async generateGroupedEventsHTMLTest() {
         let html = '';
 
         if (!this.codeActivities || this.codeActivities.length === 0) {
@@ -767,9 +809,148 @@ Make sure it sound like a natural conversation.`;
     
         return html;
     }
-    
 
-    async generateStrayEventsHTML() {
+async generateGroupedEventsHTML() {
+        // this.displayForGroupedEvents is an array of objects, each object is a group
+        // each group has a title and an array containing code and web activity
+        let html = '';
+
+        if (this.displayForGroupedEvents.length === 0) {
+            return '<li>No grouped events.</li>';
+        }
+
+        console.log('In generateGroupedEventsHTML', this.displayForGroupedEvents);
+
+        for (const [groupKey, group] of this.displayForGroupedEvents.entries()) {
+            // this is for subgoal-level grouping
+            // html += `
+            //     <li>
+            //         <!-- Editable title for the subgoal (group) -->
+            //         <input class="editable-title" id="title-${groupKey}" value="${group.title}" onchange="updateTitle('${groupKey}')">
+            //         <button type="button" class="collapsible">Subgoal ${groupKey}</button>
+            //         <div class="content">
+            //             <ul id="group-${groupKey}" data-groupkey="${groupKey}">
+            // `;
+
+            const displayedVisits = new Set();  // To track which visits have been displayed
+
+            for (const [index, event] of group.actions.entries()) {
+
+                let title = event.title || "Untitled";  // Provide a default title if undefined
+
+                if (event.type === 'code') {
+                    // Render the code activity with editable title and collapsible diff
+                    const diffHTML = this.generateDiffHTML(event);
+                    html += `
+                        <li data-eventid="${index}">
+                            <!-- Editable title for the code activity -->
+                            <b>${event.file}: </b><input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')" size="50">
+                            <button type="button" class="collapsible">+</button>
+                            <div class="content">
+                                ${diffHTML}
+                            </div>
+                        </li>
+                    `;
+                } else if (event.type === 'search') {
+                    // Render the search activity with collapsible visit events
+                    title = event.query || "Untitled";  // Ensure search queries are not undefined
+
+                    if(title === "Untitled") return;
+
+                    const searchedTitle = title.substring(title.indexOf(":") + 1, title.lastIndexOf("-")).trim();
+
+                    html += `
+                        <li data-eventid="${index}">
+                            <button type="button" class="collapsible">You search for "${searchedTitle}"</button>
+                            <div class="content">
+                                <ul>
+                    `;
+
+                    for (const [visitIndex, visit] of event.actions.entries()) {
+                        const visitKey = `${visit.webTitle}-${visit.time}`;  // Unique identifier for each visit
+
+                        // Only render if this visit has not been displayed
+                        if (!displayedVisits.has(visitKey)) {
+                            const visitTitle = visit.webTitle || "Untitled";  // Ensure visit titles are not undefined
+
+                            if(visitTitle === "Untitled") return;
+
+                            // grab the the title between : and ; if it exists
+                            const pageTitle = visitTitle.substring(visitTitle.indexOf(":") + 1, visitTitle.lastIndexOf(";")).trim();
+
+                            html += `
+                                <li>
+                                    You visit the site <a href="${visit.webpage}" target="_blank">${pageTitle}</a> 
+                                </li>
+                            `;
+                            displayedVisits.add(visitKey);  // Mark this visit as displayed
+                        }
+                    }
+
+                    html += `
+                                </ul>
+                            </div>
+                        </li>
+                    `;
+                } else if ((event.type === 'visit' || event.type === 'revisit') && !displayedVisits.has(`${event.webTitle}-${event.time}`)) {
+                    // Handle standalone visit and revisit events (not part of a search)
+                    const visitTitle = event.webTitle || "Untitled";
+
+                    if(visitTitle === "Untitled") return;
+
+                    const pageTitle = visitTitle.substring(visitTitle.indexOf(":") + 1, visitTitle.lastIndexOf(";")).trim();
+
+                    html += `
+                        <li data-eventid="${index}">
+                            You visit the site <a href="${visit.webpage}" target="_blank">${pageTitle}</a> 
+                        </li>
+                    `;
+                    displayedVisits.add(`${event.webTitle}-${event.time}`);  // Mark this visit as displayed
+                }
+            }
+        }
+
+        return html;
+    }
+
+    async testDiffHTML(anEvent){
+        try {
+            const currentDir = getCurrentDir();
+            const gitDir = path.join(currentDir, 'codeHistories.git');
+            const workTree = currentDir;
+
+            // checkout the second to last commit
+            const checkoutCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" checkout HEAD~1 -- ${anEvent.file}`;
+            await exec(checkoutCmd, { cwd: workTree });
+
+            // read the file content
+            const fileContentStr = fs.readFileSync(path.join(workTree, anEvent.file), 'utf8');
+
+            const diffString = Diff.createTwoFilesPatch(
+                'start',
+                'end',
+                fileContentStr,
+                anEvent.code_text,
+                anEvent.file,
+                anEvent.file
+            );
+
+            // Render the diff as HTML
+            const diffHtml = diff2html.html(diffString, {
+                outputFormat: 'side-by-side',
+                drawFileList: false,
+                colorScheme: 'light',
+                showFiles: false,
+            });
+
+            return diffHtml;
+        } catch (err) {
+            console.error(`Error grabbing latest commit from codeHistories.git: ${err}`);
+            return 'Error generating diff';
+        }
+    }
+  
+  async generateStrayEventsHTMLTest() {
         // console.log('In generateStrayEventsHTML', this.strayEvents);
         let html = '';
 
@@ -810,6 +991,69 @@ Make sure it sound like a natural conversation.`;
         return html;
     }
 
+    async generateStrayEventsHTML() {
+        // console.log('In generateStrayEventsHTML', this.strayEvents);
+        let html = '';
+
+        if (this.strayEvents.length === 0) {
+            return '<li>No stray events.</li>';
+        }
+
+        // the events in strayEvents are in processed form
+        for (const event of this.strayEvents) {
+            // all info is in event.notes
+            // const humanReadableTime = new Date(event.time * 1000).toLocaleString();
+
+            if (event.type === "code") {
+                if(this.debugging){
+                    const diffHTMLForStrayChanges = await this.testDiffHTML(event);
+
+                    html += `
+                        <li class="stray-event">
+                            <p><em>${event.file}</em></p>
+                            <button type="button" class="collapsible">+</button>
+                            <div class="content">
+                                ${diffHTMLForStrayChanges}
+                            </div>
+                        </li>
+                    `;
+                } else {
+                    html += `
+                        <li class="stray-event">
+                            <p><em>${event.file}</em></p>
+                        </li>
+                    `;
+                }
+            } else {
+                if (event.type === "search") {
+                    if (event.webTitle === "Untitled") return;
+
+                    const searchedTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf("-")).trim();
+
+                    html += `
+                        <li class="stray-event">
+                            <p>You search for "${searchedTitle}"</p>
+                        </li>
+                    `;
+                } else {
+                    // visit or revisit
+                    // same thing but also including the url link
+                    if (event.webTitle === "Untitled") return;
+
+                    const pageTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf(";")).trim();
+
+                    html += `
+                        <li class="stray-event">
+                            <p>You visit the site <a href="${event.webpage}" target="_blank">${pageTitle}</a></p>
+                        </li>
+                        `;
+                }
+            }
+        }
+
+        return html;
+    }
+
     generateDiffHTML(codeActivity) {
         // Get the event at startTime
         const startCodeEventLines = this.get_code_lines(codeActivity.before_code);
@@ -818,8 +1062,8 @@ Make sure it sound like a natural conversation.`;
         const endCodeEventLines = this.get_code_lines(codeActivity.after_code);
 
         const diffString = Diff.createTwoFilesPatch(
-            'start', 
-            'end', 
+            'start',
+            'end',
             codeActivity.before_code,
             codeActivity.after_code,
             codeActivity.file,
@@ -830,12 +1074,13 @@ Make sure it sound like a natural conversation.`;
         const diffHtml = diff2html.html(diffString, {
             outputFormat: 'side-by-side',
             drawFileList: false,
-            colorScheme: 'light'
+            colorScheme: 'light',
+            showFiles: false,
         });
-    
-        return `<div class="diff-container">${diffHtml}</div>`;
-    }  
-
+      
+        return diffHtml;
+    }
+      
     async updateTitle(groupKey, title) {
         this.displayForGroupedEvents[groupKey].title = title;
         await this.updateWebPanel();
