@@ -3,6 +3,7 @@ const vscode = require('vscode');
 const Diff = require('diff');
 const diff2html = require('diff2html');
 const { historyStyles } = require('./webViewStyles');
+const temporaryTest = require('./temporaryTest');
 const fs = require('fs');
 const cp = require('child_process');
 const path = require('path');
@@ -38,7 +39,24 @@ class ClusterManager {
         this.currentWebEvent = null;
         this.idCounter = 0;
         this.styles = historyStyles;
+        this.initializeTemporaryTest();
+        this.initializeResourcesTemporaryTest();
         this.debugging = true;
+    }
+
+    initializeTemporaryTest(){
+        const testData = new temporaryTest(String.raw`C:\Users\zhouh\Downloads\wordleStory.json`); // change path of test data here
+        // codeActivities has id, title, and code changes
+        // the focus atm would be code changes array which contains smaller codeActivity objects
+        // for eg, to access before_code, we would do this.codeActivities[0].codeChanges[0].before_code
+        this.codeActivities = testData.processSubgoals(testData.data);
+        // console.log(this.codeActivities);
+    }
+
+    initializeResourcesTemporaryTest(){
+        const testData = new temporaryTest(String.raw`C:\Users\zhouh\Downloads\wordleStory.json`); // change path of test data here
+        this.codeResources = testData.processResources(testData.data);
+        console.log(this.codeResources);
     }
 
     async initializeWebview() {
@@ -364,8 +382,10 @@ class ClusterManager {
             after_code: endCodeEvent.code_text,
             // title: `Code changes in ${filename}`
         };
-
+        
+        //commented out for test only
         codeActivity.title = await this.generateSubGoalTitle(codeActivity);
+
 
         // grab all the web events from the stray events
         const webEvents = this.strayEvents.filter(event => event.type !== "code");
@@ -486,6 +506,43 @@ class ClusterManager {
         }
     }
 
+    async generateResources(activity) {
+        try { 
+
+            const prompt = `Compare the following code snippets of the file "${activity}":
+
+Identify whether the changes are addition, deletion, or modification without explicitly stating them.
+Also do not explicitly mention Code A or Code B.
+Summarize the changes in a single, simple, easy-to-read line. So no listing or bullet points. 
+Start out with a verb and no need to end with a period.
+Make sure it sound like a natural conversation.`;
+
+            console.log('Prompt:', prompt);
+
+            const completions = await openai.chat.completions.create({
+                model: 'gpt-3.5-turbo',
+                max_tokens: 25,
+                messages: [
+                    { 
+                        role: "system", 
+                        content: "You are a code change history summarizer that helps programmers that get interrupted from coding, and the programmers you are helping require simple and prcise points that they can glance over and understand your point" 
+                    }, 
+                    { role: "user", content: prompt }
+                ]
+            });
+            console.log('API Response:', completions);
+
+            let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
+            console.log('Summary:', summary);
+
+            // if summary contains double quotes, make them single quotes
+            summary = summary.replace(/"/g, "'");
+            return summary;
+        } catch (error) {
+            console.error("Error generating title:", error.message);
+            return `Code changes in ${activity.file}`;
+        }
+    }
 
     async updateWebPanel() {
         if (!this.webviewPanel) {
@@ -507,186 +564,253 @@ class ClusterManager {
                 <meta charset="UTF-8">
                 <title>Code Clusters</title>
                 <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/diff2html/bundles/css/diff2html.min.css" />
+                 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
                 <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/diff2html/bundles/js/diff2html.min.js"></script>
                 <style>
                     ${this.styles}
                 </style>
             </head>
             <body>
-            <!-- <h1 class="title">Goal: make a Wordle clone</h1> -->
+             <!-- <h1 class="title">Goal: make a Wordle clone</h1> -->
             <div class="wrapper">
                 <div class="box" id="upper">
-                    <h2>Subgoals</h2>
+                    <div class="tooltip">
+                        <h2>Recent Development Highlights </h2>
+                    </div>
+                    <h4><em>Ordered from least recent to most recent</em></h4>
                     <ul id="grouped-events">
                         ${groupedEventsHTML}
                     </ul>
                 </div>
                 <div class="handler"></div>
                 <div class="box" id="lower"> 
-                    <h2>Unsorted Changes</h2>
+                    <div class="tooltip">
+                        <h2>In Progressed Work</h2>
+                    </div>
                     <ul id="stray-events">
                         ${strayEventsHTML}
                     </ul>
                 </div>
             </div>
-                
 
-                <script>
-                    (function() {
-                        const vscode = acquireVsCodeApi();
+        <script>
+            (function() {
+                const vscode = acquireVsCodeApi();
 
-                        window.updateTitle = function(groupKey) {
-                            const titleInput = document.getElementById('title-' + groupKey).value;
-                            vscode.postMessage({
-                                command: 'updateTitle',
-                                groupKey: groupKey,
-                                title: titleInput,
-                            });
-                        };
+                window.updateTitle = function(groupKey) {
+                    const titleInput = document.getElementById('title-' + groupKey).value;
+                    vscode.postMessage({
+                        command: 'updateTitle',
+                        groupKey: groupKey,
+                        title: titleInput,
+                    });
+                };
 
-                        window.updateCodeTitle = function(groupKey, eventId) {
-                            const codeTitleInput = document.getElementById('code-title-' + groupKey + '-' + eventId).value;
-                            vscode.postMessage({
-                                command: 'updateCodeTitle',
-                                groupKey: groupKey,
-                                eventId: eventId,
-                                title: codeTitleInput,
-                            });
-                        };
+                window.updateCodeTitle = function(groupKey, eventId) {
+                    const codeTitleInput = document.getElementById('code-title-' + groupKey + '-' + eventId).value;
+                    vscode.postMessage({
+                        command: 'updateCodeTitle',
+                        groupKey: groupKey,
+                        eventId: eventId,
+                        title: codeTitleInput,
+                    });
+                };
 
-                        // Function to get the state of all collapsible elements
-                        function getCollapsibleState() {
-                            const collapsibleElements = document.querySelectorAll('.collapsible');
-                            const collapsibleState = [];
+            // Function to get the state of all collapsible elements
+            function getCollapsibleState() {
+                const collapsibleElements = document.querySelectorAll('.collapsible');
+                const collapsibleState = [];
 
-                            collapsibleElements.forEach((element, index) => {
-                                collapsibleState.push({
-                                    index: index,
-                                    isActive: element.classList.contains('active') // Track if it's active (expanded)
-                                });
-                            });
+                collapsibleElements.forEach((element, index) => {
+                    collapsibleState.push({
+                        index: index,
+                        isActive: element.classList.contains('active') // Track if it's active (expanded)
+                    });
+                });
 
-                            return collapsibleState;
+                return collapsibleState;
+            }
+
+            // Function to restore the state of collapsible elements
+            function restoreCollapsibleState(collapsibleState) {
+                const collapsibleElements = document.querySelectorAll('.collapsible');
+
+                collapsibleState.forEach(state => {
+                    const element = collapsibleElements[state.index];
+                    if (element && state.isActive) {
+                        element.classList.add('active'); // Reapply the active state
+                        const content = element.nextElementSibling;
+                        if (content) {
+                            content.style.display = 'block'; // Ensure content is visible if active
                         }
+                    }
+                });
+            }
 
-                        // Function to restore the state of collapsible elements
-                        function restoreCollapsibleState(collapsibleState) {
-                            const collapsibleElements = document.querySelectorAll('.collapsible');
-
-                            collapsibleState.forEach(state => {
-                                const element = collapsibleElements[state.index];
-                                if (element && state.isActive) {
-                                    element.classList.add('active'); // Reapply the active state
-                                    const content = element.nextElementSibling;
-                                    if (content) {
-                                        content.style.display = 'block'; // Ensure content is visible if active
-                                    }
-                                }
-                            });
+            // Attach collapsible event listeners
+            function attachCollapsibleListeners() {
+                document.querySelectorAll('.collapsible').forEach(collapsibleItem => {
+                    collapsibleItem.addEventListener('click', function () {
+                        this.classList.toggle('active');
+                        // const content = this.nextElementSibling;
+                        const content = this.parentElement.nextElementSibling; 
+                        if (content.style.display === 'flex') {
+                            content.style.display = 'none';
+                        } else {
+                            content.style.display = 'flex';
                         }
+                    });
+                });
+            }
 
-                        // Attach collapsible event listeners
-                        function attachCollapsibleListeners() {
-                            document.querySelectorAll('.collapsible').forEach(collapsibleItem => {
-                                collapsibleItem.addEventListener('click', function() {
-                                    this.classList.toggle('active');
-                                    const content = this.nextElementSibling;
-                                    if (content.style.display === 'block') {
-                                        content.style.display = 'none';
-                                    } else {
-                                        content.style.display = 'block';
-                                    }
-                                });
-                            });
-                        }
+            // Initial listener attachment on page load
+            attachCollapsibleListeners();
 
-                        // Listen for messages from the extension
-                        window.addEventListener('message', event => {
-                            const message = event.data;
+            var handler = document.querySelector('.handler');
+            var wrapper = handler.closest('.wrapper');
+            var boxA = wrapper.querySelector('.box');
+            var isHandlerDragging = false;
 
-                            if (message.type === 'restoreState') {
-                                const previousState = message.state;
-                                if (previousState) {
-                                    document.body.innerHTML = previousState.html || '';
+            function handleMouseMove(e) {
+                if (!isHandlerDragging) {
+                    return;
+                }
 
-                                    // Restore scroll position
-                                    window.scrollTo(previousState.scrollX || 0, previousState.scrollY || 0);
+                var containerOffsetTop = wrapper.offsetTop;
+                var pointerRelativeXpos = e.clientY - containerOffsetTop;
+                var boxAminHeight = 60;
+                boxA.style.height = (Math.max(boxAminHeight, pointerRelativeXpos - 8)) + 'px';
+                boxA.style.flexGrow = 0;
+            }
 
-                                    // Reattach collapsible listeners after HTML restoration
-                                    attachCollapsibleListeners();
+            // Disable text selection globally
+            function disableTextSelection() {
+                document.body.style.userSelect = 'none'; // Disable text selection
+                document.body.style.cursor = 'ns-resize'; // Show resize cursor during drag
+            }
 
-                                    // Restore collapsible state
-                                    if (previousState.collapsibleState) {
-                                        restoreCollapsibleState(previousState.collapsibleState);
-                                    }
-                                }
-                            } else if (message.type === 'saveStateRequest') {
-                                // Get the current state of collapsible elements
-                                const collapsibleState = getCollapsibleState();
+            // Re-enable text selection globally
+            function enableTextSelection() {
+                document.body.style.userSelect = ''; // Restore default text selection
+                document.body.style.cursor = ''; // Restore default cursor
+            }
 
-                                // Send the current state back to the extension
-                                vscode.postMessage({
-                                    type: 'saveState',
-                                    state: {
-                                        html: document.body.innerHTML,
-                                        scrollX: window.scrollX,
-                                        scrollY: window.scrollY,
-                                        collapsibleState: collapsibleState // Include the collapsible state
-                                    }
-                                });
-                            }
-                        });
+            document.addEventListener('mousedown', function (e) {
+                // If mousedown event is fired from .handler, toggle flag to true
+                if (e.target === handler) {
+                    isHandlerDragging = true;
+                    disableTextSelection(); // Prevent text selection during drag
+                    document.addEventListener('mousemove', handleMouseMove);
+                }
+            });
 
-                        // Initial listener attachment on page load
-                        attachCollapsibleListeners();
-
-                        var handler = document.querySelector('.handler');
-                        var wrapper = handler.closest('.wrapper');
-                        var boxA = wrapper.querySelector('.box');
-                        var isHandlerDragging = false;
-
-                        function handleMouseMove(e) {
-                            if (!isHandlerDragging) {
-                                return;
-                            }
-
-                            var containerOffsetTop = wrapper.offsetTop;
-                            var pointerRelativeXpos = e.clientY - containerOffsetTop;
-                            var boxAminHeight = 60;
-
-                            boxA.style.height = (Math.max(boxAminHeight, pointerRelativeXpos - 8)) + 'px';
-                            boxA.style.flexGrow = 0;
-                        }
-
-
-                        document.addEventListener('mousedown', function (e) {
-                            // If mousedown event is fired from .handler, toggle flag to true
-                            if (e.target === handler) {
-                                isHandlerDragging = !isHandlerDragging;
-
-                                if (isHandlerDragging) {
-                                    document.addEventListener('mousemove', handleMouseMove);
-                                } else {
-                                    document.removeEventListener('mousemove', handleMouseMove);
-                                }
-                            }
-                        });
-
-                        document.addEventListener('mouseup', function () {
-                            if (isHandlerDragging) {
-                                isHandlerDragging = false;
-                                document.removeEventListener('mousemove', handleMouseMove);
-                            }
-                        });
-                                    })();
-                </script>
+            document.addEventListener('mouseup', function () {
+                if (isHandlerDragging) {
+                    isHandlerDragging = false;
+                    enableTextSelection(); // Re-enable text selection after drag
+                    document.removeEventListener('mousemove', handleMouseMove);
+                }
+            });
+        
+        })();
+    </script>
             </body>
             </html>
         `;
     }
+  
+  async generateGroupedEventsHTMLTest() {
+        let html = '';
 
+        if (!this.codeActivities || this.codeActivities.length === 0) {
+            console.error("codeActivities is undefined or empty");
+            return '<li>No grouped events.</li>';
+        }
+        if (!this.codeResources || this.codeResources.length === 0) {
+            console.error("codeResources is undefined or empty");
+            return '<li>No resources for you :(.</li>';
+        }
+    
+        console.log('In generateGroupedEventsHTML, codeActivities', this.codeActivities);
 
-    async generateGroupedEventsHTML() {
+        let feed_to_ai = [];
+    
+        for (let groupKey = 0; groupKey <= 8; groupKey++) {
+            const group = this.codeActivities[groupKey];
+            const links = this.codeResources[groupKey];
+    
+            for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
+                const subgoal = group.codeChanges[subgoalKey];
+
+                const diffHTML = this.generateDiffHTML(subgoal);
+
+                    html += `
+                        <li data-eventid="${subgoalKey}">
+                            <!-- Editable title for the code activity -->
+                            <div class="li-header">
+                                <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
+                                <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
+                                <!-- <i class="bi bi-pencil-square"></i> -->
+                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
+                                    <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
+                                    <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
+                                    </svg>
+                                </button>
+                                <b>in ${subgoal.file} </b>
+                            </div>
+                            <div class="content">
+                                <div class="left-container">
+                                    ${diffHTML}
+                                </div>
+                                <div class="resources">
+                    `;
+                    for(let linkKey = 0; linkKey <links.resources.length; linkKey++) {
+                        const link = links.resources[linkKey];
+                        for(let i = link.actions.length -1; i >= 0; i--) {
+                            const eachLink = links.resources[linkKey].actions[i];
+                            html += `   
+                                    ${eachLink.webTitle}
+                            `
+                            feed_to_ai.push(eachLink.webpage);
+
+                        }
+
+                        // for(let i = link.actions.length -1; i >= 0; i--) {
+                        //     const eachLink = links.resources[linkKey].actions[i];
+                        // }
+                    }
+
+                    const resource_paragraph = await this.generateResources(feed_to_ai);
+                    html += `   
+                                    <a>${resource_paragraph}</a>
+                            `
+                    
+                    html += `
+                                </div>
+                            </div>
+                        </li>
+                        <script> 
+                            document.addEventListener('DOMContentLoaded', () => {
+                                const button = document.getElementById('plusbtn-${groupKey}-${subgoalKey}');
+
+                                button.addEventListener('click', () => {
+                                    button.textContent = button.textContent === '+' ? '-' : '+';
+                                });
+                            });
+
+                            document.getElementById('button-${groupKey}-${subgoalKey}').addEventListener('click', function() {
+                                document.getElementById('code-title-${groupKey}-${subgoalKey}').focus();
+                            });  
+                        </script>
+                    `;
+            }
+        }
+    
+        return html;
+    }
+
+async generateGroupedEventsHTML() {
         // this.displayForGroupedEvents is an array of objects, each object is a group
         // each group has a title and an array containing code and web activity
         let html = '';
@@ -789,7 +913,6 @@ class ClusterManager {
         return html;
     }
 
-
     async testDiffHTML(anEvent){
         try {
             const currentDir = getCurrentDir();
@@ -825,6 +948,47 @@ class ClusterManager {
             console.error(`Error grabbing latest commit from codeHistories.git: ${err}`);
             return 'Error generating diff';
         }
+    }
+  
+  async generateStrayEventsHTMLTest() {
+        // console.log('In generateStrayEventsHTML', this.strayEvents);
+        let html = '';
+
+        if (this.strayEvents.length === 0) {
+            return '<li>Your future changes goes here.</li>';
+        }
+
+        // the events in strayEvents are in processed form
+        for (const event of this.strayEvents) {
+            // all info is in event.notes
+            const humanReadableTime = new Date(event.time * 1000).toLocaleString();
+            
+            if(event.type === "code") {
+                html += `
+                    <li class="stray-event">
+                        <p><strong><em>${event.file}</em></strong></p>
+                    </li>
+                `;
+            } else {
+                if(event.type === "search") {
+                    html += `
+                        <li class="stray-event">
+                            <p><strong>${humanReadableTime}</strong> - <em>${event.webTitle}</em></p>
+                        </li>
+                    `;
+                } else {
+                    // visit or revisit
+                    // same thing but also including the url link
+                    html += `
+                        <li class="stray-event">
+                            <p><strong>${humanReadableTime}</strong> - <a href="${event.webpage}"<em>${event.webTitle}</em></a></p>
+                        </li>
+                        `;
+                }
+            }
+        }
+
+        return html;
     }
 
     async generateStrayEventsHTML() {
@@ -913,10 +1077,10 @@ class ClusterManager {
             colorScheme: 'light',
             showFiles: false,
         });
-
+      
         return diffHtml;
     }
-
+      
     async updateTitle(groupKey, title) {
         this.displayForGroupedEvents[groupKey].title = title;
         await this.updateWebPanel();
