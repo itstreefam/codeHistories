@@ -39,13 +39,13 @@ class ClusterManager {
         this.currentWebEvent = null;
         this.idCounter = 0;
         this.styles = historyStyles;
-        this.initializeTemporaryTest();
-        this.initializeResourcesTemporaryTest();
+        // this.initializeTemporaryTest();
+        // this.initializeResourcesTemporaryTest();
         this.debugging = true;
     }
 
     initializeTemporaryTest(){
-        const testData = new temporaryTest(String.raw`C:\Users\zhouh\Downloads\wordleStory.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\Users\user\Downloads\wordleStory.json`); // change path of test data here
         // codeActivities has id, title, and code changes
         // the focus atm would be code changes array which contains smaller codeActivity objects
         // for eg, to access before_code, we would do this.codeActivities[0].codeChanges[0].before_code
@@ -54,9 +54,9 @@ class ClusterManager {
     }
 
     initializeResourcesTemporaryTest(){
-        const testData = new temporaryTest(String.raw`C:\Users\zhouh\Downloads\wordleStory.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\Users\user\Downloads\wordleStory.json`); // change path of test data here
         this.codeResources = testData.processResources(testData.data);
-        console.log(this.codeResources);
+        console.log("Resources", this.codeResources);
     }
 
     async initializeWebview() {
@@ -554,8 +554,10 @@ Make sure it sound like a natural conversation.`;
             );
         }
 
-        const groupedEventsHTML = await this.generateGroupedEventsHTML();
-        const strayEventsHTML = await this.generateStrayEventsHTML();
+        // const groupedEventsHTML = await this.generateGroupedEventsHTML();
+        // const strayEventsHTML = await this.generateStrayEventsHTML();
+        const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
+        const strayEventsHTML = await this.generateStrayEventsHTMLTest();
 
         this.webviewPanel.webview.html = `
             <!DOCTYPE html>
@@ -719,7 +721,7 @@ Make sure it sound like a natural conversation.`;
         `;
     }
   
-  async generateGroupedEventsHTMLTest() {
+    async generateGroupedEventsHTMLTest() {
         let html = '';
 
         if (!this.codeActivities || this.codeActivities.length === 0) {
@@ -810,7 +812,7 @@ Make sure it sound like a natural conversation.`;
         return html;
     }
 
-async generateGroupedEventsHTML() {
+    async generateGroupedEventsHTML() {
         // this.displayForGroupedEvents is an array of objects, each object is a group
         // each group has a title and an array containing code and web activity
         let html = '';
@@ -841,15 +843,36 @@ async generateGroupedEventsHTML() {
                 if (event.type === 'code') {
                     // Render the code activity with editable title and collapsible diff
                     const diffHTML = this.generateDiffHTML(event);
+                    // html += `
+                    //     <li data-eventid="${index}">
+                    //         <!-- Editable title for the code activity -->
+                    //         <b>${event.file}: </b><input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')" size="50">
+                    //         <button type="button" class="collapsible">+</button>
+                    //         <div class="content">
+                    //             ${diffHTML}
+                    //         </div>
+                    //     </li>
+                    // `;
                     html += `
                         <li data-eventid="${index}">
                             <!-- Editable title for the code activity -->
-                            <b>${event.file}: </b><input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')" size="50">
-                            <button type="button" class="collapsible">+</button>
-                            <div class="content">
-                                ${diffHTML}
+                            <div class="li-header">
+                                <button type="button" class="collapsible" id="plusbtn-${groupKey}-${index}">+</button>
+                                <input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')" size="50">
+                                <!-- <i class="bi bi-pencil-square"></i> -->
+                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${title}">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
+                                    <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
+                                    <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
+                                    </svg>
+                                </button>
+                                <b>in ${event.file} </b>
                             </div>
-                        </li>
+                            <div class="content">
+                                <div class="left-container">
+                                    ${diffHTML}
+                                </div>
+                                <div class="resources">
                     `;
                 } else if (event.type === 'search') {
                     // Render the search activity with collapsible visit events
@@ -861,39 +884,10 @@ async generateGroupedEventsHTML() {
 
                     html += `
                         <li data-eventid="${index}">
-                            <button type="button" class="collapsible">You search for "${searchedTitle}"</button>
-                            <div class="content">
-                                <ul>
-                    `;
-
-                    for (const [visitIndex, visit] of event.actions.entries()) {
-                        const visitKey = `${visit.webTitle}-${visit.time}`;  // Unique identifier for each visit
-
-                        // Only render if this visit has not been displayed
-                        if (!displayedVisits.has(visitKey)) {
-                            const visitTitle = visit.webTitle || "Untitled";  // Ensure visit titles are not undefined
-
-                            if(visitTitle === "Untitled") return;
-
-                            // grab the the title between : and ; if it exists
-                            const pageTitle = visitTitle.substring(visitTitle.indexOf(":") + 1, visitTitle.lastIndexOf(";")).trim();
-
-                            html += `
-                                <li>
-                                    You visit the site <a href="${visit.webpage}" target="_blank">${pageTitle}</a> 
-                                </li>
-                            `;
-                            displayedVisits.add(visitKey);  // Mark this visit as displayed
-                        }
-                    }
-
-                    html += `
-                                </ul>
-                            </div>
+                            You search for <em>${searchedTitle}</em>
                         </li>
                     `;
                 } else if ((event.type === 'visit' || event.type === 'revisit') && !displayedVisits.has(`${event.webTitle}-${event.time}`)) {
-                    // Handle standalone visit and revisit events (not part of a search)
                     const visitTitle = event.webTitle || "Untitled";
 
                     if(visitTitle === "Untitled") return;
@@ -902,11 +896,30 @@ async generateGroupedEventsHTML() {
 
                     html += `
                         <li data-eventid="${index}">
-                            You visit the site <a href="${visit.webpage}" target="_blank">${pageTitle}</a> 
+                            You visit the site <a href="${visit.webpage}" target="_blank">${pageTitle}</a>
                         </li>
                     `;
                     displayedVisits.add(`${event.webTitle}-${event.time}`);  // Mark this visit as displayed
                 }
+
+                html += `
+                                </div>
+                            </div>
+                        </li>
+                        <script> 
+                            document.addEventListener('DOMContentLoaded', () => {
+                                const button = document.getElementById('plusbtn-${groupKey}-${index}');
+
+                                button.addEventListener('click', () => {
+                                    button.textContent = button.textContent === '+' ? '-' : '+';
+                                });
+                            });
+
+                            document.getElementById('button-${groupKey}-${index}').addEventListener('click', function() {
+                                document.getElementById('code-title-${groupKey}-${index}').focus();
+                            });  
+                        </script>
+                    `;
             }
         }
 
@@ -995,8 +1008,10 @@ async generateGroupedEventsHTML() {
         // console.log('In generateStrayEventsHTML', this.strayEvents);
         let html = '';
 
+        let idx = 0;
+
         if (this.strayEvents.length === 0) {
-            return '<li>No stray events.</li>';
+            return '<li>Your future changes goes here.</li>';
         }
 
         // the events in strayEvents are in processed form
@@ -1009,18 +1024,30 @@ async generateGroupedEventsHTML() {
                     const diffHTMLForStrayChanges = await this.testDiffHTML(event);
 
                     html += `
-                        <li class="stray-event">
-                            <p><em>${event.file}</em></p>
-                            <button type="button" class="collapsible">+</button>
+                        <li class="stray-event" id="code-${idx}">
+                            <button type="button" class="collapsible" id="plusbtn-${idx}">+</button>
+                            You made changes to <em>${event.file}</em>
                             <div class="content">
                                 ${diffHTMLForStrayChanges}
                             </div>
                         </li>
                     `;
+
+                    html += `
+                        <script> 
+                            document.addEventListener('DOMContentLoaded', () => {
+                                const button = document.getElementById('plusbtn-${idx}');
+
+                                button.addEventListener('click', () => {
+                                    button.textContent = button.textContent === '+' ? '-' : '+';
+                                });
+                            });
+                        </script>
+                    `;
                 } else {
                     html += `
-                        <li class="stray-event">
-                            <p><em>${event.file}</em></p>
+                        <li class="stray-event" id="code-${idx}">
+                            You made changes to <em>${event.file}</em>
                         </li>
                     `;
                 }
@@ -1031,7 +1058,7 @@ async generateGroupedEventsHTML() {
                     const searchedTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf("-")).trim();
 
                     html += `
-                        <li class="stray-event">
+                        <li class="stray-event" id="search-${idx}">
                             <p>You search for "${searchedTitle}"</p>
                         </li>
                     `;
@@ -1043,12 +1070,14 @@ async generateGroupedEventsHTML() {
                     const pageTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf(";")).trim();
 
                     html += `
-                        <li class="stray-event">
+                        <li class="stray-event" id="visit-${idx}">
                             <p>You visit the site <a href="${event.webpage}" target="_blank">${pageTitle}</a></p>
                         </li>
                         `;
                 }
             }
+
+            idx += 1;
         }
 
         return html;
