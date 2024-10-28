@@ -791,6 +791,17 @@ function deactivate() {
 	allTerminalsDirCount = new Object();
 	terminalDimChanged = new Object();
 	terminalOpenedFirstTime = new Object();
+
+	if(usingHistoryView){
+		// save webview inside CH_cfg_and_logs
+		const currentDir = getCurrentDir();
+
+		let date = new Date();
+		let dateStr = date.toISOString().split('T')[0];
+
+		const webviewPath = path.join(currentDir, 'CH_cfg_and_logs', `webview_${dateStr}.html`);
+		fs.writeFileSync(webviewPath, ClusterManager.getWebviewContent());
+	}
 }
 
 module.exports = {

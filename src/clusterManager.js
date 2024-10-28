@@ -32,8 +32,9 @@ class ClusterManager {
         this.currentGroup = null; // Eventually will store both code and web events
         this.strayEvents = [];  // Stores events that do not fit into any cluster
         this.pastEvents = null;  // Stores a map where the key is a filename and the value is the last event for that specific file
+        this.allPastEvents = {}; // Stores all past events for all files
         this.MAX_NEW_LINES = 3;  // Maximum number of new lines that can be added/deleted between events
-        this.debug = false;  // Debug flag to print out additional information
+        this.debug = true;  // Debug flag to print out additional information
         this.webviewPanel = null;
         this.currentCodeEvent = null;
         this.currentWebEvent = null;
@@ -247,7 +248,7 @@ class ClusterManager {
         if (pastEvent) {
             const pastFilename = this.getFilename(pastEvent.notes);
 
-            // Finalize the cluster if switching files
+            // Handling switching files within the same commit group
             if (filename !== pastFilename) {
                 if (this.inCluster[pastFilename]) {
                     await this.finalizeGroup(pastFilename);
@@ -267,6 +268,12 @@ class ClusterManager {
 
         // Update the pastEvent with the current event after processing
         this.pastEvents[filename] = event;
+        
+        if(this.allPastEvents[filename]){
+            this.allPastEvents[filename].push(event);
+        } else {
+            this.allPastEvents[filename] = [event];
+        }
     }
 
     // Method to match lines between events and determine if they belong in the same cluster
@@ -302,7 +309,7 @@ class ClusterManager {
 
         // Continue cluster based on match conditions
         if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length === 0 && currentLines.length === pastLines.length) {
-            if (this.debug) console.log("\tcontinue cluster");
+            if (this.debug) console.log("\tcontinue cluster for", filename);
             if (this.inCluster[filename]) {
                 this.inCluster[filename] = true;
             }
@@ -311,14 +318,14 @@ class ClusterManager {
         // start or continue clusters.
         // at least one line has been edited, but nothing has been added/deleted
         else if (partialMatches > 0 && currentLines.length === pastLines.length) {
-            if (this.debug) console.log("\t>=1 line edited; start new cluster");
+            if (this.debug) console.log("\t>=1 line edited; start new cluster for", filename);
             if (!this.inCluster[filename]) {
                 this.inCluster[filename] = true;
                 this.clusterStartTime[filename] = pastEvt.time;
             }
             // at least one line has been added or deleted, but fewer than 4 new lines.
-        } else if (perfectMatches.length > 0 && currentLines.length !== pastLines.length && (currentLines.length - pastLines.length <= this.MAX_NEW_LINES) && newLines.length <= this.MAX_NEW_LINES) {
-            if (this.debug) console.log("\t1-3 lines added/deleted; start new cluster");
+        } else if (perfectMatches.length > 0 && currentLines.length !== pastLines.length && (Math.abs(currentLines.length - pastLines.length) <= this.MAX_NEW_LINES) && newLines.length <= this.MAX_NEW_LINES) {
+            if (this.debug) console.log("\t1-3 lines added/deleted; start new cluster for", filename);
             if (!this.inCluster[filename]) {
                 this.inCluster[filename] = true;
                 this.clusterStartTime[filename] = pastEvt.time;
@@ -326,18 +333,23 @@ class ClusterManager {
         }
         // at least one line has been replaced, but code is the same length
         else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length > 0 && currentLines.length === pastLines.length) {
-            if (this.debug) console.log("\t>= 1 line replaced; start new cluster");
+            if (this.debug) console.log("\t>= 1 line replaced; start new cluster for", filename);
             if (!this.inCluster[filename]) {
                 this.inCluster[filename] = true;
                 this.clusterStartTime[filename] = pastEvt.time;
             }
         }
         // only white space changes, no edits or additions/deletions
-        else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length === 0 && currentLines.length !== pastLines.length) {
-            if (this.debug) console.log("\twhitespace changes only; start new cluster");
-            if (!this.inCluster[filename]) {
-                this.inCluster[filename] = true;
-                this.clusterStartTime[filename] = pastEvt.time;
+        // else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length === 0 && currentLines.length !== pastLines.length) {
+        //     if (this.debug) console.log("\twhitespace changes only; start new cluster");
+        //     if (!this.inCluster[filename]) {
+        //         this.inCluster[filename] = true;
+        //         this.clusterStartTime[filename] = pastEvt.time;
+        //     }
+        else if (this.onlyWhitespaceChanges(pastLines, currentLines)) {
+            if (this.debug) console.log("\tonly whitespace changes for", filename);
+            if(this.inCluster[filename]) {
+                if (this.debug) console.log(`Continuing cluster for ${filename}`);
             }
         } else {
             // we've just come out of a cluster, so print it out
@@ -366,6 +378,27 @@ class ClusterManager {
         await this.updateWebPanel();
     }
 
+    // Method to check if only whitespace changes have been made
+    onlyWhitespaceChanges(pastLines, currentLines) {
+        // Filter out empty lines from both past and current lines
+        const filteredPastLines = pastLines.filter(line => line.trim().length > 0);
+        const filteredCurrentLines = currentLines.filter(line => line.trim().length > 0);
+
+        // If non-empty lines are identical, it’s only whitespace changes
+        if (filteredPastLines.length !== filteredCurrentLines.length) {
+            return false;  // If non-empty line count is different, it’s more than whitespace change
+        }
+
+        // Compare each non-empty line for content equality
+        for (let i = 0; i < filteredPastLines.length; i++) {
+            if (filteredPastLines[i] !== filteredCurrentLines[i]) {
+                return false;  // If any non-empty lines differ, it's not just whitespace changes
+            }
+        }
+
+        return true;  // Only whitespace or empty lines were added/removed
+    }
+
     async finalizeGroup(filename) {
         // grab the first code event from the stray events
         const startCodeEvent = this.strayEvents.find(event => event.type === "code" && event.file === filename);
@@ -373,19 +406,43 @@ class ClusterManager {
         // grab the last code event from the stray events
         const endCodeEvent = [...this.strayEvents].reverse().find(event => event.type === "code" && event.file === filename);
 
+        // grab any stray code events that's not the filename
+        const strayCodeEvents = this.strayEvents.filter(event => event.type === "code" && event.file !== filename);
+
         let codeActivity = {
             type: "code",
             id: (++this.idCounter).toString(),
             file: filename,
-            time: endCodeEvent.time,
+            startTime: this.clusterStartTime[filename],
+            endTime: endCodeEvent.time,
             before_code: startCodeEvent.code_text,
             after_code: endCodeEvent.code_text,
+            related: {},
             // title: `Code changes in ${filename}`
         };
         
         //commented out for test only
         codeActivity.title = await this.generateSubGoalTitle(codeActivity);
 
+        // using gpt to determine if the code activity needs more context
+        const isValid = await this.validateClusterWithGPT(codeActivity, strayCodeEvents, this.allPastEvents);
+
+        if(isValid.includes("yes")){
+            // "yes, file(s): insert file name(s) here, reason: insert reason here"
+            let files = isValid.split("file(s):")[1].split("reason:")[0].trim();
+            files = files.split(",");
+            files = files.map(file => file.trim());
+
+            for (const file of files) {
+                let relatedCodeActivity = this.strayEvents.find(event => event.type === "code" && event.file === file);
+
+                // remove the related code activity from the stray events
+                this.strayEvents = this.strayEvents.filter(event => event.type !== "code" || event.file !== file);
+
+                // add the related code activity to the current group
+                codeActivity.related[file] = relatedCodeActivity;
+            }
+        }
 
         // grab all the web events from the stray events
         const webEvents = this.strayEvents.filter(event => event.type !== "code");
@@ -506,6 +563,29 @@ class ClusterManager {
         }
     }
 
+    async validateClusterWithGPT(codeActivity, strayCodeEvents, allPastEvents) {
+        const prompt = `The summary of the code changes in the file "${codeActivity.file}" is: "${codeActivity.title}". 
+        Consider the information in "${strayCodeEvents}" and determine if the changes in other file(s) are related to the code changes in "${codeActivity.file}".
+        If you think the changes should also be included in the same cluster, answer in the following format:
+        "yes, file(s): insert file name(s) here, reason: insert reason here" or "no, reason: insert reason here".`;
+        
+        const response = await openai.chat.completions.create({
+            model: 'gpt-3.5-turbo',
+            max_tokens: 50,
+            messages: [
+                { role: "user", content: prompt }
+            ]
+        });
+
+        const isValid = response?.choices?.[0]?.message?.content.toLocaleLowerCase() || "No response";
+
+        if(this.debug){
+            console.log('Validation response:', isValid);
+        }
+
+        return isValid;
+    }
+
     async generateResources(activity) {
         try { 
 
@@ -554,10 +634,10 @@ Make sure it sound like a natural conversation.`;
             );
         }
 
-        // const groupedEventsHTML = await this.generateGroupedEventsHTML();
-        // const strayEventsHTML = await this.generateStrayEventsHTML();
-        const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
-        const strayEventsHTML = await this.generateStrayEventsHTMLTest();
+        const groupedEventsHTML = await this.generateGroupedEventsHTML();
+        const strayEventsHTML = await this.generateStrayEventsHTML();
+        // const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
+        // const strayEventsHTML = await this.generateStrayEventsHTMLTest();
 
         this.webviewPanel.webview.html = `
             <!DOCTYPE html>
@@ -1025,24 +1105,12 @@ Make sure it sound like a natural conversation.`;
 
                     html += `
                         <li class="stray-event" id="code-${idx}">
-                            <button type="button" class="collapsible" id="plusbtn-${idx}">+</button>
+                            <button type="button" class="collapsible">+</button>
                             You made changes to <em>${event.file}</em>
                             <div class="content">
                                 ${diffHTMLForStrayChanges}
                             </div>
                         </li>
-                    `;
-
-                    html += `
-                        <script> 
-                            document.addEventListener('DOMContentLoaded', () => {
-                                const button = document.getElementById('plusbtn-${idx}');
-
-                                button.addEventListener('click', () => {
-                                    button.textContent = button.textContent === '+' ? '-' : '+';
-                                });
-                            });
-                        </script>
                     `;
                 } else {
                     html += `
@@ -1106,6 +1174,81 @@ Make sure it sound like a natural conversation.`;
             colorScheme: 'light',
             showFiles: false,
         });
+
+        if(codeActivity.related){
+            for(const relatedFile in codeActivity.related){
+                // the file variable has code_text instead of before_code and after_code
+                // so if there are more than one occurence, we grab the first one and last one and compare their code_text
+                // but if there is only one single occurence, we grab the code_text and compare it with the code_text information from this.allPastEvents
+                
+                if(Object.keys(codeActivity.related).length === 1){
+                    const relatedCodeEvent = codeActivity.related[relatedFile];
+                    
+                    const infoFromAllPastEvents = this.allPastEvents.find(event => event.type === "code" && event.file === relatedFile);
+                    
+                    // technically speaking this event should happen in between the startTime and endTime of the current codeActivity
+                    // so we will grab the event that is closest to the startTime of the current codeActivity
+                    // and compare the code_text of that event with the code_text of the relatedCodeEvent
+
+                    const closestEvent = infoFromAllPastEvents.find(event => event.time >= codeActivity.startTime && event.time <= relatedCodeEvent.time);
+                    const closestEventCodeText = closestEvent.code_text;
+                    const relatedCodeEventCodeText = relatedCodeEvent.code_text;
+
+                    const diffStringRelated = Diff.createTwoFilesPatch(
+                        'start',
+                        'end',
+                        closestEventCodeText,
+                        relatedCodeEventCodeText,
+                        relatedFile,
+                        relatedFile
+                    );
+
+                    // Render the diff as HTML
+                    const diffHtmlRelated = diff2html.html(diffStringRelated, {
+                        outputFormat: 'side-by-side',
+                        drawFileList: false,
+                        colorScheme: 'light',
+                        showFiles: false,
+                    });
+
+                    diffHtml += `
+                        <div class="diff-container">
+                            <h3>Changes in ${relatedFile}</h3>
+                            ${diffHtmlRelated}
+                        </div>
+                    `;
+
+                } else {
+                    const relatedCodeEvent = codeActivity.related[relatedFile];
+                    const startRelatedCodeEvent = relatedCodeEvent[0];
+                    const endRelatedCodeEvent = relatedCodeEvent[relatedCodeEvent.length - 1];
+
+                    const diffStringRelated = Diff.createTwoFilesPatch(
+                        'start',
+                        'end',
+                        startRelatedCodeEvent.code_text,
+                        endRelatedCodeEvent.code_text,
+                        relatedFile,
+                        relatedFile
+                    );
+
+                    // Render the diff as HTML
+                    const diffHtmlRelated = diff2html.html(diffStringRelated, {
+                        outputFormat: 'side-by-side',
+                        drawFileList: false,
+                        colorScheme: 'light',
+                        showFiles: false,
+                    });
+
+                    diffHtml += `
+                        <div class="diff-container">
+                            <h3>Changes in ${relatedFile}</h3>
+                            ${diffHtmlRelated}
+                        </div>
+                    `;
+                }
+            }
+        }
       
         return diffHtml;
     }
@@ -1149,6 +1292,10 @@ Make sure it sound like a natural conversation.`;
             filename = filename.split(';')[0];
         }
         return filename;
+    }
+
+    getWebviewContent() {
+        return this.webviewPanel;
     }
 }
 
