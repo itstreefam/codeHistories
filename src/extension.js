@@ -73,7 +73,7 @@ function activate(context) {
 	context.subscriptions.push(vscode.window.onDidChangeTextEditorSelection(event => {
 		const key = event.textEditor.document.uri.fsPath;
 		const debouncedSelectionChangeHandler = debounce(selection.handleTextEditorSelectionChange, 500, key);
-		console.log('Selection event:', event);
+		// console.log('Selection event:', event);
 		debouncedSelectionChangeHandler(event.textEditor);
 	}));
 
@@ -119,7 +119,7 @@ function activate(context) {
 
 	myCustomEmitter.on('save', async (entry) => {
 		eventEntry = entry; // for history view, just need to save and send this entry to clusterManager later after execution
-		console.log('eventEntry:', eventEntry);
+		// console.log('eventEntry:', eventEntry);
 
 		if(usingContentTimelineView){
 			contentTimelineManager.processEvent(entry); // for content timeline view, process the event immediately

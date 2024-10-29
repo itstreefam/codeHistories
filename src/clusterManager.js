@@ -33,7 +33,7 @@ class ClusterManager {
         this.strayEvents = [];  // Stores events that do not fit into any cluster
         this.pastEvents = null;  // Stores a map where the key is a filename and the value is the last event for that specific file
         this.allPastEvents = {}; // Stores all past events for all files
-        this.MAX_NEW_LINES = 3;  // Maximum number of new lines that can be added/deleted between events
+        this.MAX_NEW_LINES = 4;  // Maximum number of new lines that can be added/deleted between events
         this.debug = true;  // Debug flag to print out additional information
         this.webviewPanel = null;
         this.currentCodeEvent = null;
@@ -123,6 +123,8 @@ class ClusterManager {
         if (!eventList || eventList.length === 0) {
             return;
         }
+
+        console.log('In processEvents', eventList);
 
         for (const entry of eventList){
             const eventType = this.getEventType(entry);
@@ -259,11 +261,17 @@ class ClusterManager {
             } else {
                 // Process as usual if it's the same file
                 await this.match_lines(filename, pastEvent, event);
-                // console.log('In handleCodeEvent', this.currentGroup);
+                // console.log('In handleCodeEvent', this.strayEvents);
             }
         } else {
             // If this is the first event, it is treated as a stray until a cluster can be formed
             this.strayEvents.push(this.currentCodeEvent);
+
+            // Initialize the cluster for this file
+            if (!this.inCluster[filename]) {
+                this.inCluster[filename] = true;
+                this.clusterStartTime[filename] = event.time;
+            }
         }
 
         // Update the pastEvent with the current event after processing
@@ -274,6 +282,7 @@ class ClusterManager {
         } else {
             this.allPastEvents[filename] = [event];
         }
+        console.log('All past events:', this.allPastEvents);
     }
 
     // Method to match lines between events and determine if they belong in the same cluster
@@ -281,6 +290,7 @@ class ClusterManager {
     async match_lines(filename, pastEvt, currEvt) {
         const pastLines = this.get_code_lines(pastEvt.code_text);
         const currentLines = this.get_code_lines(currEvt.code_text);
+        const currTime = currEvt.time;
 
         let idx = 0;
         let partialMatches = 0;
@@ -309,6 +319,7 @@ class ClusterManager {
 
         // Continue cluster based on match conditions
         if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length === 0 && currentLines.length === pastLines.length) {
+            console.log("case 1");
             if (this.debug) console.log("\tcontinue cluster for", filename);
             if (this.inCluster[filename]) {
                 this.inCluster[filename] = true;
@@ -318,6 +329,7 @@ class ClusterManager {
         // start or continue clusters.
         // at least one line has been edited, but nothing has been added/deleted
         else if (partialMatches > 0 && currentLines.length === pastLines.length) {
+            console.log("case 2");
             if (this.debug) console.log("\t>=1 line edited; start new cluster for", filename);
             if (!this.inCluster[filename]) {
                 this.inCluster[filename] = true;
@@ -325,6 +337,7 @@ class ClusterManager {
             }
             // at least one line has been added or deleted, but fewer than 4 new lines.
         } else if (perfectMatches.length > 0 && currentLines.length !== pastLines.length && (Math.abs(currentLines.length - pastLines.length) <= this.MAX_NEW_LINES) && newLines.length <= this.MAX_NEW_LINES) {
+            console.log("case 3");
             if (this.debug) console.log("\t1-3 lines added/deleted; start new cluster for", filename);
             if (!this.inCluster[filename]) {
                 this.inCluster[filename] = true;
@@ -333,6 +346,7 @@ class ClusterManager {
         }
         // at least one line has been replaced, but code is the same length
         else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length > 0 && currentLines.length === pastLines.length) {
+            console.log("case 4");
             if (this.debug) console.log("\t>= 1 line replaced; start new cluster for", filename);
             if (!this.inCluster[filename]) {
                 this.inCluster[filename] = true;
@@ -340,18 +354,21 @@ class ClusterManager {
             }
         }
         // only white space changes, no edits or additions/deletions
-        // else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length === 0 && currentLines.length !== pastLines.length) {
-        //     if (this.debug) console.log("\twhitespace changes only; start new cluster");
-        //     if (!this.inCluster[filename]) {
-        //         this.inCluster[filename] = true;
-        //         this.clusterStartTime[filename] = pastEvt.time;
-        //     }
-        else if (this.onlyWhitespaceChanges(pastLines, currentLines)) {
-            if (this.debug) console.log("\tonly whitespace changes for", filename);
-            if(this.inCluster[filename]) {
-                if (this.debug) console.log(`Continuing cluster for ${filename}`);
+        else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length === 0 && currentLines.length !== pastLines.length) {
+            console.log("case 5");
+            if (this.debug) console.log("\twhitespace changes only; start new cluster");
+            if (!this.inCluster[filename]) {
+                this.inCluster[filename] = true;
+                this.clusterStartTime[filename] = pastEvt.time;
             }
+        // else if (this.onlyWhitespaceChanges(pastLines, currentLines)) {
+        //     if (this.debug) console.log("\tonly whitespace changes for", filename);
+        //     if(this.inCluster[filename]) {
+        //         if (this.debug) console.log(`Continuing cluster for ${filename}`);
+        //     }
         } else {
+            console.log("case 6");
+            console.log(`this.inCluster[${filename}]`, this.inCluster[filename]);
             // we've just come out of a cluster, so print it out
             if (this.inCluster[filename]) {
                 console.log(`${this.clusterStartTime[filename]},${pastEvt.time},'code',${filename}`);
@@ -407,7 +424,7 @@ class ClusterManager {
         const endCodeEvent = [...this.strayEvents].reverse().find(event => event.type === "code" && event.file === filename);
 
         // grab any stray code events that's not the filename
-        const strayCodeEvents = this.strayEvents.filter(event => event.type === "code" && event.file !== filename);
+        // const strayCodeEvents = this.strayEvents.filter(event => event.type === "code" && event.file !== filename);
 
         let codeActivity = {
             type: "code",
@@ -424,25 +441,25 @@ class ClusterManager {
         //commented out for test only
         codeActivity.title = await this.generateSubGoalTitle(codeActivity);
 
-        // using gpt to determine if the code activity needs more context
-        const isValid = await this.validateClusterWithGPT(codeActivity, strayCodeEvents, this.allPastEvents);
+        // // using gpt to determine if the code activity needs more context
+        // const isValid = await this.validateClusterWithGPT(codeActivity, strayCodeEvents, this.allPastEvents);
 
-        if(isValid.includes("yes")){
-            // "yes, file(s): insert file name(s) here, reason: insert reason here"
-            let files = isValid.split("file(s):")[1].split("reason:")[0].trim();
-            files = files.split(",");
-            files = files.map(file => file.trim());
+        // if(isValid.includes("yes")){
+        //     // "yes, file(s): insert file name(s) here, reason: insert reason here"
+        //     let files = isValid.split("file(s):")[1].split("reason:")[0].trim();
+        //     files = files.split(",");
+        //     files = files.map(file => file.trim());
 
-            for (const file of files) {
-                let relatedCodeActivity = this.strayEvents.find(event => event.type === "code" && event.file === file);
+        //     for (const file of files) {
+        //         let relatedCodeActivity = this.strayEvents.find(event => event.type === "code" && event.file === file);
 
-                // remove the related code activity from the stray events
-                this.strayEvents = this.strayEvents.filter(event => event.type !== "code" || event.file !== file);
+        //         // remove the related code activity from the stray events
+        //         this.strayEvents = this.strayEvents.filter(event => event.type !== "code" || event.file !== file);
 
-                // add the related code activity to the current group
-                codeActivity.related[file] = relatedCodeActivity;
-            }
-        }
+        //         // add the related code activity to the current group
+        //         codeActivity.related[file] = relatedCodeActivity;
+        //     }
+        // }
 
         // grab all the web events from the stray events
         const webEvents = this.strayEvents.filter(event => event.type !== "code");
@@ -500,6 +517,8 @@ class ClusterManager {
 
         // Sort the currentGroup actions by time
         this.currentGroup.actions.sort((a, b) => a.time - b.time);
+
+        console.log('Finalized group:', this.currentGroup);
 
         // Set the title and add the group to display
         // this.currentGroup.title = this.generateSubGoalTitle(this.currentGroup);
@@ -1006,28 +1025,43 @@ Make sure it sound like a natural conversation.`;
         return html;
     }
 
-    async testDiffHTML(anEvent){
+    async testDiffHTML(anEvent) {
         try {
             const currentDir = getCurrentDir();
             const gitDir = path.join(currentDir, 'codeHistories.git');
             const workTree = currentDir;
-
-            // checkout the second to last commit
-            const checkoutCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" checkout HEAD~1 -- ${anEvent.file}`;
-            await exec(checkoutCmd, { cwd: workTree });
-
-            // read the file content
-            const fileContentStr = fs.readFileSync(path.join(workTree, anEvent.file), 'utf8');
-
+    
+            // Get the content of the file from the previous commit (HEAD~1) using `git show`
+            const previousFileCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" show HEAD~1:${anEvent.file}`;
+            let previousFileContent = '';
+            
+            try {
+                // Get the file content from the previous commit
+                const { stdout } = await exec(previousFileCmd, { cwd: workTree });
+                previousFileContent = stdout.trim(); // Ensure content is properly trimmed
+            } catch (err) {
+                // If the file did not exist in the previous commit, treat it as a newly created file
+                previousFileContent = '';  // No content in previous commit
+            }
+    
+            // Ensure current content is also trimmed properly
+            const currentFileContent = anEvent.code_text.trim();
+    
+            // Check if the file is newly created (empty previous content)
+            if (previousFileContent === '') {
+                console.log(`New file created: ${anEvent.file}`);
+            }
+    
+            // Generate the diff using Diff.createTwoFilesPatch
             const diffString = Diff.createTwoFilesPatch(
-                'start',
-                'end',
-                fileContentStr,
-                anEvent.code_text,
-                anEvent.file,
-                anEvent.file
+                'start', // Filename for the previous commit (for display purposes)
+                'end',   // Filename for the current commit (for display purposes)
+                previousFileContent,  // Content from the previous commit (empty if file was newly created)
+                currentFileContent,   // Content from the current commit (new content)
+                anEvent.file,  // File name (unchanged)
+                anEvent.file   // File name (unchanged)
             );
-
+    
             // Render the diff as HTML
             const diffHtml = diff2html.html(diffString, {
                 outputFormat: 'side-by-side',
@@ -1035,14 +1069,16 @@ Make sure it sound like a natural conversation.`;
                 colorScheme: 'light',
                 showFiles: false,
             });
-
+    
             return diffHtml;
+    
         } catch (err) {
-            console.error(`Error grabbing latest commit from codeHistories.git: ${err}`);
+            console.error(`Error generating diff for ${anEvent.file}: ${err}`);
             return 'Error generating diff';
         }
     }
-  
+    
+
   async generateStrayEventsHTMLTest() {
         // console.log('In generateStrayEventsHTML', this.strayEvents);
         let html = '';
@@ -1085,71 +1121,64 @@ Make sure it sound like a natural conversation.`;
     }
 
     async generateStrayEventsHTML() {
-        // console.log('In generateStrayEventsHTML', this.strayEvents);
         let html = '';
-
         let idx = 0;
-
+    
         if (this.strayEvents.length === 0) {
-            return '<li>Your future changes goes here.</li>';
+            return '<li>Your future changes go here.</li>';
         }
-
-        // the events in strayEvents are in processed form
+    
+        // Track the most recent change for each file
+        const fileDiffs = {};
+    
         for (const event of this.strayEvents) {
-            // all info is in event.notes
-            // const humanReadableTime = new Date(event.time * 1000).toLocaleString();
-
             if (event.type === "code") {
-                if(this.debugging){
-                    const diffHTMLForStrayChanges = await this.testDiffHTML(event);
-
-                    html += `
-                        <li class="stray-event" id="code-${idx}">
+                // Get the latest diff for this file
+                const diffHTMLForStrayChanges = await this.testDiffHTML(event);
+                
+                // Store the latest diff for this file, replacing any previous entry
+                fileDiffs[event.file] = `
+                    <li class="stray-event" id="code-${idx}">
+                        <div class="li-header">
                             <button type="button" class="collapsible">+</button>
                             You made changes to <em>${event.file}</em>
-                            <div class="content">
+                        </div>
+                        <div class="content">
+                            <div class="left-container">
                                 ${diffHTMLForStrayChanges}
                             </div>
-                        </li>
-                    `;
-                } else {
-                    html += `
-                        <li class="stray-event" id="code-${idx}">
-                            You made changes to <em>${event.file}</em>
-                        </li>
-                    `;
-                }
-            } else {
-                if (event.type === "search") {
-                    if (event.webTitle === "Untitled") return;
-
-                    const searchedTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf("-")).trim();
-
-                    html += `
-                        <li class="stray-event" id="search-${idx}">
-                            <p>You search for "${searchedTitle}"</p>
-                        </li>
-                    `;
-                } else {
-                    // visit or revisit
-                    // same thing but also including the url link
-                    if (event.webTitle === "Untitled") return;
-
-                    const pageTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf(";")).trim();
-
-                    html += `
-                        <li class="stray-event" id="visit-${idx}">
-                            <p>You visit the site <a href="${event.webpage}" target="_blank">${pageTitle}</a></p>
-                        </li>
-                        `;
-                }
+                        </div>
+                    </li>
+                `;
+            } else if (event.type === "search") {
+                // Handle search events
+                const searchedTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf("-")).trim();
+                html += `
+                    <li class="stray-event" id="search-${idx}">
+                        <p>You searched for "${searchedTitle}"</p>
+                    </li>
+                `;
+            } else if (event.type === "visit" || event.type === "revisit") {
+                // Handle visit or revisit events
+                const pageTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf(";")).trim();
+                html += `
+                    <li class="stray-event" id="visit-${idx}">
+                        <p>You visited the site <a href="${event.webpage}" target="_blank">${pageTitle}</a></p>
+                    </li>
+                `;
             }
-
-            idx += 1;
+    
+            idx += 1;  // Increment index for the next item
         }
-
-        return html;
+    
+        // After processing all events, add the stored diffs to the HTML
+        Object.values(fileDiffs).forEach(diff => {
+            html += diff;
+        });
+    
+        return html;  // Return the generated HTML
     }
+    
 
     generateDiffHTML(codeActivity) {
         // Get the event at startTime
