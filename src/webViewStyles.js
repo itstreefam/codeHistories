@@ -28,7 +28,8 @@ const historyStyles = `
         display: flex;
         flex-direction: column;
         transition: height 0.05s linear;
-        overflow: scroll;
+        overflow: auto;
+        background-color: #ffffff;
     }
 
     .tooltip {
@@ -115,9 +116,6 @@ const historyStyles = `
         border: none;
         padding: 5px 10px;
         border-radius: 3px;
-        /* flex-grow: 1; */
-        /* Restricts the maximum width to avoid taking up too much space */
-        margin-right: 10px;
         width: 50vw;
         border-color: red;
     }
@@ -160,6 +158,23 @@ const historyStyles = `
         width: 97%;
         margin-left: 2%
     }
+    
+    .container {
+        position: relative;
+        text-align: center;
+        scale: 1.25;
+        margin-right: 2%;
+    }
+        
+    .centered {
+        position: absolute;
+        top: 45%;
+        font-size: 9px;
+        z-index: 1000;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-weight: bold;
+    }
 
     b {
         white-space: nowrap;
@@ -192,6 +207,10 @@ const historyStyles = `
         position: relative !important;
     }
 
+    .d2h-code-linenumber {
+        position: relative !important;
+    }
+
     .left-container{
         width: 70%;
     }
@@ -199,6 +218,41 @@ const historyStyles = `
     .resources {
         width: 30%;
     }
+        
+    .tooltip {
+        position: relative;
+        display: inline-block;
+    }
+
+.tooltip .tooltiptext {
+  background:https://pyxis.nymag.com/v1/imgs/e1e/6b7/e7e202e97398fd64f6f9b6c6d13a526234-tired-spongebob.rsquare.w400.jpg;
+  visibility: hidden;
+  width: 120px;
+  height: 60px;
+  color: #fff;
+  text-align: center;
+  border-radius: 6px;
+  padding: 5px 0;
+  position: absolute;
+  z-index: 1;
+  top: 200%;
+  left: 30%;
+  margin-left: -60px;
+}
+
+.tooltip:hover .tooltiptext {
+  visibility: visible;
+}
+
+.placeholder {
+    width: 13.005px;
+    height: 15.360px;
+    margin-right: 24.285px;
+}
+
+.thumbnail .tooltiptext {
+    scale: 2;
+}
 `;
 
 // Light theme styles for content timeline

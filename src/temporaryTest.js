@@ -140,6 +140,7 @@ class temporaryTest {
                     let actionDetail = {
                         type: subAction.type,
                         webTitle: subAction.webTitle,
+                        img: subAction.img,
                         webpage: subAction.webpage,
                         time: subAction.time
                     };
