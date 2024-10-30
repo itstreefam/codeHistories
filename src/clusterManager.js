@@ -1327,7 +1327,39 @@ Make sure it sound like a natural conversation.`;
     }
 
     getWebviewContent() {
-        return this.webviewPanel;
+        if (this.webviewPanel && this.webviewPanel.webview) {
+            return this.webviewPanel.webview.html;
+        }
+        return null;
+    }
+    
+    // Function to comment out VS Code API calls before saving the HTML
+    commentOutVSCodeApi(htmlContent) {
+        // Comment out 'const vscode = acquireVsCodeApi();'
+        htmlContent = htmlContent.replace(/const vscode = acquireVsCodeApi\(\);/, '// const vscode = acquireVsCodeApi();');
+
+        // Comment out 'vscode.postMessage({...})' related to 'updateTitle'
+        htmlContent = htmlContent.replace(
+            /vscode\.postMessage\(\s*\{\s*command:\s*'updateTitle'[\s\S]*?\}\s*\);/g, 
+            `// vscode.postMessage({ 
+                // command: 'updateTitle', 
+                // groupKey: groupKey, 
+                // title: titleInput 
+            // });`
+        );
+
+        // Comment out 'vscode.postMessage({...})' related to 'updateCodeTitle'
+        htmlContent = htmlContent.replace(
+            /vscode\.postMessage\(\s*\{\s*command:\s*'updateCodeTitle'[\s\S]*?\}\s*\);/g, 
+            `// vscode.postMessage({ 
+                // command: 'updateCodeTitle', 
+                // groupKey: groupKey, 
+                // eventId: eventId, 
+                // title: codeTitleInput 
+            // });`
+        );
+
+        return htmlContent;
     }
 }
 

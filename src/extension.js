@@ -43,6 +43,8 @@ var terminalInstance;
 var eventEntry = {};
 var usingHistoryView = true;
 var usingContentTimelineView = false;
+var clusterManager = null;
+var contentTimelineManager = null;
 
 function updateContextKeys() {
     vscode.commands.executeCommand('setContext', 'codeHistories.usingContentTimelineView', usingContentTimelineView);
@@ -109,9 +111,9 @@ function activate(context) {
 		}
 	}
 
-	const clusterManager = new ClusterManager(context);
+	clusterManager = new ClusterManager(context);
 	// clusterManager.initializeWebview();
-	const contentTimelineManager = new ContentTimelineManager(context);
+	contentTimelineManager = new ContentTimelineManager(context);
 
 	vscode.window.onDidStartTerminalShellExecution(async event => {
 		await onDidExecuteShellCommandHelper(event, clusterManager, contentTimelineManager);
@@ -792,15 +794,26 @@ function deactivate() {
 	terminalDimChanged = new Object();
 	terminalOpenedFirstTime = new Object();
 
-	if(usingHistoryView){
-		// save webview inside CH_cfg_and_logs
-		const currentDir = getCurrentDir();
+	try{
+		if(usingHistoryView){
+			// save webview inside CH_cfg_and_logs
+			const currentDir = getCurrentDir();
 
-		let date = new Date();
-		let dateStr = date.toISOString().split('T')[0];
+			let date = new Date();
+			let dateStr = date.toISOString().split('T')[0];
+			let epochTimeInSeconds = Math.floor(date.getTime() / 1000);  // Get the current time in seconds
 
-		const webviewPath = path.join(currentDir, 'CH_cfg_and_logs', `webview_${dateStr}.html`);
-		fs.writeFileSync(webviewPath, ClusterManager.getWebviewContent());
+			const webviewPath = path.join(currentDir, 'CH_cfg_and_logs', `webview_${dateStr}_${epochTimeInSeconds}.html`);
+			// console.log('webviewPath:', webviewPath);
+
+			let webviewContent = clusterManager.getWebviewContent();
+			webviewContent = clusterManager.commentOutVSCodeApi(webviewContent); // Comment out the VS Code API script so html can run as standalone in browser
+			// console.log('webviewContent:', webviewContent);
+
+			fs.writeFileSync(webviewPath, webviewContent);			
+		}
+	} catch (error) {
+		console.error('Error saving webview:', error);
 	}
 }
 
