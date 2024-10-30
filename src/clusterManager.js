@@ -1031,38 +1031,41 @@ Make sure it sound like a natural conversation.`;
             const gitDir = path.join(currentDir, 'codeHistories.git');
             const workTree = currentDir;
     
-            // Get the content of the file from the previous commit (HEAD~1) using `git show`
-            const previousFileCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" show HEAD~1:${anEvent.file}`;
+            // Get the second-to-last commit hash
+            const logCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" log -2 --format="%H"`;
+            const { stdout: logOutput } = await exec(logCmd, { cwd: workTree });
+            const commitHashes = logOutput.trim().split('\n');
+            const previousCommitHash = commitHashes[1];  // HEAD~1 is the second hash
+    
+            // Get the content of the file from the previous commit
+            const previousFilePath = path.join(currentDir, anEvent.file);
             let previousFileContent = '';
-            
+    
             try {
-                // Get the file content from the previous commit
-                const { stdout } = await exec(previousFileCmd, { cwd: workTree });
-                previousFileContent = stdout.trim(); // Ensure content is properly trimmed
+                // Simulating reading the file content from the previous commit using fs.promises.readFile
+                const showCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" show ${previousCommitHash}:${anEvent.file}`;
+                const { stdout: previousFileOutput } = await exec(showCmd, { cwd: workTree });
+                previousFileContent = previousFileOutput;
             } catch (err) {
                 // If the file did not exist in the previous commit, treat it as a newly created file
+                console.log(`File didn't exist in the previous commit. Treating as a new file: ${anEvent.file}`);
                 previousFileContent = '';  // No content in previous commit
             }
     
-            // Ensure current content is also trimmed properly
-            const currentFileContent = anEvent.code_text.trim();
+            const currentFileContent = await fs.promises.readFile(previousFilePath, 'utf8')
     
-            // Check if the file is newly created (empty previous content)
-            if (previousFileContent === '') {
-                console.log(`New file created: ${anEvent.file}`);
-            }
-    
-            // Generate the diff using Diff.createTwoFilesPatch
             const diffString = Diff.createTwoFilesPatch(
-                'start', // Filename for the previous commit (for display purposes)
-                'end',   // Filename for the current commit (for display purposes)
-                previousFileContent,  // Content from the previous commit (empty if file was newly created)
-                currentFileContent,   // Content from the current commit (new content)
-                anEvent.file,  // File name (unchanged)
-                anEvent.file   // File name (unchanged)
+                `start`,
+                `end`,
+                previousFileContent,
+                currentFileContent,
+                anEvent.file,
+                anEvent.file,
+                {
+                    ignoreWhitespace: true // this is important
+                }
             );
     
-            // Render the diff as HTML
             const diffHtml = diff2html.html(diffString, {
                 outputFormat: 'side-by-side',
                 drawFileList: false,
