@@ -28,7 +28,7 @@ const historyStyles = `
         display: flex;
         flex-direction: column;
         transition: height 0.05s linear;
-        overflow: scroll;
+        overflow: auto;
     }
 
     .tooltip {

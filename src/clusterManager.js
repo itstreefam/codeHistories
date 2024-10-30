@@ -1067,7 +1067,7 @@ Make sure it sound like a natural conversation.`;
             );
     
             const diffHtml = diff2html.html(diffString, {
-                outputFormat: 'side-by-side',
+                outputFormat: 'line-by-line',
                 drawFileList: false,
                 colorScheme: 'light',
                 showFiles: false,
@@ -1196,12 +1196,15 @@ Make sure it sound like a natural conversation.`;
             codeActivity.before_code,
             codeActivity.after_code,
             codeActivity.file,
-            codeActivity.file
+            codeActivity.file,
+            {
+                ignoreWhitespace: true // this is important
+            }
         );
 
         // Render the diff as HTML
         const diffHtml = diff2html.html(diffString, {
-            outputFormat: 'side-by-side',
+            outputFormat: 'line-by-line',
             drawFileList: false,
             colorScheme: 'light',
             showFiles: false,
@@ -1232,12 +1235,15 @@ Make sure it sound like a natural conversation.`;
                         closestEventCodeText,
                         relatedCodeEventCodeText,
                         relatedFile,
-                        relatedFile
+                        relatedFile,
+                        {
+                            ignoreWhitespace: true // this is important
+                        }
                     );
 
                     // Render the diff as HTML
                     const diffHtmlRelated = diff2html.html(diffStringRelated, {
-                        outputFormat: 'side-by-side',
+                        outputFormat: 'line-by-line',
                         drawFileList: false,
                         colorScheme: 'light',
                         showFiles: false,
@@ -1261,12 +1267,15 @@ Make sure it sound like a natural conversation.`;
                         startRelatedCodeEvent.code_text,
                         endRelatedCodeEvent.code_text,
                         relatedFile,
-                        relatedFile
+                        relatedFile,
+                        {
+                            ignoreWhitespace: true // this is important
+                        }
                     );
 
                     // Render the diff as HTML
                     const diffHtmlRelated = diff2html.html(diffStringRelated, {
-                        outputFormat: 'side-by-side',
+                        outputFormat: 'line-by-line',
                         drawFileList: false,
                         colorScheme: 'light',
                         showFiles: false,
