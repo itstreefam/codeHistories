@@ -215,6 +215,10 @@ const historyStyles = `
         width: 70%;
     }
 
+    .full-container{
+        width: 100%;
+    }
+
     .resources {
         width: 30%;
     }

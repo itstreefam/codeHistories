@@ -876,7 +876,33 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                             <i class="bi bi-bookmark"></i>
                             <div class="centered">${link.actions.length}</div>
                         </div>`
-                    } else {
+                        
+                        html += `
+                        </div>
+                        <div class="content">
+                            <div class="left-container">
+                                ${diffHTML}
+                            </div>
+                            <div class="resources">
+                        `
+                        
+                            if (count < links.resources.length) {
+                                const link = links.resources[count];
+                                for(let i = 0; i < link.actions.length; i++) {
+                                    const eachLink = links.resources[count].actions[i];
+                                    html += `   
+                                        <div class="tooltip">
+                                            ${eachLink.webTitle}: <a>${eachLink.webpage}</a>
+                                            <span class="tooltiptext"  style="scale: 2"><img class="thumbnail" src="${eachLink.img}" alt="Thumbnail"></span>
+                                            <br>
+                                        </div>
+                                    `
+                                }
+                                html += `</div>`
+                            } else {
+                                html += `</div>`
+                            }
+                        } else {
                         html += `
                         <li data-eventid="${subgoalKey}">
                             <!-- Editable title for the code activity -->
@@ -892,39 +918,44 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                                 </button>
                                 <b>in ${subgoal.file} </b>
                                 <div class="placeholder">
-                            </div>
-                        `
-                    }
-
-                    html += `
+                                </div>
                             </div>
                             <div class="content">
-                                <div class="left-container">
+                                <div class="full-container">
                                     ${diffHTML}
                                 </div>
-                                <div class="resources">
-                    `;
-                    // for(let linkKey = 0; linkKey <links.resources.length; linkKey++) {
-                    
-                    if (count < links.resources.length) {
-                        const link = links.resources[count];
-                        for(let i = 0; i < link.actions.length; i++) {
-                            const eachLink = links.resources[count].actions[i];
-                            html += `   
-                                <div class="tooltip">
-                                    ${eachLink.webTitle}: <a>${eachLink.webpage}</a>
-                                    <span class="tooltiptext"  style="scale: 2"><img class="thumbnail" src="${eachLink.img}" alt="Thumbnail"></span>
-                                    <br>
-                                </div>
-                            `
-                        }
+                            </div>`
                     }
+
+                    // html += `
+                    //         </div>
+                    //         <div class="content">
+                    //             <div class="left-container">
+                    //                 ${diffHTML}
+                    //             </div>
+                    //             <div class="resources">
+                    // `;
+                    
+                    // if (count < links.resources.length) {
+                    //     const link = links.resources[count];
+                    //     for(let i = 0; i < link.actions.length; i++) {
+                    //         const eachLink = links.resources[count].actions[i];
+                    //         html += `   
+                    //             <div class="tooltip">
+                    //                 ${eachLink.webTitle}: <a>${eachLink.webpage}</a>
+                    //                 <span class="tooltiptext"  style="scale: 2"><img class="thumbnail" src="${eachLink.img}" alt="Thumbnail"></span>
+                    //                 <br>
+                    //             </div>
+                    //         `
+                    //     }
+                    //     html += `</div>`
+                    // } else {
+                    //     html += `</div>`
+                    // }
                     
                     count ++;
 
                     html += `
-                                </div>
-                            </div>
                         </li>
                         <script> 
                             document.addEventListener('DOMContentLoaded', () => {
