@@ -32,20 +32,21 @@ class ClusterManager {
         this.currentGroup = null; // Eventually will store both code and web events
         this.strayEvents = [];  // Stores events that do not fit into any cluster
         this.pastEvents = null;  // Stores a map where the key is a filename and the value is the last event for that specific file
-        this.MAX_NEW_LINES = 3;  // Maximum number of new lines that can be added/deleted between events
-        this.debug = false;  // Debug flag to print out additional information
+        this.allPastEvents = {}; // Stores all past events for all files
+        this.MAX_NEW_LINES = 4;  // Maximum number of new lines that can be added/deleted between events
+        this.debug = true;  // Debug flag to print out additional information
         this.webviewPanel = null;
         this.currentCodeEvent = null;
         this.currentWebEvent = null;
         this.idCounter = 0;
         this.styles = historyStyles;
-        this.initializeTemporaryTest();
-        this.initializeResourcesTemporaryTest();
+        // this.initializeTemporaryTest();
+        // this.initializeResourcesTemporaryTest();
         this.debugging = true;
     }
 
     initializeTemporaryTest(){
-        const testData = new temporaryTest(String.raw`C:\Users\zhouh\Downloads\wordleStory.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\Users\user\Downloads\wordleStory.json`); // change path of test data here
         // codeActivities has id, title, and code changes
         // the focus atm would be code changes array which contains smaller codeActivity objects
         // for eg, to access before_code, we would do this.codeActivities[0].codeChanges[0].before_code
@@ -54,9 +55,9 @@ class ClusterManager {
     }
 
     initializeResourcesTemporaryTest(){
-        const testData = new temporaryTest(String.raw`C:\Users\zhouh\Downloads\wordleStory.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\Users\user\Downloads\wordleStory.json`); // change path of test data here
         this.codeResources = testData.processResources(testData.data);
-        console.log(this.codeResources);
+        console.log("Resources", this.codeResources);
     }
 
     async initializeWebview() {
@@ -122,6 +123,8 @@ class ClusterManager {
         if (!eventList || eventList.length === 0) {
             return;
         }
+
+        console.log('In processEvents', eventList);
 
         for (const entry of eventList){
             const eventType = this.getEventType(entry);
@@ -247,7 +250,7 @@ class ClusterManager {
         if (pastEvent) {
             const pastFilename = this.getFilename(pastEvent.notes);
 
-            // Finalize the cluster if switching files
+            // Handling switching files within the same commit group
             if (filename !== pastFilename) {
                 if (this.inCluster[pastFilename]) {
                     await this.finalizeGroup(pastFilename);
@@ -258,15 +261,28 @@ class ClusterManager {
             } else {
                 // Process as usual if it's the same file
                 await this.match_lines(filename, pastEvent, event);
-                // console.log('In handleCodeEvent', this.currentGroup);
+                // console.log('In handleCodeEvent', this.strayEvents);
             }
         } else {
             // If this is the first event, it is treated as a stray until a cluster can be formed
             this.strayEvents.push(this.currentCodeEvent);
+
+            // Initialize the cluster for this file
+            if (!this.inCluster[filename]) {
+                this.inCluster[filename] = true;
+                this.clusterStartTime[filename] = event.time;
+            }
         }
 
         // Update the pastEvent with the current event after processing
         this.pastEvents[filename] = event;
+        
+        if(this.allPastEvents[filename]){
+            this.allPastEvents[filename].push(event);
+        } else {
+            this.allPastEvents[filename] = [event];
+        }
+        console.log('All past events:', this.allPastEvents);
     }
 
     // Method to match lines between events and determine if they belong in the same cluster
@@ -274,6 +290,7 @@ class ClusterManager {
     async match_lines(filename, pastEvt, currEvt) {
         const pastLines = this.get_code_lines(pastEvt.code_text);
         const currentLines = this.get_code_lines(currEvt.code_text);
+        const currTime = currEvt.time;
 
         let idx = 0;
         let partialMatches = 0;
@@ -302,7 +319,8 @@ class ClusterManager {
 
         // Continue cluster based on match conditions
         if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length === 0 && currentLines.length === pastLines.length) {
-            if (this.debug) console.log("\tcontinue cluster");
+            console.log("case 1");
+            if (this.debug) console.log("\tcontinue cluster for", filename);
             if (this.inCluster[filename]) {
                 this.inCluster[filename] = true;
             }
@@ -311,14 +329,16 @@ class ClusterManager {
         // start or continue clusters.
         // at least one line has been edited, but nothing has been added/deleted
         else if (partialMatches > 0 && currentLines.length === pastLines.length) {
-            if (this.debug) console.log("\t>=1 line edited; start new cluster");
+            console.log("case 2");
+            if (this.debug) console.log("\t>=1 line edited; start new cluster for", filename);
             if (!this.inCluster[filename]) {
                 this.inCluster[filename] = true;
                 this.clusterStartTime[filename] = pastEvt.time;
             }
             // at least one line has been added or deleted, but fewer than 4 new lines.
-        } else if (perfectMatches.length > 0 && currentLines.length !== pastLines.length && (currentLines.length - pastLines.length <= this.MAX_NEW_LINES) && newLines.length <= this.MAX_NEW_LINES) {
-            if (this.debug) console.log("\t1-3 lines added/deleted; start new cluster");
+        } else if (perfectMatches.length > 0 && currentLines.length !== pastLines.length && (Math.abs(currentLines.length - pastLines.length) <= this.MAX_NEW_LINES) && newLines.length <= this.MAX_NEW_LINES) {
+            console.log("case 3");
+            if (this.debug) console.log("\t1-3 lines added/deleted; start new cluster for", filename);
             if (!this.inCluster[filename]) {
                 this.inCluster[filename] = true;
                 this.clusterStartTime[filename] = pastEvt.time;
@@ -326,7 +346,8 @@ class ClusterManager {
         }
         // at least one line has been replaced, but code is the same length
         else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length > 0 && currentLines.length === pastLines.length) {
-            if (this.debug) console.log("\t>= 1 line replaced; start new cluster");
+            console.log("case 4");
+            if (this.debug) console.log("\t>= 1 line replaced; start new cluster for", filename);
             if (!this.inCluster[filename]) {
                 this.inCluster[filename] = true;
                 this.clusterStartTime[filename] = pastEvt.time;
@@ -334,12 +355,20 @@ class ClusterManager {
         }
         // only white space changes, no edits or additions/deletions
         else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length === 0 && currentLines.length !== pastLines.length) {
+            console.log("case 5");
             if (this.debug) console.log("\twhitespace changes only; start new cluster");
             if (!this.inCluster[filename]) {
                 this.inCluster[filename] = true;
                 this.clusterStartTime[filename] = pastEvt.time;
             }
+        // else if (this.onlyWhitespaceChanges(pastLines, currentLines)) {
+        //     if (this.debug) console.log("\tonly whitespace changes for", filename);
+        //     if(this.inCluster[filename]) {
+        //         if (this.debug) console.log(`Continuing cluster for ${filename}`);
+        //     }
         } else {
+            console.log("case 6");
+            console.log(`this.inCluster[${filename}]`, this.inCluster[filename]);
             // we've just come out of a cluster, so print it out
             if (this.inCluster[filename]) {
                 console.log(`${this.clusterStartTime[filename]},${pastEvt.time},'code',${filename}`);
@@ -366,6 +395,27 @@ class ClusterManager {
         await this.updateWebPanel();
     }
 
+    // Method to check if only whitespace changes have been made
+    onlyWhitespaceChanges(pastLines, currentLines) {
+        // Filter out empty lines from both past and current lines
+        const filteredPastLines = pastLines.filter(line => line.trim().length > 0);
+        const filteredCurrentLines = currentLines.filter(line => line.trim().length > 0);
+
+        // If non-empty lines are identical, it’s only whitespace changes
+        if (filteredPastLines.length !== filteredCurrentLines.length) {
+            return false;  // If non-empty line count is different, it’s more than whitespace change
+        }
+
+        // Compare each non-empty line for content equality
+        for (let i = 0; i < filteredPastLines.length; i++) {
+            if (filteredPastLines[i] !== filteredCurrentLines[i]) {
+                return false;  // If any non-empty lines differ, it's not just whitespace changes
+            }
+        }
+
+        return true;  // Only whitespace or empty lines were added/removed
+    }
+
     async finalizeGroup(filename) {
         // grab the first code event from the stray events
         const startCodeEvent = this.strayEvents.find(event => event.type === "code" && event.file === filename);
@@ -373,19 +423,43 @@ class ClusterManager {
         // grab the last code event from the stray events
         const endCodeEvent = [...this.strayEvents].reverse().find(event => event.type === "code" && event.file === filename);
 
+        // grab any stray code events that's not the filename
+        // const strayCodeEvents = this.strayEvents.filter(event => event.type === "code" && event.file !== filename);
+
         let codeActivity = {
             type: "code",
             id: (++this.idCounter).toString(),
             file: filename,
-            time: endCodeEvent.time,
+            startTime: this.clusterStartTime[filename],
+            endTime: endCodeEvent.time,
             before_code: startCodeEvent.code_text,
             after_code: endCodeEvent.code_text,
+            related: {},
             // title: `Code changes in ${filename}`
         };
         
         //commented out for test only
         codeActivity.title = await this.generateSubGoalTitle(codeActivity);
 
+        // // using gpt to determine if the code activity needs more context
+        // const isValid = await this.validateClusterWithGPT(codeActivity, strayCodeEvents, this.allPastEvents);
+
+        // if(isValid.includes("yes")){
+        //     // "yes, file(s): insert file name(s) here, reason: insert reason here"
+        //     let files = isValid.split("file(s):")[1].split("reason:")[0].trim();
+        //     files = files.split(",");
+        //     files = files.map(file => file.trim());
+
+        //     for (const file of files) {
+        //         let relatedCodeActivity = this.strayEvents.find(event => event.type === "code" && event.file === file);
+
+        //         // remove the related code activity from the stray events
+        //         this.strayEvents = this.strayEvents.filter(event => event.type !== "code" || event.file !== file);
+
+        //         // add the related code activity to the current group
+        //         codeActivity.related[file] = relatedCodeActivity;
+        //     }
+        // }
 
         // grab all the web events from the stray events
         const webEvents = this.strayEvents.filter(event => event.type !== "code");
@@ -443,6 +517,8 @@ class ClusterManager {
 
         // Sort the currentGroup actions by time
         this.currentGroup.actions.sort((a, b) => a.time - b.time);
+
+        console.log('Finalized group:', this.currentGroup);
 
         // Set the title and add the group to display
         // this.currentGroup.title = this.generateSubGoalTitle(this.currentGroup);
@@ -506,6 +582,29 @@ class ClusterManager {
         }
     }
 
+    async validateClusterWithGPT(codeActivity, strayCodeEvents, allPastEvents) {
+        const prompt = `The summary of the code changes in the file "${codeActivity.file}" is: "${codeActivity.title}". 
+        Consider the information in "${strayCodeEvents}" and determine if the changes in other file(s) are related to the code changes in "${codeActivity.file}".
+        If you think the changes should also be included in the same cluster, answer in the following format:
+        "yes, file(s): insert file name(s) here, reason: insert reason here" or "no, reason: insert reason here".`;
+        
+        const response = await openai.chat.completions.create({
+            model: 'gpt-3.5-turbo',
+            max_tokens: 50,
+            messages: [
+                { role: "user", content: prompt }
+            ]
+        });
+
+        const isValid = response?.choices?.[0]?.message?.content.toLocaleLowerCase() || "No response";
+
+        if(this.debug){
+            console.log('Validation response:', isValid);
+        }
+
+        return isValid;
+    }
+
     async generateResources(activity) {
         try { 
 
@@ -553,6 +652,8 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
 
         const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
         const strayEventsHTML = await this.generateStrayEventsHTML();
+        // const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
+        // const strayEventsHTML = await this.generateStrayEventsHTMLTest();
 
         this.webviewPanel.webview.html = `
             <!DOCTYPE html>
@@ -716,7 +817,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         `;
     }
   
-  async generateGroupedEventsHTMLTest() {
+    async generateGroupedEventsHTMLTest() {
         let html = '';
 
         if (!this.codeActivities || this.codeActivities.length === 0) {
@@ -822,7 +923,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         return html;
     }
 
-async generateGroupedEventsHTML() {
+    async generateGroupedEventsHTML() {
         // this.displayForGroupedEvents is an array of objects, each object is a group
         // each group has a title and an array containing code and web activity
         let html = '';
@@ -854,15 +955,36 @@ async generateGroupedEventsHTML() {
                 if (event.type === 'code') {
                     // Render the code activity with editable title and collapsible diff
                     const diffHTML = this.generateDiffHTML(event);
+                    // html += `
+                    //     <li data-eventid="${index}">
+                    //         <!-- Editable title for the code activity -->
+                    //         <b>${event.file}: </b><input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')" size="50">
+                    //         <button type="button" class="collapsible">+</button>
+                    //         <div class="content">
+                    //             ${diffHTML}
+                    //         </div>
+                    //     </li>
+                    // `;
                     html += `
                         <li data-eventid="${index}">
                             <!-- Editable title for the code activity -->
-                            <b>${event.file}: </b><input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')" size="50">
-                            <button type="button" class="collapsible">+</button>
-                            <div class="content">
-                                ${diffHTML}
+                            <div class="li-header">
+                                <button type="button" class="collapsible" id="plusbtn-${groupKey}-${index}">+</button>
+                                <input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')" size="50">
+                                <!-- <i class="bi bi-pencil-square"></i> -->
+                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${title}">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
+                                    <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
+                                    <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
+                                    </svg>
+                                </button>
+                                <b>in ${event.file} </b>
                             </div>
-                        </li>
+                            <div class="content">
+                                <div class="left-container">
+                                    ${diffHTML}
+                                </div>
+                                <div class="resources">
                     `;
                 } else if (event.type === 'search') {
                     // Render the search activity with collapsible visit events
@@ -874,39 +996,10 @@ async generateGroupedEventsHTML() {
 
                     html += `
                         <li data-eventid="${index}">
-                            <button type="button" class="collapsible">You search for "${searchedTitle}"</button>
-                            <div class="content">
-                                <ul>
-                    `;
-
-                    for (const [visitIndex, visit] of event.actions.entries()) {
-                        const visitKey = `${visit.webTitle}-${visit.time}`;  // Unique identifier for each visit
-
-                        // Only render if this visit has not been displayed
-                        if (!displayedVisits.has(visitKey)) {
-                            const visitTitle = visit.webTitle || "Untitled";  // Ensure visit titles are not undefined
-
-                            if(visitTitle === "Untitled") return;
-
-                            // grab the the title between : and ; if it exists
-                            const pageTitle = visitTitle.substring(visitTitle.indexOf(":") + 1, visitTitle.lastIndexOf(";")).trim();
-
-                            html += `
-                                <li>
-                                    You visit the site <a href="${visit.webpage}" target="_blank">${pageTitle}</a> 
-                                </li>
-                            `;
-                            displayedVisits.add(visitKey);  // Mark this visit as displayed
-                        }
-                    }
-
-                    html += `
-                                </ul>
-                            </div>
+                            You search for <em>${searchedTitle}</em>
                         </li>
                     `;
                 } else if ((event.type === 'visit' || event.type === 'revisit') && !displayedVisits.has(`${event.webTitle}-${event.time}`)) {
-                    // Handle standalone visit and revisit events (not part of a search)
                     const visitTitle = event.webTitle || "Untitled";
 
                     if(visitTitle === "Untitled") return;
@@ -915,55 +1008,91 @@ async generateGroupedEventsHTML() {
 
                     html += `
                         <li data-eventid="${index}">
-                            You visit the site <a href="${visit.webpage}" target="_blank">${pageTitle}</a> 
+                            You visit the site <a href="${visit.webpage}" target="_blank">${pageTitle}</a>
                         </li>
                     `;
                     displayedVisits.add(`${event.webTitle}-${event.time}`);  // Mark this visit as displayed
                 }
+
+                html += `
+                                </div>
+                            </div>
+                        </li>
+                        <script> 
+                            document.addEventListener('DOMContentLoaded', () => {
+                                const button = document.getElementById('plusbtn-${groupKey}-${index}');
+
+                                button.addEventListener('click', () => {
+                                    button.textContent = button.textContent === '+' ? '-' : '+';
+                                });
+                            });
+
+                            document.getElementById('button-${groupKey}-${index}').addEventListener('click', function() {
+                                document.getElementById('code-title-${groupKey}-${index}').focus();
+                            });  
+                        </script>
+                    `;
             }
         }
 
         return html;
     }
 
-    async testDiffHTML(anEvent){
+    async testDiffHTML(anEvent) {
         try {
             const currentDir = getCurrentDir();
             const gitDir = path.join(currentDir, 'codeHistories.git');
             const workTree = currentDir;
-
-            // checkout the second to last commit
-            const checkoutCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" checkout HEAD~1 -- ${anEvent.file}`;
-            await exec(checkoutCmd, { cwd: workTree });
-
-            // read the file content
-            const fileContentStr = fs.readFileSync(path.join(workTree, anEvent.file), 'utf8');
-
+    
+            // Get the second-to-last commit hash
+            const logCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" log -2 --format="%H"`;
+            const { stdout: logOutput } = await exec(logCmd, { cwd: workTree });
+            const commitHashes = logOutput.trim().split('\n');
+            const previousCommitHash = commitHashes[1];  // HEAD~1 is the second hash
+    
+            // Get the content of the file from the previous commit
+            const previousFilePath = path.join(currentDir, anEvent.file);
+            let previousFileContent = '';
+    
+            try {
+                // Simulating reading the file content from the previous commit using fs.promises.readFile
+                const showCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" show ${previousCommitHash}:${anEvent.file}`;
+                const { stdout: previousFileOutput } = await exec(showCmd, { cwd: workTree });
+                previousFileContent = previousFileOutput;
+            } catch (err) {
+                // If the file did not exist in the previous commit, treat it as a newly created file
+                console.log(`File didn't exist in the previous commit. Treating as a new file: ${anEvent.file}`);
+                previousFileContent = '';  // No content in previous commit
+            }
+    
+            const currentFileContent = await fs.promises.readFile(previousFilePath, 'utf8')
+    
             const diffString = Diff.createTwoFilesPatch(
-                'start',
-                'end',
-                fileContentStr,
-                anEvent.code_text,
+                `start`,
+                `end`,
+                previousFileContent,
+                currentFileContent,
                 anEvent.file,
-                anEvent.file, 
-                {ignoreWhitespace: true}
+                anEvent.file,
+                { ignoreWhitespace: true } // this is important
             );
-
-            // Render the diff as HTML
+    
             const diffHtml = diff2html.html(diffString, {
                 outputFormat: 'line-by-line',
                 drawFileList: false,
                 colorScheme: 'light',
                 showFiles: false,
             });
-
+    
             return diffHtml;
+    
         } catch (err) {
-            console.error(`Error grabbing latest commit from codeHistories.git: ${err}`);
+            console.error(`Error generating diff for ${anEvent.file}: ${err}`);
             return 'Error generating diff';
         }
     }
-  
+    
+
   async generateStrayEventsHTMLTest() {
         // console.log('In generateStrayEventsHTML', this.strayEvents);
         let html = '';
@@ -1006,67 +1135,64 @@ async generateGroupedEventsHTML() {
     }
 
     async generateStrayEventsHTML() {
-        // console.log('In generateStrayEventsHTML', this.strayEvents);
         let html = '';
-
+        let idx = 0;
+    
         if (this.strayEvents.length === 0) {
-            return '<li>Your future changes goes here.</li>';
+            return '<li>Your future changes go here.</li>';
         }
-
-        // the events in strayEvents are in processed form
+    
+        // Track the most recent change for each file
+        const fileDiffs = {};
+    
         for (const event of this.strayEvents) {
-            // all info is in event.notes
-            // const humanReadableTime = new Date(event.time * 1000).toLocaleString();
-
             if (event.type === "code") {
-                if(this.debugging){
-                    const diffHTMLForStrayChanges = await this.testDiffHTML(event);
-
-                    html += `
-                        <li class="stray-event">
-                            <p><em>${event.file}</em></p>
+                // Get the latest diff for this file
+                const diffHTMLForStrayChanges = await this.testDiffHTML(event);
+                
+                // Store the latest diff for this file, replacing any previous entry
+                fileDiffs[event.file] = `
+                    <li class="stray-event" id="code-${idx}">
+                        <div class="li-header">
                             <button type="button" class="collapsible">+</button>
-                            <div class="content">
+                            You made changes to <em>${event.file}</em>
+                        </div>
+                        <div class="content">
+                            <div class="left-container">
                                 ${diffHTMLForStrayChanges}
                             </div>
-                        </li>
-                    `;
-                } else {
-                    html += `
-                        <li class="stray-event">
-                            <p><em>${event.file}</em></p>
-                        </li>
-                    `;
-                }
-            } else {
-                if (event.type === "search") {
-                    if (event.webTitle === "Untitled") return;
-
-                    const searchedTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf("-")).trim();
-
-                    html += `
-                        <li class="stray-event">
-                            <p>You search for "${searchedTitle}"</p>
-                        </li>
-                    `;
-                } else {
-                    // visit or revisit
-                    // same thing but also including the url link
-                    if (event.webTitle === "Untitled") return;
-
-                    const pageTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf(";")).trim();
-
-                    html += `
-                        <li class="stray-event">
-                            <p>You visit the site <a href="${event.webpage}" target="_blank">${pageTitle}</a></p>
-                        </li>
-                        `;
-                }
+                        </div>
+                    </li>
+                `;
+            } else if (event.type === "search") {
+                // Handle search events
+                const searchedTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf("-")).trim();
+                html += `
+                    <li class="stray-event" id="search-${idx}">
+                        <p>You searched for "${searchedTitle}"</p>
+                    </li>
+                `;
+            } else if (event.type === "visit" || event.type === "revisit") {
+                // Handle visit or revisit events
+                const pageTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf(";")).trim();
+                html += `
+                    <li class="stray-event" id="visit-${idx}">
+                        <p>You visited the site <a href="${event.webpage}" target="_blank">${pageTitle}</a></p>
+                    </li>
+                `;
             }
+    
+            idx += 1;  // Increment index for the next item
         }
-
-        return html;
+    
+        // After processing all events, add the stored diffs to the HTML
+        Object.values(fileDiffs).forEach(diff => {
+            html += diff;
+        });
+    
+        return html;  // Return the generated HTML
     }
+    
 
     generateDiffHTML(codeActivity) {
         // Get the event at startTime
@@ -1081,8 +1207,8 @@ async generateGroupedEventsHTML() {
             codeActivity.before_code,
             codeActivity.after_code,
             codeActivity.file,
-            codeActivity.file, 
-            {ignoreWhitespace: true}
+            codeActivity.file,
+            { ignoreWhitespace: true } // this is important
         );
 
         // Render the diff as HTML
@@ -1092,6 +1218,87 @@ async generateGroupedEventsHTML() {
             colorScheme: 'light',
             showFiles: false,
         });
+
+        if(codeActivity.related){
+            for(const relatedFile in codeActivity.related){
+                // the file variable has code_text instead of before_code and after_code
+                // so if there are more than one occurence, we grab the first one and last one and compare their code_text
+                // but if there is only one single occurence, we grab the code_text and compare it with the code_text information from this.allPastEvents
+                
+                if(Object.keys(codeActivity.related).length === 1){
+                    const relatedCodeEvent = codeActivity.related[relatedFile];
+                    
+                    const infoFromAllPastEvents = this.allPastEvents.find(event => event.type === "code" && event.file === relatedFile);
+                    
+                    // technically speaking this event should happen in between the startTime and endTime of the current codeActivity
+                    // so we will grab the event that is closest to the startTime of the current codeActivity
+                    // and compare the code_text of that event with the code_text of the relatedCodeEvent
+
+                    const closestEvent = infoFromAllPastEvents.find(event => event.time >= codeActivity.startTime && event.time <= relatedCodeEvent.time);
+                    const closestEventCodeText = closestEvent.code_text;
+                    const relatedCodeEventCodeText = relatedCodeEvent.code_text;
+
+                    const diffStringRelated = Diff.createTwoFilesPatch(
+                        'start',
+                        'end',
+                        closestEventCodeText,
+                        relatedCodeEventCodeText,
+                        relatedFile,
+                        relatedFile,
+                        {
+                            ignoreWhitespace: true // this is important
+                        }
+                    );
+
+                    // Render the diff as HTML
+                    const diffHtmlRelated = diff2html.html(diffStringRelated, {
+                        outputFormat: 'line-by-line',
+                        drawFileList: false,
+                        colorScheme: 'light',
+                        showFiles: false,
+                    });
+
+                    diffHtml += `
+                        <div class="diff-container">
+                            <h3>Changes in ${relatedFile}</h3>
+                            ${diffHtmlRelated}
+                        </div>
+                    `;
+
+                } else {
+                    const relatedCodeEvent = codeActivity.related[relatedFile];
+                    const startRelatedCodeEvent = relatedCodeEvent[0];
+                    const endRelatedCodeEvent = relatedCodeEvent[relatedCodeEvent.length - 1];
+
+                    const diffStringRelated = Diff.createTwoFilesPatch(
+                        'start',
+                        'end',
+                        startRelatedCodeEvent.code_text,
+                        endRelatedCodeEvent.code_text,
+                        relatedFile,
+                        relatedFile,
+                        {
+                            ignoreWhitespace: true // this is important
+                        }
+                    );
+
+                    // Render the diff as HTML
+                    const diffHtmlRelated = diff2html.html(diffStringRelated, {
+                        outputFormat: 'line-by-line',
+                        drawFileList: false,
+                        colorScheme: 'light',
+                        showFiles: false,
+                    });
+
+                    diffHtml += `
+                        <div class="diff-container">
+                            <h3>Changes in ${relatedFile}</h3>
+                            ${diffHtmlRelated}
+                        </div>
+                    `;
+                }
+            }
+        }
       
         return diffHtml;
     }
@@ -1135,6 +1342,42 @@ async generateGroupedEventsHTML() {
             filename = filename.split(';')[0];
         }
         return filename;
+    }
+
+    getWebviewContent() {
+        if (this.webviewPanel && this.webviewPanel.webview) {
+            return this.webviewPanel.webview.html;
+        }
+        return null;
+    }
+    
+    // Function to comment out VS Code API calls before saving the HTML
+    commentOutVSCodeApi(htmlContent) {
+        // Comment out 'const vscode = acquireVsCodeApi();'
+        htmlContent = htmlContent.replace(/const vscode = acquireVsCodeApi\(\);/, '// const vscode = acquireVsCodeApi();');
+
+        // Comment out 'vscode.postMessage({...})' related to 'updateTitle'
+        htmlContent = htmlContent.replace(
+            /vscode\.postMessage\(\s*\{\s*command:\s*'updateTitle'[\s\S]*?\}\s*\);/g, 
+            `// vscode.postMessage({ 
+                // command: 'updateTitle', 
+                // groupKey: groupKey, 
+                // title: titleInput 
+            // });`
+        );
+
+        // Comment out 'vscode.postMessage({...})' related to 'updateCodeTitle'
+        htmlContent = htmlContent.replace(
+            /vscode\.postMessage\(\s*\{\s*command:\s*'updateCodeTitle'[\s\S]*?\}\s*\);/g, 
+            `// vscode.postMessage({ 
+                // command: 'updateCodeTitle', 
+                // groupKey: groupKey, 
+                // eventId: eventId, 
+                // title: codeTitleInput 
+            // });`
+        );
+
+        return htmlContent;
     }
 }
 

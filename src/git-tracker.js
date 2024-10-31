@@ -395,7 +395,9 @@ class gitTracker {
                 }
             }
             
-            console.log(`Latest commit hash: ${commitHash}`);
+            // console.log(`Latest commit hash: ${commitHash}`);
+            // log info about the files changed in the latest commit
+            console.log(`Files changed in the latest commit: ${changedFiles}`);
             return entries;
         } catch (err) {
             console.error(`Error grabbing latest commit from codeHistories.git: ${err}`);

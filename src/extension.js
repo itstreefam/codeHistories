@@ -43,6 +43,8 @@ var terminalInstance;
 var eventEntry = {};
 var usingHistoryView = true;
 var usingContentTimelineView = false;
+var clusterManager = null;
+var contentTimelineManager = null;
 
 function updateContextKeys() {
     vscode.commands.executeCommand('setContext', 'codeHistories.usingContentTimelineView', usingContentTimelineView);
@@ -73,7 +75,7 @@ function activate(context) {
 	context.subscriptions.push(vscode.window.onDidChangeTextEditorSelection(event => {
 		const key = event.textEditor.document.uri.fsPath;
 		const debouncedSelectionChangeHandler = debounce(selection.handleTextEditorSelectionChange, 500, key);
-		console.log('Selection event:', event);
+		// console.log('Selection event:', event);
 		debouncedSelectionChangeHandler(event.textEditor);
 	}));
 
@@ -109,9 +111,9 @@ function activate(context) {
 		}
 	}
 
-	const clusterManager = new ClusterManager(context);
-	clusterManager.initializeTemporaryTest();
-	const contentTimelineManager = new ContentTimelineManager(context);
+	clusterManager = new ClusterManager(context);
+	// clusterManager.initializeWebview();
+	contentTimelineManager = new ContentTimelineManager(context);
 
 	vscode.window.onDidStartTerminalShellExecution(async event => {
 		await onDidExecuteShellCommandHelper(event, clusterManager, contentTimelineManager);
@@ -119,7 +121,7 @@ function activate(context) {
 
 	myCustomEmitter.on('save', async (entry) => {
 		eventEntry = entry; // for history view, just need to save and send this entry to clusterManager later after execution
-		console.log('eventEntry:', eventEntry);
+		// console.log('eventEntry:', eventEntry);
 
 		if(usingContentTimelineView){
 			contentTimelineManager.processEvent(entry); // for content timeline view, process the event immediately
@@ -791,6 +793,28 @@ function deactivate() {
 	allTerminalsDirCount = new Object();
 	terminalDimChanged = new Object();
 	terminalOpenedFirstTime = new Object();
+
+	try{
+		if(usingHistoryView){
+			// save webview inside CH_cfg_and_logs
+			const currentDir = getCurrentDir();
+
+			let date = new Date();
+			let dateStr = date.toISOString().split('T')[0];
+			let epochTimeInSeconds = Math.floor(date.getTime() / 1000);  // Get the current time in seconds
+
+			const webviewPath = path.join(currentDir, 'CH_cfg_and_logs', `webview_${dateStr}_${epochTimeInSeconds}.html`);
+			// console.log('webviewPath:', webviewPath);
+
+			let webviewContent = clusterManager.getWebviewContent();
+			webviewContent = clusterManager.commentOutVSCodeApi(webviewContent); // Comment out the VS Code API script so html can run as standalone in browser
+			// console.log('webviewContent:', webviewContent);
+
+			fs.writeFileSync(webviewPath, webviewContent);			
+		}
+	} catch (error) {
+		console.error('Error saving webview:', error);
+	}
 }
 
 module.exports = {
