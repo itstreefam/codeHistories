@@ -608,31 +608,28 @@ class ClusterManager {
     async generateResources(activity) {
         try { 
 
-            const prompt = `Compare the following code snippets of the file "${activity}":
+            const prompt = `You have this list of links "${activity}":
 
-Identify whether the changes are addition, deletion, or modification without explicitly stating them.
-Also do not explicitly mention Code A or Code B.
-Summarize the changes in a single, simple, easy-to-read line. So no listing or bullet points. 
-Start out with a verb and no need to end with a period.
-Make sure it sound like a natural conversation.`;
+go through each link and see if theres any repetition, explain in natural language, how each links can be useful for the user's programming process. 
+Omit those repeating links and have a paragraph corresponding to each link. Be really brief in each paragraph so the text doesn't take too much space`;
 
-            console.log('Prompt:', prompt);
+            // console.log('Prompt:', prompt);
 
             const completions = await openai.chat.completions.create({
                 model: 'gpt-3.5-turbo',
-                max_tokens: 25,
+                max_tokens: 400,
                 messages: [
                     { 
                         role: "system", 
-                        content: "You are a code change history summarizer that helps programmers that get interrupted from coding, and the programmers you are helping require simple and prcise points that they can glance over and understand your point" 
+                        content: "You are a resource provider where you will write several small paragraphs explaining why each link is helpful in natural langauage, the paragraphs will be easy to read and understand" 
                     }, 
                     { role: "user", content: prompt }
                 ]
             });
-            console.log('API Response:', completions);
+            // console.log('API Response:', completions);
 
             let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
-            console.log('Summary:', summary);
+            // console.log('Summary:', summary);
 
             // if summary contains double quotes, make them single quotes
             summary = summary.replace(/"/g, "'");
@@ -653,7 +650,7 @@ Make sure it sound like a natural conversation.`;
             );
         }
 
-        const groupedEventsHTML = await this.generateGroupedEventsHTML();
+        const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
         const strayEventsHTML = await this.generateStrayEventsHTML();
         // const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
         // const strayEventsHTML = await this.generateStrayEventsHTMLTest();
@@ -675,7 +672,7 @@ Make sure it sound like a natural conversation.`;
              <!-- <h1 class="title">Goal: make a Wordle clone</h1> -->
             <div class="wrapper">
                 <div class="box" id="upper">
-                    <div class="tooltip">
+                    <div>
                         <h2>Recent Development Highlights </h2>
                     </div>
                     <h4><em>Ordered from least recent to most recent</em></h4>
@@ -685,7 +682,7 @@ Make sure it sound like a natural conversation.`;
                 </div>
                 <div class="handler"></div>
                 <div class="box" id="lower"> 
-                    <div class="tooltip">
+                    <div>
                         <h2>In Progressed Work</h2>
                     </div>
                     <ul id="stray-events">
@@ -858,7 +855,20 @@ Make sure it sound like a natural conversation.`;
                                     <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
                                     </svg>
                                 </button>
-                                <b>in ${subgoal.file} </b>
+                                <b>in ${subgoal.file} </b> `
+                    if(links.resources.length != 0) {
+                        html += `
+                                <div class="container">
+                                    <i class="bi bi-bookmark"></i>
+                                    <div class="centered">${links.resources.length}</div>
+                                </div>`
+                    } else {
+                        html +=`
+                                <div class="placeholder">
+                                </div>
+                        `
+                    }
+                    html += `
                             </div>
                             <div class="content">
                                 <div class="left-container">
@@ -871,21 +881,23 @@ Make sure it sound like a natural conversation.`;
                         for(let i = link.actions.length -1; i >= 0; i--) {
                             const eachLink = links.resources[linkKey].actions[i];
                             html += `   
-                                    ${eachLink.webTitle}
+                                <div class="tooltip">
+                                    ${eachLink.webTitle}: <a>${eachLink.webpage}</a>
+                                    <span class="tooltiptext"  style="scale: 2"><img class="thumbnail" src="${eachLink.img}" alt="Thumbnail"></span>
+                                    <br>
+                                </div>
                             `
-                            feed_to_ai.push(eachLink.webpage);
+                            // feed_to_ai.push(eachLink.webpage);
 
                         }
 
-                        // for(let i = link.actions.length -1; i >= 0; i--) {
-                        //     const eachLink = links.resources[linkKey].actions[i];
-                        // }
                     }
 
-                    const resource_paragraph = await this.generateResources(feed_to_ai);
-                    html += `   
-                                    <a>${resource_paragraph}</a>
-                            `
+                    // const resource_paragraph = await this.generateResources(feed_to_ai);
+                    // html += `   
+                                    
+                    //                 <a> aaaa </a>
+                    //         `
                     
                     html += `
                                 </div>
@@ -916,11 +928,12 @@ Make sure it sound like a natural conversation.`;
         // each group has a title and an array containing code and web activity
         let html = '';
 
+        console.log('In generateGroupedEventsHTML', this.displayForGroupedEvents);
         if (this.displayForGroupedEvents.length === 0) {
             return '<li>No grouped events.</li>';
         }
 
-        console.log('In generateGroupedEventsHTML', this.displayForGroupedEvents);
+        
 
         for (const [groupKey, group] of this.displayForGroupedEvents.entries()) {
             // this is for subgoal-level grouping
@@ -1061,9 +1074,7 @@ Make sure it sound like a natural conversation.`;
                 currentFileContent,
                 anEvent.file,
                 anEvent.file,
-                {
-                    ignoreWhitespace: true // this is important
-                }
+                { ignoreWhitespace: true } // this is important
             );
     
             const diffHtml = diff2html.html(diffString, {
@@ -1197,9 +1208,7 @@ Make sure it sound like a natural conversation.`;
             codeActivity.after_code,
             codeActivity.file,
             codeActivity.file,
-            {
-                ignoreWhitespace: true // this is important
-            }
+            { ignoreWhitespace: true } // this is important
         );
 
         // Render the diff as HTML
