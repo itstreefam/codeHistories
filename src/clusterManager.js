@@ -40,22 +40,23 @@ class ClusterManager {
         this.currentWebEvent = null;
         this.idCounter = 0;
         this.styles = historyStyles;
-        // this.initializeTemporaryTest();
-        // this.initializeResourcesTemporaryTest();
+        this.initializeTemporaryTest();
+        this.initializeResourcesTemporaryTest();
         this.debugging = true;
     }
 
     initializeTemporaryTest(){
-        const testData = new temporaryTest(String.raw`C:\Users\user\Downloads\wordleStory.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\Users\zhouh\Downloads\wordleStory.json`); // change path of test data here
         // codeActivities has id, title, and code changes
         // the focus atm would be code changes array which contains smaller codeActivity objects
         // for eg, to access before_code, we would do this.codeActivities[0].codeChanges[0].before_code
         this.codeActivities = testData.processSubgoals(testData.data);
-        // console.log(this.codeActivities);
+        console.log("initialization test");
+        console.log(this.codeActivities);
     }
 
     initializeResourcesTemporaryTest(){
-        const testData = new temporaryTest(String.raw`C:\Users\user\Downloads\wordleStory.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\Users\zhouh\Downloads\wordleStory.json`); // change path of test data here
         this.codeResources = testData.processResources(testData.data);
         console.log("Resources", this.codeResources);
     }
@@ -650,10 +651,10 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             );
         }
 
-        const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
-        const strayEventsHTML = await this.generateStrayEventsHTML();
         // const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
-        // const strayEventsHTML = await this.generateStrayEventsHTMLTest();
+        // const strayEventsHTML = await this.generateStrayEventsHTML();
+        const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
+        const strayEventsHTML = await this.generateStrayEventsHTMLTest();
 
         this.webviewPanel.webview.html = `
             <!DOCTYPE html>
@@ -820,10 +821,6 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
     async generateGroupedEventsHTMLTest() {
         let html = '';
 
-        if (!this.codeActivities || this.codeActivities.length === 0) {
-            console.error("codeActivities is undefined or empty");
-            return '<li>No grouped events.</li>';
-        }
         if (!this.codeResources || this.codeResources.length === 0) {
             console.error("codeResources is undefined or empty");
             return '<li>No resources for you :(.</li>';
@@ -831,18 +828,34 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
     
         console.log('In generateGroupedEventsHTML, codeActivities', this.codeActivities);
 
-        let feed_to_ai = [];
     
         for (let groupKey = 0; groupKey <= 8; groupKey++) {
             const group = this.codeActivities[groupKey];
             const links = this.codeResources[groupKey];
-    
+            
+            let count = 0; 
             for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
                 const subgoal = group.codeChanges[subgoalKey];
 
                 const diffHTML = this.generateDiffHTML(subgoal);
 
-                    html += `
+                    // html += `
+                    //     <li data-eventid="${subgoalKey}">
+                    //         <!-- Editable title for the code activity -->
+                    //         <div class="li-header">
+                    //             <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
+                    //             <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
+                    //             <!-- <i class="bi bi-pencil-square"></i> -->
+                    //             <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
+                    //                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
+                    //                 <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
+                    //                 <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
+                    //                 </svg>
+                    //             </button>
+                    //             <b>in ${subgoal.file} </b> `
+
+                    if(links.resources.length != 0 && count < links.resources.length) {
+                        html += `
                         <li data-eventid="${subgoalKey}">
                             <!-- Editable title for the code activity -->
                             <div class="li-header">
@@ -856,18 +869,33 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                                     </svg>
                                 </button>
                                 <b>in ${subgoal.file} </b> `
-                    if(links.resources.length != 0) {
+                        const link = links.resources[count];
+                        console.log(link.actions.length);
                         html += `
-                                <div class="container">
-                                    <i class="bi bi-bookmark"></i>
-                                    <div class="centered">${links.resources.length}</div>
-                                </div>`
+                        <div class="container">
+                            <i class="bi bi-bookmark"></i>
+                            <div class="centered">${link.actions.length}</div>
+                        </div>`
                     } else {
-                        html +=`
+                        html += `
+                        <li data-eventid="${subgoalKey}">
+                            <!-- Editable title for the code activity -->
+                            <div class="li-header">
+                                <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
+                                <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
+                                <!-- <i class="bi bi-pencil-square"></i> -->
+                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
+                                    <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
+                                    <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
+                                    </svg>
+                                </button>
+                                <b>in ${subgoal.file} </b>
                                 <div class="placeholder">
-                                </div>
+                            </div>
                         `
                     }
+
                     html += `
                             </div>
                             <div class="content">
@@ -876,10 +904,12 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                                 </div>
                                 <div class="resources">
                     `;
-                    for(let linkKey = 0; linkKey <links.resources.length; linkKey++) {
-                        const link = links.resources[linkKey];
-                        for(let i = link.actions.length -1; i >= 0; i--) {
-                            const eachLink = links.resources[linkKey].actions[i];
+                    // for(let linkKey = 0; linkKey <links.resources.length; linkKey++) {
+                    
+                    if (count < links.resources.length) {
+                        const link = links.resources[count];
+                        for(let i = 0; i < link.actions.length; i++) {
+                            const eachLink = links.resources[count].actions[i];
                             html += `   
                                 <div class="tooltip">
                                     ${eachLink.webTitle}: <a>${eachLink.webpage}</a>
@@ -887,18 +917,11 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                                     <br>
                                 </div>
                             `
-                            // feed_to_ai.push(eachLink.webpage);
-
                         }
-
                     }
-
-                    // const resource_paragraph = await this.generateResources(feed_to_ai);
-                    // html += `   
-                                    
-                    //                 <a> aaaa </a>
-                    //         `
                     
+                    count ++;
+
                     html += `
                                 </div>
                             </div>
@@ -919,9 +942,9 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                     `;
             }
         }
-    
         return html;
     }
+    
 
     async generateGroupedEventsHTML() {
         // this.displayForGroupedEvents is an array of objects, each object is a group
