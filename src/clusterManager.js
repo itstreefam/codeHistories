@@ -839,21 +839,6 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
 
                 const diffHTML = this.generateDiffHTML(subgoal);
 
-                    // html += `
-                    //     <li data-eventid="${subgoalKey}">
-                    //         <!-- Editable title for the code activity -->
-                    //         <div class="li-header">
-                    //             <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
-                    //             <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
-                    //             <!-- <i class="bi bi-pencil-square"></i> -->
-                    //             <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
-                    //                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
-                    //                 <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
-                    //                 <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
-                    //                 </svg>
-                    //             </button>
-                    //             <b>in ${subgoal.file} </b> `
-
                     if(links.resources.length != 0 && count < links.resources.length) {
                         html += `
                         <li data-eventid="${subgoalKey}">
@@ -926,32 +911,6 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                                 </div>
                             </div>`
                     }
-
-                    // html += `
-                    //         </div>
-                    //         <div class="content">
-                    //             <div class="left-container">
-                    //                 ${diffHTML}
-                    //             </div>
-                    //             <div class="resources">
-                    // `;
-                    
-                    // if (count < links.resources.length) {
-                    //     const link = links.resources[count];
-                    //     for(let i = 0; i < link.actions.length; i++) {
-                    //         const eachLink = links.resources[count].actions[i];
-                    //         html += `   
-                    //             <div class="tooltip">
-                    //                 ${eachLink.webTitle}: <a>${eachLink.webpage}</a>
-                    //                 <span class="tooltiptext"  style="scale: 2"><img class="thumbnail" src="${eachLink.img}" alt="Thumbnail"></span>
-                    //                 <br>
-                    //             </div>
-                    //         `
-                    //     }
-                    //     html += `</div>`
-                    // } else {
-                    //     html += `</div>`
-                    // }
                     
                     count ++;
 
