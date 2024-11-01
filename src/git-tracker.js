@@ -375,7 +375,7 @@ class gitTracker {
                 if(file === 'output.txt'){
                     let documentText = await fs.promises.readFile(`${this._currentDir}/output.txt`, 'utf8');
                     let entry = {
-                        type: 'code',
+                        type: 'output',
                         document: 'output.txt',
                         time: commitTime,
                         code_text: documentText,
