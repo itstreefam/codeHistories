@@ -211,8 +211,17 @@ const historyStyles = `
         position: relative !important;
     }
 
+    .d2h-code-line {
+        position: relative;
+        right: 10%;
+    }
+
     .left-container{
         width: 70%;
+    }
+
+    .full-container{
+        width: 100%;
     }
 
     .resources {
