@@ -34,7 +34,7 @@ class ClusterManager {
         this.pastEvents = null;  // Stores a map where the key is a filename and the value is the last event for that specific file
         this.allPastEvents = {}; // Stores all past events for all files
         this.MAX_NEW_LINES = 4;  // Maximum number of new lines that can be added/deleted between events
-        this.debug = true;  // Debug flag to print out additional information
+        this.debug = false;  // Debug flag to print out additional information
         this.webviewPanel = null;
         this.currentCodeEvent = null;
         this.currentWebEvent = null;
@@ -43,6 +43,7 @@ class ClusterManager {
         this.initializeTemporaryTest();
         this.initializeResourcesTemporaryTest();
         this.debugging = true;
+        this.prevCommittedEvents = [];
     }
 
     initializeTemporaryTest(){
@@ -126,6 +127,7 @@ class ClusterManager {
         }
 
         console.log('In processEvents', eventList);
+        const previousEventList = this.prevCommittedEvents || [];
 
         for (const entry of eventList){
             const eventType = this.getEventType(entry);
@@ -144,7 +146,7 @@ class ClusterManager {
                     title: `Code changes in ${filename}`
                 };
 
-                await this.handleCodeEvent(entry); // this takes in raw event
+                await this.handleCodeEvent(entry, previousEventList); // this takes in raw event
             } else if (eventType === "search" || eventType === "visit" || eventType === "revisit") {
                 this.currentWebEvent = {
                     type: eventType,
@@ -156,6 +158,9 @@ class ClusterManager {
                 this.strayEvents.push(this.currentWebEvent); // this is processed event
             }
         }
+        
+        // after processing, update prevCommittedEvents to only contain "code" events from the current eventList
+        this.prevCommittedEvents = eventList.filter(event =>this.getEventType(event) === "code");
 
         // Trigger webview if not opened
         if (!this.webviewPanel) {
@@ -238,34 +243,25 @@ class ClusterManager {
         };
     }
 
-    async handleCodeEvent(event) {
-        const filename = this.getFilename(event.notes);
+    // event: code event of a file in the current commit
+    // previousEventList: list of code events in the previous commit
+    // case 1: if the previousEventList is empty, the code event is new addition and should be treated as a stray event
+    // case 2: if the code event exists in the previousEventList, compare the code changes for that file
+    // case 3: if the code event does not exist in the previousEventList and it does not exist in this.allPastEvents, it is a new addition and should be treated as a stray event
+    // case 4: if the code event does not exist in the previousEventList but exists in this.allPastEvents, we asssume file switching and compare the code changes for that file
+    async handleCodeEvent(event, previousEventList) {
+        const filename = this.getFilename(event.notes); // event is always guaranteed to exist
 
-        // Init pastEvents if it doesnt exist for this file
-        if (!this.pastEvents) {
-            this.pastEvents = {};
-        }
+        // Ensure required objects are initialized
+        this.inCluster = this.inCluster || {};
+        this.allPastEvents = this.allPastEvents || {};
+        this.pastEvents = this.pastEvents || {};
 
-        const pastEvent = this.pastEvents[filename];
+        console.log('In handleCodeEvent', filename, event);
 
-        if (pastEvent) {
-            const pastFilename = this.getFilename(pastEvent.notes);
-
-            // Handling switching files within the same commit group
-            if (filename !== pastFilename) {
-                if (this.inCluster[pastFilename]) {
-                    await this.finalizeGroup(pastFilename);
-                    this.inCluster[pastFilename] = false;
-                }
-                // Treat the current event as the start of a new cluster
-                this.strayEvents.push(this.currentCodeEvent);
-            } else {
-                // Process as usual if it's the same file
-                await this.match_lines(filename, pastEvent, event);
-                // console.log('In handleCodeEvent', this.strayEvents);
-            }
-        } else {
-            // If this is the first event, it is treated as a stray until a cluster can be formed
+        // case 1: no events in the previous commit, treat as new addition
+        // no files -> commit 1: file 1
+        if(previousEventList.length === 0){
             this.strayEvents.push(this.currentCodeEvent);
 
             // Initialize the cluster for this file
@@ -273,17 +269,92 @@ class ClusterManager {
                 this.inCluster[filename] = true;
                 this.clusterStartTime[filename] = event.time;
             }
+
+            if(!this.allPastEvents[filename]){
+                this.allPastEvents[filename] = [event];
+            } else {
+                this.allPastEvents[filename].push(event);
+            }
+
+            if(this.debug) {
+                console.log('No previous events, treating as new addition');
+            }
+            return;
         }
 
-        // Update the pastEvent with the current event after processing
-        this.pastEvents[filename] = event;
-        
+        // see if the event exists in the previous commit
+        const eventIsInPrevCommit = previousEventList.some(event => this.getFilename(event.notes) === filename);
+
+        // case 2: event exists in the previous commit, compare the code changes
+        // commit 1: file 1 -> commit 2: file 1
+        if(eventIsInPrevCommit){
+            // get the past event from the previous commit
+            const pastEvent = previousEventList.find(event => this.getFilename(event.notes) === filename);
+
+            // compare the code changes for the file
+            await this.match_lines(filename, pastEvent, event);
+
+            // update the pastEvent with the current event after processing
+            this.pastEvents[filename] = event;
+
+            if(this.debug) {
+                console.log('Event exists in previous commit, comparing code changes');
+                console.log('Current event:', event);
+                console.log('Previous events:', previousEventList);
+                console.log('All past events:', this.allPastEvents);
+            }
+        } 
+
+        // case 3: event does not exist in the previous commit and does not exist in this.allPastEvents
+        // commit 1: file 1 -> commit 2: file 2
+        else if(!eventIsInPrevCommit && !this.allPastEvents[filename]){
+            // should finalize the cluster for file 1 (and any other file) and treat the current event (file 2) as a stray
+            for (const otherFile of previousEventList) {
+                const otherFilename = this.getFilename(otherFile.notes);
+                if (this.inCluster[otherFilename]) {
+                    await this.finalizeGroup(otherFilename);
+                    this.inCluster[otherFilename] = false;
+                }
+            }
+
+            this.strayEvents.push(this.currentCodeEvent);
+            if (!this.inCluster[filename]) {
+                this.inCluster[filename] = true;
+                this.clusterStartTime[filename] = event.time;
+            }
+
+            if(this.debug) {
+                console.log('Event does not exist in previous commit and allPastEvents, treating as new addition');
+                console.log('Current event:', event);
+                console.log('Previous events:', previousEventList);
+                console.log('All past events:', this.allPastEvents);
+            }
+        }
+
+        // case 4: event does not exist in the previous commit but exists in this.allPastEvents
+        // commit 1: file 1, file 2 -> commit 2: file 1 -> commit 3: file 2
+        else if(!eventIsInPrevCommit && this.allPastEvents[filename]){
+            // get the past event from the allPastEvents
+            const pastEvent = this.allPastEvents[filename].slice(-1)[0]; // last known event for this file
+
+            await this.match_lines(filename, pastEvent, event);
+
+            this.pastEvents[filename] = event;
+
+            if(this.debug) {
+                console.log('Event does not exist in previous commit but exists in allPastEvents');
+                console.log('Current event:', event);
+                console.log('Previous events:', previousEventList);
+                console.log('All past events:', this.allPastEvents);
+            }
+        }
+
+        // update the allPastEvents with the current event
         if(this.allPastEvents[filename]){
             this.allPastEvents[filename].push(event);
         } else {
             this.allPastEvents[filename] = [event];
         }
-        console.log('All past events:', this.allPastEvents);
     }
 
     // Method to match lines between events and determine if they belong in the same cluster
@@ -312,6 +383,16 @@ class ClusterManager {
                     newLines.push(idx);
                 }
                 idx += 1;  // Ignore blank lines
+            }
+        }
+
+        // echo decision making info
+        if (this.debugging) {
+            console.log(`\tDEBUG ${pastEvt.time}-${currEvt.time} (${filename}): partialMatches=${partialMatches} perfectMatches=${perfectMatches.length} newLines=${newLines.length} currLineLength=${currentLines.length} pastLineLength=${pastLines.length}`);
+            
+            if (pastEvt.time ==  currEvt.time) {
+                console.log(`\tPAST ${pastEvt}\n`);
+                console.log(`\tCURR ${currEvt}\n`);
             }
         }
 
@@ -355,18 +436,20 @@ class ClusterManager {
             }
         }
         // only white space changes, no edits or additions/deletions
-        else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length === 0 && currentLines.length !== pastLines.length) {
+        // else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length === 0 && currentLines.length !== pastLines.length) {
+        //     console.log("case 5");
+        //     if (this.debug) console.log("\twhitespace changes only; start new cluster");
+        //     if (!this.inCluster[filename]) {
+        //         this.inCluster[filename] = true;
+        //         this.clusterStartTime[filename] = pastEvt.time;
+        //     }
+        else if (this.onlyWhitespaceChanges(pastLines, currentLines)) {
             console.log("case 5");
             if (this.debug) console.log("\twhitespace changes only; start new cluster");
             if (!this.inCluster[filename]) {
                 this.inCluster[filename] = true;
                 this.clusterStartTime[filename] = pastEvt.time;
             }
-        // else if (this.onlyWhitespaceChanges(pastLines, currentLines)) {
-        //     if (this.debug) console.log("\tonly whitespace changes for", filename);
-        //     if(this.inCluster[filename]) {
-        //         if (this.debug) console.log(`Continuing cluster for ${filename}`);
-        //     }
         } else {
             console.log("case 6");
             console.log(`this.inCluster[${filename}]`, this.inCluster[filename]);
@@ -378,18 +461,25 @@ class ClusterManager {
                     console.log(`${currTime}: partialMatches=${partialMatches} perfectMatches=${perfectMatches.length} newLines=${newLines.length} currLineLength=${currentLines.length} pastLineLength=${pastLines.length}`);
                     console.log("\n");
                 }
-            }
+
+                // the file is now in allPastEvents, so we can continue starting the cluster from here
+                // this is equivalent to the big clump case below
+                this.inCluster[filename] = true;
+                this.clusterStartTime[filename] = pastEvt.time;
+                this.startNewGroup();
+            } 
 
             // if there's a big clump that's come in, then we should start another cluster immediately
-            if ((filename === pastEvt.file) && (perfectMatches.length > 0) && (currentLines.length - pastLines.length > this.MAX_NEW_LINES)) {
-                console.log(`\t starting new cluster ${pastEvt.time}`)
-                this.clusterStartTime[filename] = pastEvt.time;
-                this.inCluster[filename] = true;
-                this.startNewGroup();
-            }
-            else {
-                this.inCluster[filename] = false;
-            }
+            // const pastEvtFile = this.getFilename(pastEvt.notes);
+            // if ((filename === pastEvtFile) && (perfectMatches.length > 0) && (currentLines.length - pastLines.length > this.MAX_NEW_LINES)) {
+            //     console.log(`\t starting new cluster ${pastEvt.time}`)
+            //     this.clusterStartTime[filename] = pastEvt.time;
+            //     this.inCluster[filename] = true;
+            //     this.startNewGroup();
+            // }
+            // else {
+            //     this.inCluster[filename] = false;
+            // }
         }
 
         // update the web panel after processing the event
@@ -419,48 +509,54 @@ class ClusterManager {
 
     async finalizeGroup(filename) {
         // grab the first code event from the stray events
-        const startCodeEvent = this.strayEvents.find(event => event.type === "code" && event.file === filename);
+        let startCodeEvent = this.strayEvents.find(event => event.type === "code" && event.file === filename);
 
         // grab the last code event from the stray events
-        const endCodeEvent = [...this.strayEvents].reverse().find(event => event.type === "code" && event.file === filename);
+        let endCodeEvent = [...this.strayEvents].reverse().find(event => event.type === "code" && event.file === filename);
 
+        console.log('Finalizing group:', filename, startCodeEvent, endCodeEvent);
+
+        let codeActivity = {};
+
+        if (startCodeEvent.code_text !== endCodeEvent.code_text) {
         // grab any stray code events that's not the filename
         // const strayCodeEvents = this.strayEvents.filter(event => event.type === "code" && event.file !== filename);
 
-        let codeActivity = {
-            type: "code",
-            id: (++this.idCounter).toString(),
-            file: filename,
-            startTime: this.clusterStartTime[filename],
-            endTime: endCodeEvent.time,
-            before_code: startCodeEvent.code_text,
-            after_code: endCodeEvent.code_text,
-            related: {},
-            // title: `Code changes in ${filename}`
-        };
-        
-        //commented out for test only
-        codeActivity.title = await this.generateSubGoalTitle(codeActivity);
+            codeActivity = {
+                type: "code",
+                id: (++this.idCounter).toString(),
+                file: filename,
+                startTime: this.clusterStartTime[filename],
+                endTime: endCodeEvent.time,
+                before_code: startCodeEvent.code_text,
+                after_code: endCodeEvent.code_text,
+                related: {},
+                // title: `Code changes in ${filename}`
+            };
+            
+            codeActivity.title = await this.generateSubGoalTitle(codeActivity);
+        }
 
-        // // using gpt to determine if the code activity needs more context
-        // const isValid = await this.validateClusterWithGPT(codeActivity, strayCodeEvents, this.allPastEvents);
+        // if both events are the same, this means that this file had clustering occurred before
+        // and so the startCodeEvent should be from allPastEvents instead
+        else {
+            // grab the last code event from all past events
+            startCodeEvent = this.allPastEvents[filename].slice(-1)[0];
 
-        // if(isValid.includes("yes")){
-        //     // "yes, file(s): insert file name(s) here, reason: insert reason here"
-        //     let files = isValid.split("file(s):")[1].split("reason:")[0].trim();
-        //     files = files.split(",");
-        //     files = files.map(file => file.trim());
+            codeActivity = {
+                type: "code",
+                id: (++this.idCounter).toString(),
+                file: filename,
+                startTime: this.clusterStartTime[filename],
+                endTime: endCodeEvent.time,
+                before_code: startCodeEvent.code_text,
+                after_code: endCodeEvent.code_text,
+                related: {},
+                // title: `Code changes in ${filename}`
+            };
 
-        //     for (const file of files) {
-        //         let relatedCodeActivity = this.strayEvents.find(event => event.type === "code" && event.file === file);
-
-        //         // remove the related code activity from the stray events
-        //         this.strayEvents = this.strayEvents.filter(event => event.type !== "code" || event.file !== file);
-
-        //         // add the related code activity to the current group
-        //         codeActivity.related[file] = relatedCodeActivity;
-        //     }
-        // }
+            codeActivity.title = await this.generateSubGoalTitle(codeActivity);
+        }
 
         // grab all the web events from the stray events
         const webEvents = this.strayEvents.filter(event => event.type !== "code");
@@ -583,29 +679,6 @@ class ClusterManager {
         }
     }
 
-    async validateClusterWithGPT(codeActivity, strayCodeEvents, allPastEvents) {
-        const prompt = `The summary of the code changes in the file "${codeActivity.file}" is: "${codeActivity.title}". 
-        Consider the information in "${strayCodeEvents}" and determine if the changes in other file(s) are related to the code changes in "${codeActivity.file}".
-        If you think the changes should also be included in the same cluster, answer in the following format:
-        "yes, file(s): insert file name(s) here, reason: insert reason here" or "no, reason: insert reason here".`;
-        
-        const response = await openai.chat.completions.create({
-            model: 'gpt-3.5-turbo',
-            max_tokens: 50,
-            messages: [
-                { role: "user", content: prompt }
-            ]
-        });
-
-        const isValid = response?.choices?.[0]?.message?.content.toLocaleLowerCase() || "No response";
-
-        if(this.debug){
-            console.log('Validation response:', isValid);
-        }
-
-        return isValid;
-    }
-
     async generateResources(activity) {
         try { 
 
@@ -651,7 +724,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             );
         }
 
-        // const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
+        // const groupedEventsHTML = await this.generateGroupedEventsHTML();
         // const strayEventsHTML = await this.generateStrayEventsHTML();
         const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
         const strayEventsHTML = await this.generateStrayEventsHTMLTest();
