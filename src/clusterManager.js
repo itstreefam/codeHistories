@@ -40,14 +40,14 @@ class ClusterManager {
         this.currentWebEvent = null;
         this.idCounter = 0;
         this.styles = historyStyles;
-        this.initializeTemporaryTest();
-        this.initializeResourcesTemporaryTest();
+        // this.initializeTemporaryTest();
+        // this.initializeResourcesTemporaryTest();
         this.debugging = true;
         this.prevCommittedEvents = [];
     }
 
     initializeTemporaryTest(){
-        const testData = new temporaryTest(String.raw`C:\Users\zhouh\Downloads\wordleStory.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\users\thien\Downloads\wordleStory.json`); // change path of test data here
         // codeActivities has id, title, and code changes
         // the focus atm would be code changes array which contains smaller codeActivity objects
         // for eg, to access before_code, we would do this.codeActivities[0].codeChanges[0].before_code
@@ -57,7 +57,7 @@ class ClusterManager {
     }
 
     initializeResourcesTemporaryTest(){
-        const testData = new temporaryTest(String.raw`C:\Users\zhouh\Downloads\wordleStory.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\users\thien\Downloads\wordleStory.json`); // change path of test data here
         this.codeResources = testData.processResources(testData.data);
         console.log("Resources", this.codeResources);
     }
@@ -121,15 +121,15 @@ class ClusterManager {
     }
 
     // Method to process a list of events in real-time
-    async processEvents(eventList){
-        if (!eventList || eventList.length === 0) {
+    async processCodeEvents(codeEventsList) {
+        if (!codeEventsList || codeEventsList.length === 0) {
             return;
         }
 
-        console.log('In processEvents', eventList);
-        const previousEventList = this.prevCommittedEvents || [];
+        console.log('In processCodeEvents', codeEventsList);
+        let previousEventList = this.prevCommittedEvents || [];
 
-        for (const entry of eventList){
+        for (const entry of codeEventsList){
             const eventType = this.getEventType(entry);
 
             if(!this.currentGroup) {
@@ -147,20 +147,43 @@ class ClusterManager {
                 };
 
                 await this.handleCodeEvent(entry, previousEventList); // this takes in raw event
-            } else if (eventType === "search" || eventType === "visit" || eventType === "revisit") {
-                this.currentWebEvent = {
-                    type: eventType,
-                    time: entry.time,
-                    webTitle: entry.notes,
-                    webpage: entry.timed_url,
-                };
-
-                this.strayEvents.push(this.currentWebEvent); // this is processed event
             }
         }
         
-        // after processing, update prevCommittedEvents to only contain "code" events from the current eventList
-        this.prevCommittedEvents = eventList.filter(event =>this.getEventType(event) === "code");
+        this.prevCommittedEvents = codeEventsList;
+
+        // Trigger webview if not opened
+        if (!this.webviewPanel) {
+            await this.initializeWebview();
+        } else {
+            // If webview is already opened, just update the content
+            await this.updateWebPanel();
+        }
+    }
+
+    async processWebEvents(webEventsList){
+        if (!webEventsList || webEventsList.length === 0) {
+            return;
+        }
+
+        console.log('In processWebEvents', webEventsList);
+
+        for (const entry of webEventsList){
+            const eventType = this.getEventType(entry);
+
+            if(!this.currentGroup) {
+                this.startNewGroup();
+            }
+
+            this.currentWebEvent = {
+                type: eventType,
+                time: entry.time,
+                webTitle: entry.notes,
+                webpage: entry.timed_url,
+            };
+
+            this.strayEvents.push(this.currentWebEvent); // this is processed event
+        }
 
         // Trigger webview if not opened
         if (!this.webviewPanel) {
@@ -530,7 +553,6 @@ class ClusterManager {
                 endTime: endCodeEvent.time,
                 before_code: startCodeEvent.code_text,
                 after_code: endCodeEvent.code_text,
-                related: {},
                 // title: `Code changes in ${filename}`
             };
             
@@ -558,8 +580,8 @@ class ClusterManager {
             codeActivity.title = await this.generateSubGoalTitle(codeActivity);
         }
 
-        // grab all the web events from the stray events
-        const webEvents = this.strayEvents.filter(event => event.type !== "code");
+        // grab only the web events from the stray events that has time between the start and end time of codeActivity
+        let webEvents = this.strayEvents.filter(event => event.type !== "code" && event.time >= codeActivity.startTime && event.time <= codeActivity.endTime);
 
         // Initialize an empty array to hold structured web events
         let structureWebEvents = [];
@@ -621,8 +643,14 @@ class ClusterManager {
         // this.currentGroup.title = this.generateSubGoalTitle(this.currentGroup);
         this.displayForGroupedEvents.push(this.currentGroup);
 
-        // Clear the stray events and reset the current group
-        this.strayEvents = this.strayEvents.filter(event => event.type === "code" && event.file !== filename);
+        // Clear the items that have been grouped in the currentGroup from strayEvents
+        this.strayEvents = this.strayEvents.filter(event => event.file !== filename);
+
+        // Remove the events from webEvents from this.strayEvents
+        this.strayEvents = this.strayEvents.filter(event => !webEvents.includes(event));
+        console.log('Stray events after finalizing group:', this.strayEvents);
+
+        // Once the stray events have been processed, reset the currentGroup
         this.currentGroup = null;
     }
 
@@ -724,10 +752,10 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             );
         }
 
-        // const groupedEventsHTML = await this.generateGroupedEventsHTML();
-        // const strayEventsHTML = await this.generateStrayEventsHTML();
-        const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
-        const strayEventsHTML = await this.generateStrayEventsHTMLTest();
+        const groupedEventsHTML = await this.generateGroupedEventsHTML();
+        const strayEventsHTML = await this.generateStrayEventsHTML();
+        // const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
+        // const strayEventsHTML = await this.generateStrayEventsHTMLTest();
 
         this.webviewPanel.webview.html = `
             <!DOCTYPE html>
@@ -757,7 +785,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 <div class="handler"></div>
                 <div class="box" id="lower"> 
                     <div>
-                        <h2>In Progressed Work</h2>
+                        <h2>In Progress Work</h2>
                     </div>
                     <ul id="stray-events">
                         ${strayEventsHTML}
@@ -1019,8 +1047,6 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             return '<li>No grouped events.</li>';
         }
 
-        
-
         for (const [groupKey, group] of this.displayForGroupedEvents.entries()) {
             // this is for subgoal-level grouping
             // html += `
@@ -1032,7 +1058,9 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             //             <ul id="group-${groupKey}" data-groupkey="${groupKey}">
             // `;
 
-            const displayedVisits = new Set();  // To track which visits have been displayed
+            // check if there are any related resources (structured web events)
+            let resourcesExist = group.actions.some(action => action.type === 'search' || action.type === 'visit' || action.type === 'revisit');
+            let containerClass = resourcesExist ? 'left-container' : 'full-container';
 
             for (const [index, event] of group.actions.entries()) {
 
@@ -1041,23 +1069,13 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 if (event.type === 'code') {
                     // Render the code activity with editable title and collapsible diff
                     const diffHTML = this.generateDiffHTML(event);
-                    // html += `
-                    //     <li data-eventid="${index}">
-                    //         <!-- Editable title for the code activity -->
-                    //         <b>${event.file}: </b><input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')" size="50">
-                    //         <button type="button" class="collapsible">+</button>
-                    //         <div class="content">
-                    //             ${diffHTML}
-                    //         </div>
-                    //     </li>
-                    // `;
+
                     html += `
                         <li data-eventid="${index}">
                             <!-- Editable title for the code activity -->
                             <div class="li-header">
                                 <button type="button" class="collapsible" id="plusbtn-${groupKey}-${index}">+</button>
                                 <input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')" size="50">
-                                <!-- <i class="bi bi-pencil-square"></i> -->
                                 <button type="button" class="btn btn-secondary" id="button-${groupKey}-${title}">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
                                     <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
@@ -1067,57 +1085,58 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                                 <b>in ${event.file} </b>
                             </div>
                             <div class="content">
-                                <div class="left-container">
+                                <div class="${containerClass}">
                                     ${diffHTML}
                                 </div>
-                                <div class="resources">
                     `;
-                } else if (event.type === 'search') {
-                    // Render the search activity with collapsible visit events
-                    title = event.query || "Untitled";  // Ensure search queries are not undefined
+                }
+                
+                // Render associated resources if they exist
+                if (resourcesExist && event.type === 'code') {
+                    html += `<div class="resources">`;
 
-                    if(title === "Untitled") return;
+                    for (let action of group.actions) {
+                        if (action.type === "search") {
+                            html += `<h3> You searched for: ${action.query}</h3>`;
 
-                    const searchedTitle = title.substring(title.indexOf(":") + 1, title.lastIndexOf("-")).trim();
+                            // only show bookmark with number when there are resources
+                            if(action.actions.length != 0) {
+                                html += `<div class="container"><i class="bi bi-bookmark"></i><div class="centered">${action.actions.length}</div></div>`;
+                            }
 
-                    html += `
-                        <li data-eventid="${index}">
-                            You search for <em>${searchedTitle}</em>
-                        </li>
-                    `;
-                } else if ((event.type === 'visit' || event.type === 'revisit') && !displayedVisits.has(`${event.webTitle}-${event.time}`)) {
-                    const visitTitle = event.webTitle || "Untitled";
+                            for (let visit of action.actions) {
+                                html += `
+                                    <div class="tooltip">
+                                        ${visit.webTitle}: <a href="${visit.webpage}" target="_blank">${visit.webpage}</a>
+                                        <span class="tooltiptext" style="scale: 2">
+                                            <img class="thumbnail" src="${visit.img || 'default-image.jpg'}" alt="Thumbnail">
+                                        </span>
+                                        <br>
+                                    </div>
+                                `;
+                            }
+                        }
+                    }
 
-                    if(visitTitle === "Untitled") return;
-
-                    const pageTitle = visitTitle.substring(visitTitle.indexOf(":") + 1, visitTitle.lastIndexOf(";")).trim();
-
-                    html += `
-                        <li data-eventid="${index}">
-                            You visit the site <a href="${visit.webpage}" target="_blank">${pageTitle}</a>
-                        </li>
-                    `;
-                    displayedVisits.add(`${event.webTitle}-${event.time}`);  // Mark this visit as displayed
+                    html += `</div>`; // Close resources div
                 }
 
                 html += `
-                                </div>
-                            </div>
-                        </li>
-                        <script> 
-                            document.addEventListener('DOMContentLoaded', () => {
-                                const button = document.getElementById('plusbtn-${groupKey}-${index}');
-
-                                button.addEventListener('click', () => {
-                                    button.textContent = button.textContent === '+' ? '-' : '+';
-                                });
+                        </div>
+                    </li>
+                    <script> 
+                        document.addEventListener('DOMContentLoaded', () => {
+                            const button = document.getElementById('plusbtn-${groupKey}-${index}');
+                            button.addEventListener('click', () => {
+                                button.textContent = button.textContent === '+' ? '-' : '+';
                             });
+                        });
 
-                            document.getElementById('button-${groupKey}-${index}').addEventListener('click', function() {
-                                document.getElementById('code-title-${groupKey}-${index}').focus();
-                            });  
-                        </script>
-                    `;
+                        document.getElementById('button-${groupKey}-${index}').addEventListener('click', function() {
+                            document.getElementById('code-title-${groupKey}-${index}').focus();
+                        });  
+                    </script>
+                `;
             }
         }
 
@@ -1304,87 +1323,6 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             colorScheme: 'light',
             showFiles: false,
         });
-
-        if(codeActivity.related){
-            for(const relatedFile in codeActivity.related){
-                // the file variable has code_text instead of before_code and after_code
-                // so if there are more than one occurence, we grab the first one and last one and compare their code_text
-                // but if there is only one single occurence, we grab the code_text and compare it with the code_text information from this.allPastEvents
-                
-                if(Object.keys(codeActivity.related).length === 1){
-                    const relatedCodeEvent = codeActivity.related[relatedFile];
-                    
-                    const infoFromAllPastEvents = this.allPastEvents.find(event => event.type === "code" && event.file === relatedFile);
-                    
-                    // technically speaking this event should happen in between the startTime and endTime of the current codeActivity
-                    // so we will grab the event that is closest to the startTime of the current codeActivity
-                    // and compare the code_text of that event with the code_text of the relatedCodeEvent
-
-                    const closestEvent = infoFromAllPastEvents.find(event => event.time >= codeActivity.startTime && event.time <= relatedCodeEvent.time);
-                    const closestEventCodeText = closestEvent.code_text;
-                    const relatedCodeEventCodeText = relatedCodeEvent.code_text;
-
-                    const diffStringRelated = Diff.createTwoFilesPatch(
-                        'start',
-                        'end',
-                        closestEventCodeText,
-                        relatedCodeEventCodeText,
-                        relatedFile,
-                        relatedFile,
-                        {
-                            ignoreWhitespace: true // this is important
-                        }
-                    );
-
-                    // Render the diff as HTML
-                    const diffHtmlRelated = diff2html.html(diffStringRelated, {
-                        outputFormat: 'line-by-line',
-                        drawFileList: false,
-                        colorScheme: 'light',
-                        showFiles: false,
-                    });
-
-                    diffHtml += `
-                        <div class="diff-container">
-                            <h3>Changes in ${relatedFile}</h3>
-                            ${diffHtmlRelated}
-                        </div>
-                    `;
-
-                } else {
-                    const relatedCodeEvent = codeActivity.related[relatedFile];
-                    const startRelatedCodeEvent = relatedCodeEvent[0];
-                    const endRelatedCodeEvent = relatedCodeEvent[relatedCodeEvent.length - 1];
-
-                    const diffStringRelated = Diff.createTwoFilesPatch(
-                        'start',
-                        'end',
-                        startRelatedCodeEvent.code_text,
-                        endRelatedCodeEvent.code_text,
-                        relatedFile,
-                        relatedFile,
-                        {
-                            ignoreWhitespace: true // this is important
-                        }
-                    );
-
-                    // Render the diff as HTML
-                    const diffHtmlRelated = diff2html.html(diffStringRelated, {
-                        outputFormat: 'line-by-line',
-                        drawFileList: false,
-                        colorScheme: 'light',
-                        showFiles: false,
-                    });
-
-                    diffHtml += `
-                        <div class="diff-container">
-                            <h3>Changes in ${relatedFile}</h3>
-                            ${diffHtmlRelated}
-                        </div>
-                    `;
-                }
-            }
-        }
       
         return diffHtml;
     }

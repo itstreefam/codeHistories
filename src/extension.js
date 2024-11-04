@@ -278,7 +278,7 @@ function activate(context) {
 				if(usingHistoryView){
 					let webEntriesForHistory = processWebData(webDataArrayFiltered);
 					console.log('webEntriesForHistory: ', webEntriesForHistory);
-					await clusterManager.processEvents(webEntriesForHistory);
+					await clusterManager.processWebEvents(webEntriesForHistory);
 				}
 
 				// check if webDataArrayFiltered contains a visit to localhost or 127.0.0.1
@@ -291,7 +291,7 @@ function activate(context) {
 					if(usingHistoryView){
 						let entriesForClusterManager = await tracker.grabLatestCommitFiles();
 						let codeEntries = [...entriesForClusterManager]; // Collect code events
-						await clusterManager.processEvents(codeEntries);
+						await clusterManager.processCodeEvents(codeEntries);
 					}
 					// let currentTime = Math.floor(Date.now() / 1000);
 					// console.log('currentTime: ', currentTime);
@@ -475,7 +475,7 @@ async function onDidExecuteShellCommandHelper(event, clusterManager, contentTime
 				if(usingHistoryView) {
 					await tracker.gitCommit();
 					let codeEntries = await tracker.grabLatestCommitFiles();
-					await clusterManager.processEvents(codeEntries);
+					await clusterManager.processCodeEvents(codeEntries);
 					// if(eventEntry){
 					// 	await clusterManager.processEvent(eventEntry);
 					// }
