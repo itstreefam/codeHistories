@@ -35,28 +35,23 @@ const historyStyles = `
     .tooltip {
         position: relative;
         display: inline-block;
-        // border-bottom: 1px dotted black;
         width: fit-content;
     }
 
-    .tooltip .tooltiptext {
-        visibility: hidden;
-        width: 260px;
+   .tooltiptext {
+        display: none;
+        width: 100px;
         background-color: black;
-        color: #fff;
         text-align: center;
-        border-radius: 6px;
-        padding: 5px 0;
         
-        /* Position the tooltip */
         position: absolute;
         z-index: 1;
-        top: 15px;
-        left: 105%;
+        top: 65px;
+        left: 50px;
     }
 
     .tooltip:hover .tooltiptext {
-        visibility: visible;
+        display: inline-block;
     }
 
     #upper{
@@ -228,31 +223,35 @@ const historyStyles = `
         width: 30%;
         margin-left: 10px;
     }
+
+    .link_list {
+        margin-left: 5px;
+    }
         
-    .tooltip {
-        position: relative;
-        display: inline-block;
-    }
+//     .tooltip {
+//         position: relative;
+//         display: inline-block;
+//     }
 
-    .tooltip .tooltiptext {
-    background:https://pyxis.nymag.com/v1/imgs/e1e/6b7/e7e202e97398fd64f6f9b6c6d13a526234-tired-spongebob.rsquare.w400.jpg;
-    visibility: hidden;
-    width: 120px;
-    height: 60px;
-    color: #fff;
-    text-align: center;
-    border-radius: 6px;
-    padding: 5px 0;
-    position: absolute;
-    z-index: 1;
-    top: 200%;
-    left: 30%;
-    margin-left: -60px;
-    }
+// .tooltip .tooltiptext {
+//   background:https://pyxis.nymag.com/v1/imgs/e1e/6b7/e7e202e97398fd64f6f9b6c6d13a526234-tired-spongebob.rsquare.w400.jpg;
+//   visibility: hidden;
+//   width: 120px;
+//   height: 60px;
+//   color: #fff;
+//   text-align: center;
+//   border-radius: 6px;
+//   padding: 5px 0;
+//   position: absolute;
+//   z-index: 1;
+//   top: 200%;
+//   left: 30%;
+//   margin-left: -60px;
+// }
 
-    .tooltip:hover .tooltiptext {
-    visibility: visible;
-    }
+// .tooltip:hover .tooltiptext {
+//   visibility: visible;
+// }
 
     .placeholder {
         width: 13.005px;

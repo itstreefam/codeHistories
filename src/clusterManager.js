@@ -40,14 +40,14 @@ class ClusterManager {
         this.currentWebEvent = null;
         this.idCounter = 0;
         this.styles = historyStyles;
-        // this.initializeTemporaryTest();
-        // this.initializeResourcesTemporaryTest();
+        this.initializeTemporaryTest();
+        this.initializeResourcesTemporaryTest();
         this.debugging = true;
         this.prevCommittedEvents = [];
     }
 
     initializeTemporaryTest(){
-        const testData = new temporaryTest(String.raw`C:\users\thien\Downloads\wordleStory.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\users\zhouh\Downloads\wordleStory.json`); // change path of test data here
         // codeActivities has id, title, and code changes
         // the focus atm would be code changes array which contains smaller codeActivity objects
         // for eg, to access before_code, we would do this.codeActivities[0].codeChanges[0].before_code
@@ -57,7 +57,7 @@ class ClusterManager {
     }
 
     initializeResourcesTemporaryTest(){
-        const testData = new temporaryTest(String.raw`C:\users\thien\Downloads\wordleStory.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\users\zhouh\Downloads\wordleStory.json`); // change path of test data here
         this.codeResources = testData.processResources(testData.data);
         console.log("Resources", this.codeResources);
     }
@@ -752,10 +752,10 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             );
         }
 
-        const groupedEventsHTML = await this.generateGroupedEventsHTML();
-        const strayEventsHTML = await this.generateStrayEventsHTML();
-        // const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
-        // const strayEventsHTML = await this.generateStrayEventsHTMLTest();
+        // const groupedEventsHTML = await this.generateGroupedEventsHTML();
+        // const strayEventsHTML = await this.generateStrayEventsHTML();
+        const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
+        const strayEventsHTML = await this.generateStrayEventsHTMLTest();
 
         this.webviewPanel.webview.html = `
             <!DOCTYPE html>
@@ -974,17 +974,22 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                         
                             if (count < links.resources.length) {
                                 const link = links.resources[count];
+                                // html += `<ul class="link_list">`
                                 for(let i = 0; i < link.actions.length; i++) {
                                     const eachLink = links.resources[count].actions[i];
                                     html += `   
                                         <div class="tooltip">
-                                            ${eachLink.webTitle}: <a>${eachLink.webpage}</a>
+                                            <a href="${eachLink.webpage}">${eachLink.webTitle}</a><br>
                                             <span class="tooltiptext"  style="scale: 2"><img class="thumbnail" src="${eachLink.img}" alt="Thumbnail"></span>
                                             <br>
                                         </div>
+                                        <br>
                                     `
                                 }
-                                html += `</div>`
+                                //  </ul>
+                                html += `
+                                   
+                                </div>`
                             } else {
                                 html += `</div>`
                             }
