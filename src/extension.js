@@ -242,39 +242,29 @@ function activate(context) {
 		}
 	};
 
+	let lastProcessedTimestamp = null;
+	let webData = [];
+
 	const performGitActions = async () => {
 		try {
-			// search between timeSwitchedToChrome and timeSwitchedToCode in webData
-			let webData = fs.readFileSync(path.join(currentDir, 'webData'), 'utf8');
+			// Small delay to ensure webData has latest entries
+			await new Promise(resolve => setTimeout(resolve, 1000));
+			webData = fs.readFileSync(path.join(currentDir, 'webData'), 'utf8');
 
 			let webDataArray = JSON.parse(webData);
+			console.log('strayEvents', clusterManager.strayEvents);
 
-			let webDataArrayFiltered = [];
-			let startTime = timeSwitchedToChrome;
-			let endTime = timeSwitchedToCode;
-
-			if (startTime > 0 && endTime > 0) {
-				// Traverse the array backwards
-				for (let i = webDataArray.length - 1; i >= 0; i--) {
-					let obj = webDataArray[i];
-					
-					if (obj.time <= endTime && obj.time >= startTime) {
-						webDataArrayFiltered.unshift(obj);  // Prepend to maintain order
-					} else if (obj.time < startTime) {
-						break;  // Early exit, no need to check earlier events
-					}
-				}
-			} else {
-				if (startTime <= 0) {
-					console.error('Invalid start time:', startTime);
-				}
-				if (endTime <= 0) {
-					console.error('Invalid end time:', endTime);
-				}
+			// Initialize lastProcessedTimestamp to timeSwitchedToChrome if it's the first run
+			if (lastProcessedTimestamp === null) {
+				lastProcessedTimestamp = timeSwitchedToChrome;
+				console.log('lastProcessedTimestamp initialized to timeSwitchedToChrome:', lastProcessedTimestamp);
 			}
 
-			console.log('webDataArrayFiltered: ', webDataArrayFiltered);
+			// Filter out entries that have already been processed
+			let webDataArrayFiltered = webDataArray.filter(entry => entry.time > lastProcessedTimestamp && entry.time <= timeSwitchedToCode);
 			if(webDataArrayFiltered.length > 0){
+				console.log('webDataArrayFiltered: ', webDataArrayFiltered);
+
 				if(usingHistoryView){
 					let webEntriesForHistory = processWebData(webDataArrayFiltered);
 					console.log('webEntriesForHistory: ', webEntriesForHistory);
@@ -296,6 +286,10 @@ function activate(context) {
 					// let currentTime = Math.floor(Date.now() / 1000);
 					// console.log('currentTime: ', currentTime);
 				}
+
+				// Update lastProcessedTimestamp after processing all filtered entries
+				lastProcessedTimestamp = webDataArrayFiltered[webDataArrayFiltered.length - 1].time;
+				console.log('lastProcessedTimestamp updated:', lastProcessedTimestamp);
 			}
 		} catch (error) {
 			console.log('Error performing Git actions:', error);
