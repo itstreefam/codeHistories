@@ -403,6 +403,19 @@ class gitTracker {
             console.error(`Error grabbing latest commit from codeHistories.git: ${err}`);
         }
     }
+
+    // get last commit time in seconds
+    async getLastCommitTime(){
+        try {
+            const gitDir = path.join(this._currentDir, 'codeHistories.git');
+            const workTree = this._currentDir;
+            const logCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" log -1 --format="%ct"`;
+            const { stdout } = await exec(logCmd, { cwd: workTree });
+            return parseInt(stdout.trim());
+        } catch (err) {
+            console.error(`Error getting last commit time: ${err}`);
+        }
+    }
 }
 
 module.exports = gitTracker;

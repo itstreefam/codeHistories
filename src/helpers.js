@@ -79,6 +79,16 @@ function runPythonScript(scriptPath, args) {
     });
 }
 
+// Helper function to extract text between specific keywords
+function extractText(content, startKeyword, endKeyword) {
+    const startIndex = content.indexOf(startKeyword);
+    const endIndex = content.indexOf(endKeyword, startIndex + startKeyword.length);
+    if (startIndex !== -1 && endIndex !== -1) {
+        return content.substring(startIndex + startKeyword.length, endIndex).trim();
+    }
+    return content;
+}
+
 module.exports = {
     getCurrentDir,
     debounce,
@@ -86,5 +96,6 @@ module.exports = {
     removeBackspaces,
     user,
     hostname,
-    runPythonScript
+    runPythonScript,
+    extractText
 };
