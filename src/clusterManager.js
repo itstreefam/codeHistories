@@ -1083,47 +1083,62 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                                     </svg>
                                 </button>
                                 <b>in ${event.file} </b>
-                            </div>
-                            <div class="content">
-                                <div class="${containerClass}">
-                                    ${diffHTML}
-                                </div>
                     `;
-                }
                 
-                // Render associated resources if they exist
-                if (resourcesExist && event.type === 'code') {
-                    html += `<div class="resources">`;
-
-                    for (let action of group.actions) {
-                        if (action.type === "search") {
-                            html += `<h3> You searched for: ${action.query}</h3>`;
-
-                            // only show bookmark with number when there are resources
-                            if(action.actions.length != 0) {
-                                html += `<div class="container"><i class="bi bi-bookmark"></i><div class="centered">${action.actions.length}</div></div>`;
-                            }
-
-                            for (let visit of action.actions) {
-                                html += `
-                                    <div class="tooltip">
-                                        ${visit.webTitle}: <a href="${visit.webpage}" target="_blank">${visit.webpage}</a>
-                                        <span class="tooltiptext" style="scale: 2">
-                                            <img class="thumbnail" src="${visit.img || 'default-image.jpg'}" alt="Thumbnail">
-                                        </span>
-                                        <br>
-                                    </div>
-                                `;
-                            }
+                    if (resourcesExist) {
+                        const action = group.actions.find(a => a.type === 'search');
+                        if (action && action.actions.length > 0) {
+                            html += `
+                                <div class="container">
+                                    <i class="bi bi-bookmark"></i>
+                                    <div class="centered">${action.actions.length}</div>
+                                </div>
+                            `;
                         }
                     }
-
-                    html += `</div>`; // Close resources div
+    
+                    html += `</div>`; // Close li-header div
+    
+                    // Content section with diff and resources
+                    html += `
+                        <div class="content">
+                            <div class="${containerClass}">
+                                ${diffHTML}
+                            </div>
+                    `;
+    
+                    if (resourcesExist) {
+                        html += `<div class="resources">`;
+                        for (let action of group.actions) {
+                            if (action.type === "search") {
+                                html += `<h4> You searched for: ${action.query}</h4>`;
+    
+                                if (action.actions.length > 0) {
+                                    for (let visit of action.actions) {
+                                        html += `
+                                            <div class="tooltip">
+                                                ${visit.webTitle}: <a href="${visit.webpage}" target="_blank">${visit.webpage}</a>
+                                                <span class="tooltiptext" style="scale: 2">
+                                                    <img class="thumbnail" src="${visit.img || 'default-image.jpg'}" alt="Thumbnail">
+                                                </span>
+                                                <br>
+                                            </div>
+                                        `;
+                                    }
+                                }
+                            } else if (action.type === "visit" || action.type === "revisit") {
+                                html += `<h4> You visited: <a href="${action.webpage}" target="_blank">${action.webTitle}</a></h4>`;
+                            }
+                        }
+                        html += `</div>`; // Close resources div
+                    }
+                    html += `</div>`; // Close content div
                 }
-
+    
+                html += `</li>`; // Close list item
+    
+                // Add JavaScript for the toggle button and focus on input
                 html += `
-                        </div>
-                    </li>
                     <script> 
                         document.addEventListener('DOMContentLoaded', () => {
                             const button = document.getElementById('plusbtn-${groupKey}-${index}');
@@ -1131,7 +1146,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                                 button.textContent = button.textContent === '+' ? '-' : '+';
                             });
                         });
-
+    
                         document.getElementById('button-${groupKey}-${index}').addEventListener('click', function() {
                             document.getElementById('code-title-${groupKey}-${index}').focus();
                         });  
