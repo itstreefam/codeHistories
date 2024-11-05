@@ -9,7 +9,7 @@ const cp = require('child_process');
 const path = require('path');
 const util = require('util');
 const exec = util.promisify(cp.exec);
-const { getCurrentDir } = require('./helpers');
+const { getCurrentDir, extractText } = require('./helpers');
 const express = require("express");
 require('dotenv').config({ path: __dirname + '/../.env' });
 const { OpenAI } = require("openai");
@@ -1134,7 +1134,8 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                         html += `<div class="resources"><h4>Helpful Resources</h4><ul class="resources-list">`;
     
                         if (searchAction) {
-                            html += `<p>You searched for "${searchAction.query}" and visited the following resources:</p>`;
+                            let searchQuery = extractText(searchAction.query, "search:", "- Google Search;");
+                            html += `<p>You searched for "${searchQuery}" and visited the following resources:</p>`;
                         } else if (visitActions.length > 0) {
                             html += `<p>You visited the following resources:</p>`;
                         }
@@ -1146,10 +1147,11 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                             for (let visit of searchAction.actions) {
                                 if (!uniqueURLs.has(visit.webpage)) {
                                     uniqueURLs.add(visit.webpage);
+                                    let visitTitle = extractText(visit.webTitle || "Visit Page", "visit:", ";");
                                     html += `
                                         <li>
                                             <div class="resource-item tooltip">
-                                                <a href="${visit.webpage}" target="_blank">${visit.webTitle}</a>
+                                                <a href="${visit.webpage}" target="_blank">● ${visitTitle}</a>
                                                 <span class="tooltiptext" style="scale: 2">
                                                     <img class="thumbnail" src="${visit.img || 'default-image.jpg'}" alt="Thumbnail">
                                                 </span>
@@ -1165,10 +1167,11 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                             for (let visit of visitActions) {
                                 if (!uniqueURLs.has(visit.webpage)) {
                                     uniqueURLs.add(visit.webpage);
+                                    let visitTitle = extractText(visit.webTitle || "Visit Page", "visit:", ";");
                                     html += `
                                         <li>
                                             <div class="resource-item tooltip">
-                                                <a href="${visit.webpage}" target="_blank">${visit.webTitle || 'Visit Page'}</a>
+                                                <a href="${visit.webpage}" target="_blank">● ${visitTitle}</a>
                                                 <span class="tooltiptext" style="scale: 2">
                                                     <img class="thumbnail" src="${visit.img || 'default-image.jpg'}" alt="Thumbnail">
                                                 </span>
@@ -1185,27 +1188,27 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                     html += `</div></li>`; // Close content and list item
                 }
     
-                // Add JavaScript directly within the loop for each specific index
+                // Add JavaScript for toggle and focus on input, scoped with an Immediately Invoked Function Expression (IIFE)
                 html += `
                     <script> 
-                        document.addEventListener('DOMContentLoaded', () => {
+                        (() => {
                             const button = document.getElementById('plusbtn-${groupKey}-${index}');
                             if (button) {
                                 button.addEventListener('click', () => {
                                     button.textContent = button.textContent === '+' ? '-' : '+';
                                 });
                             }
-                        });
-    
-                        const editButton = document.getElementById('button-${groupKey}-${index}');
-                        if (editButton) {
-                            editButton.addEventListener('click', function() {
-                                const titleInput = document.getElementById('code-title-${groupKey}-${index}');
-                                if (titleInput) {
-                                    titleInput.focus();
-                                }
-                            });  
-                        }
+
+                            const editButton = document.getElementById('button-${groupKey}-${index}');
+                            if (editButton) {
+                                editButton.addEventListener('click', function() {
+                                    const titleInput = document.getElementById('code-title-${groupKey}-${index}');
+                                    if (titleInput) {
+                                        titleInput.focus();
+                                    }
+                                });  
+                            }
+                        })();
                     </script>
                 `;
             }

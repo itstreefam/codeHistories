@@ -226,6 +226,7 @@ const historyStyles = `
 
     .resources {
         width: 30%;
+        margin-left: 10px;
     }
         
     .tooltip {
