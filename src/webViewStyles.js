@@ -233,35 +233,66 @@ const historyStyles = `
         display: inline-block;
     }
 
-.tooltip .tooltiptext {
-  background:https://pyxis.nymag.com/v1/imgs/e1e/6b7/e7e202e97398fd64f6f9b6c6d13a526234-tired-spongebob.rsquare.w400.jpg;
-  visibility: hidden;
-  width: 120px;
-  height: 60px;
-  color: #fff;
-  text-align: center;
-  border-radius: 6px;
-  padding: 5px 0;
-  position: absolute;
-  z-index: 1;
-  top: 200%;
-  left: 30%;
-  margin-left: -60px;
-}
+    .tooltip .tooltiptext {
+    background:https://pyxis.nymag.com/v1/imgs/e1e/6b7/e7e202e97398fd64f6f9b6c6d13a526234-tired-spongebob.rsquare.w400.jpg;
+    visibility: hidden;
+    width: 120px;
+    height: 60px;
+    color: #fff;
+    text-align: center;
+    border-radius: 6px;
+    padding: 5px 0;
+    position: absolute;
+    z-index: 1;
+    top: 200%;
+    left: 30%;
+    margin-left: -60px;
+    }
 
-.tooltip:hover .tooltiptext {
-  visibility: visible;
-}
+    .tooltip:hover .tooltiptext {
+    visibility: visible;
+    }
 
-.placeholder {
-    width: 13.005px;
-    height: 15.360px;
-    margin-right: 24.285px;
-}
+    .placeholder {
+        width: 13.005px;
+        height: 15.360px;
+        margin-right: 24.285px;
+    }
 
-.thumbnail .tooltiptext {
-    scale: 2;
-}
+    .thumbnail .tooltiptext {
+        scale: 2;
+    }
+
+    .resources h4 {
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+
+    .resources p {
+        margin: 5px 0 10px;
+        font-size: 14px;
+        color: #333;
+    }
+
+    .resource-list {
+        list-style-type: disc;
+        padding-left: 20px;
+        margin-top: 0;
+    }
+
+    .resource-item {
+        margin-bottom: 8px;
+        position: relative; /* Needed for tooltip positioning */
+    }
+
+    .resource-item a {
+        color: #007bff;
+        text-decoration: none;
+    }
+
+    .resource-item a:hover {
+        text-decoration: underline;
+    }
 `;
 
 // Light theme styles for content timeline

@@ -1061,37 +1061,43 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             // check if there are any related resources (structured web events)
             let resourcesExist = group.actions.some(action => action.type === 'search' || action.type === 'visit' || action.type === 'revisit');
             let containerClass = resourcesExist ? 'left-container' : 'full-container';
-
+    
             for (const [index, event] of group.actions.entries()) {
-
-                let title = event.title || "Untitled";  // Provide a default title if undefined
-
+                let title = event.title || "Untitled";
                 if (event.type === 'code') {
-                    // Render the code activity with editable title and collapsible diff
                     const diffHTML = this.generateDiffHTML(event);
-
+    
                     html += `
                         <li data-eventid="${index}">
-                            <!-- Editable title for the code activity -->
                             <div class="li-header">
                                 <button type="button" class="collapsible" id="plusbtn-${groupKey}-${index}">+</button>
                                 <input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')" size="50">
-                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${title}">
+                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${index}">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
-                                    <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
-                                    <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
+                                        <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
+                                        <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
                                     </svg>
                                 </button>
                                 <b>in ${event.file} </b>
                     `;
-                
+    
+                    // Check for `search` and `visit` actions separately
+                    const searchAction = group.actions.find(a => a.type === "search");
+                    const visitActions = group.actions.filter(a => a.type === "visit" || a.type === "revisit");
+    
                     if (resourcesExist) {
-                        const action = group.actions.find(a => a.type === 'search');
-                        if (action && action.actions.length > 0) {
+                        if (searchAction && searchAction.actions.length > 0) {
                             html += `
                                 <div class="container">
                                     <i class="bi bi-bookmark"></i>
-                                    <div class="centered">${action.actions.length}</div>
+                                    <div class="centered">${searchAction.actions.length}</div>
+                                </div>
+                            `;
+                        } else if (visitActions.length > 0) {
+                            html += `
+                                <div class="container">
+                                    <i class="bi bi-bookmark"></i>
+                                    <div class="centered">${visitActions.length}</div>
                                 </div>
                             `;
                         }
@@ -1108,53 +1114,84 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                     `;
     
                     if (resourcesExist) {
-                        html += `<div class="resources">`;
-                        for (let action of group.actions) {
-                            if (action.type === "search") {
-                                html += `<h4> You searched for: ${action.query}</h4>`;
+                        html += `<div class="resources"><h4>Helpful Resources</h4><ul class="resources-list">`;
     
-                                if (action.actions.length > 0) {
-                                    for (let visit of action.actions) {
-                                        html += `
-                                            <div class="tooltip">
-                                                ${visit.webTitle}: <a href="${visit.webpage}" target="_blank">${visit.webpage}</a>
+                        if (searchAction) {
+                            html += `<p>You searched for "${searchAction.query}" and visited the following resources:</p>`;
+                        } else if (visitActions.length > 0) {
+                            html += `<p>Visited the following resources:</p>`;
+                        }
+    
+                        const uniqueURLs = new Set();
+                        
+                        // Handle `search` actions with multiple resources
+                        if (searchAction && searchAction.actions.length > 0) {
+                            for (let visit of searchAction.actions) {
+                                if (!uniqueURLs.has(visit.webpage)) {
+                                    uniqueURLs.add(visit.webpage);
+                                    html += `
+                                        <li>
+                                            <div class="resource-item tooltip">
+                                                <a href="${visit.webpage}" target="_blank">${visit.webTitle}</a>
                                                 <span class="tooltiptext" style="scale: 2">
                                                     <img class="thumbnail" src="${visit.img || 'default-image.jpg'}" alt="Thumbnail">
                                                 </span>
-                                                <br>
                                             </div>
-                                        `;
-                                    }
+                                        </li>
+                                    `;
                                 }
-                            } else if (action.type === "visit" || action.type === "revisit") {
-                                html += `<h4> You visited: <a href="${action.webpage}" target="_blank">${action.webTitle}</a></h4>`;
                             }
                         }
-                        html += `</div>`; // Close resources div
+    
+                        // Handle `visit` and `revisit` actions individually
+                        for (let visit of visitActions) {
+                            if (!uniqueURLs.has(visit.webpage)) {
+                                uniqueURLs.add(visit.webpage);
+                                html += `
+                                    <li>
+                                        <div class="resource-item tooltip">
+                                            <a href="${visit.webpage}" target="_blank">${visit.webTitle || 'Visit Page'}</a>
+                                            <span class="tooltiptext" style="scale: 2">
+                                                <img class="thumbnail" src="${visit.img || 'default-image.jpg'}" alt="Thumbnail">
+                                            </span>
+                                        </div>
+                                    </li>
+                                `;
+                            }
+                        }
+    
+                        html += `</ul></div>`; // Close resources-list and resources div
                     }
-                    html += `</div>`; // Close content div
+    
+                    html += `</div></li>`; // Close content and list item
                 }
     
-                html += `</li>`; // Close list item
-    
-                // Add JavaScript for the toggle button and focus on input
+                // Add JavaScript directly within the loop for each specific index
                 html += `
                     <script> 
                         document.addEventListener('DOMContentLoaded', () => {
                             const button = document.getElementById('plusbtn-${groupKey}-${index}');
-                            button.addEventListener('click', () => {
-                                button.textContent = button.textContent === '+' ? '-' : '+';
-                            });
+                            if (button) {
+                                button.addEventListener('click', () => {
+                                    button.textContent = button.textContent === '+' ? '-' : '+';
+                                });
+                            }
                         });
     
-                        document.getElementById('button-${groupKey}-${index}').addEventListener('click', function() {
-                            document.getElementById('code-title-${groupKey}-${index}').focus();
-                        });  
+                        const editButton = document.getElementById('button-${groupKey}-${index}');
+                        if (editButton) {
+                            editButton.addEventListener('click', function() {
+                                const titleInput = document.getElementById('code-title-${groupKey}-${index}');
+                                if (titleInput) {
+                                    titleInput.focus();
+                                }
+                            });  
+                        }
                     </script>
                 `;
             }
         }
-
+    
         return html;
     }
 
