@@ -257,11 +257,12 @@ function activate(context) {
 			// Initialize lastProcessedTimestamp to timeSwitchedToChrome if it's the first run
 			if (lastProcessedTimestamp === null) {
 				// if timeSwitchedToChrome is unknown, we will set the lastProcessedTimestamp to the time of last commit
-				if(timeSwitchedToChrome > 0){
-					lastProcessedTimestamp = timeSwitchedToChrome;
-				} else {
-					lastProcessedTimestamp = await tracker.getLastCommitTime();
-				}
+				// if(timeSwitchedToChrome > 0){
+				// 	lastProcessedTimestamp = timeSwitchedToChrome;
+				// } else {
+				// 	lastProcessedTimestamp = await tracker.getLastCommitTime();
+				// }
+				lastProcessedTimestamp = timeSwitchedToChrome;
 				console.log('lastProcessedTimestamp initialized to timeSwitchedToChrome:', lastProcessedTimestamp);
 			}
 
