@@ -849,15 +849,13 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
 
             // Attach collapsible event listeners
             function attachCollapsibleListeners() {
-                document.querySelectorAll('.collapsible').forEach(collapsibleItem => {
-                    collapsibleItem.addEventListener('click', function () {
+                document.querySelectorAll('.collapsible').forEach(button => {
+                    button.addEventListener('click', function () {
                         this.classList.toggle('active');
-                        // const content = this.nextElementSibling;
-                        const content = this.parentElement.nextElementSibling; 
-                        if (content.style.display === 'flex') {
-                            content.style.display = 'none';
-                        } else {
-                            content.style.display = 'flex';
+                        const content = this.parentElement.nextElementSibling;
+                        if (content) {
+                            content.style.display = content.style.display === 'block' ? 'none' : 'block';
+                            this.textContent = this.textContent === '+' ? '-' : '+';
                         }
                     });
                 });
@@ -1192,13 +1190,6 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 html += `
                     <script> 
                         (() => {
-                            const button = document.getElementById('plusbtn-${groupKey}-${index}');
-                            if (button) {
-                                button.addEventListener('click', () => {
-                                    button.textContent = button.textContent === '+' ? '-' : '+';
-                                });
-                            }
-
                             const editButton = document.getElementById('button-${groupKey}-${index}');
                             if (editButton) {
                                 editButton.addEventListener('click', function() {
@@ -1331,13 +1322,14 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 
                 // Store the latest diff for this file, replacing any previous entry
                 fileDiffs[event.file] = `
-                    <li class="stray-event" id="code-${idx}">
+                    <li class="stray-event" id="code-stray-${idx}">
                         <div class="li-header">
-                            <button type="button" class="collapsible">+</button>
+                            <button type="button" class="collapsible" id="plusbtn-code-stray-${idx}">+</button>
                             You made changes to <em>${event.file}</em>
+                            <div class="placeholder"></div>
                         </div>
-                        <div class="content">
-                            <div class="left-container">
+                        <div class="content" id="content-code-stray-${idx}" style="display: none;">
+                            <div class="full-container">
                                 ${diffHTMLForStrayChanges}
                             </div>
                         </div>
@@ -1347,7 +1339,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 // Handle search events
                 const searchedTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf("-")).trim();
                 html += `
-                    <li class="stray-event" id="search-${idx}">
+                    <li class="stray-event" id="search-stray-${idx}">
                         <p>You searched for "${searchedTitle}"</p>
                     </li>
                 `;
@@ -1355,7 +1347,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 // Handle visit or revisit events
                 const pageTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf(";")).trim();
                 html += `
-                    <li class="stray-event" id="visit-${idx}">
+                    <li class="stray-event" id="visit-stray-${idx}">
                         <p>You visited the site <a href="${event.webpage}" target="_blank">${pageTitle}</a></p>
                     </li>
                 `;
@@ -1397,7 +1389,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             colorScheme: 'light',
             showFiles: false,
         });
-      
+        
         return diffHtml;
     }
       

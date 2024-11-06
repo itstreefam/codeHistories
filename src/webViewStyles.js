@@ -221,7 +221,7 @@ const historyStyles = `
     }
 
     .full-container{
-        width: 100%;
+        width: 95%;
     }
 
     .resources {
