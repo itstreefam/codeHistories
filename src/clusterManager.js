@@ -909,12 +909,92 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                     document.removeEventListener('mousemove', handleMouseMove);
                 }
             });
+
+            // Add event for line navigation
+            document.querySelectorAll('.line-num2').forEach(lineNumber => {
+                lineNumber.addEventListener('click', function () {
+                    const fileName = lineNumber.getAttribute('data-filename');
+                    const line = lineNumber.getAttribute('data-linenumber');
+                    vscode.postMessage({
+                        command: 'navigateToLine',
+                        fileName: fileName,
+                        line: line
+                    });
+                });    
+            });
         
         })();
     </script>
             </body>
             </html>
         `;
+
+        this.webviewPanel.webview.onDidReceiveMessage((message) => {
+            if (message.command === 'navigateToLine') {
+                this.navigateToLine(message.fileName, message.line);
+            }
+        });
+    }
+
+    async navigateToLine(fileName, lineNumber) {
+        let fileUri;
+        if(path.isAbsolute(fileName)){
+            fileUri = vscode.Uri.file(fileName);
+        } else {
+            // resolve the filename relative to the workspace
+            const workspaceFolder = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0];
+            if(workspaceFolder){
+                const resolvedPath = path.join(workspaceFolder.uri.fsPath, fileName);
+                fileUri = vscode.Uri.file(resolvedPath);
+            } else {
+                vscode.window.showErrorMessage('No workspace folder is open. Unable to resolve relative file path.');
+                return;
+            }
+        }
+    
+        try {
+            // Check if the file is already opened in any visible editor
+            const openedEditor = vscode.window.visibleTextEditors.find(editor => {
+                const editorFilePath = editor.document.uri.fsPath;
+                return editorFilePath === fileUri.fsPath;
+            });
+
+            if (openedEditor) {
+                // The file is already opened, navigate to the correct line
+                const document = openedEditor.document;
+                const lineCount = document.lineCount;
+
+                // Validate the line number and find the nearest valid line if necessary
+                const validLine = Math.min(Math.max(0, lineNumber), lineCount - 1);
+
+                // Create a range for the target line
+                const range = new vscode.Range(validLine, 0, validLine, 0);
+
+                // Reveal the target line in the editor
+                openedEditor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+                openedEditor.selection = new vscode.Selection(range.start, range.end);
+            } else {
+                // The file is not opened, open it in a new tab on the main editor (ViewColumn.One)
+                const document = await vscode.workspace.openTextDocument(fileUri);
+                const editor = await vscode.window.showTextDocument(document, {
+                    viewColumn: vscode.ViewColumn.One, // Open in the left/main editor tab
+                    preserveFocus: false // Focus on the new tab
+                });
+                const lineCount = document.lineCount;
+
+                // Validate the line number and find the nearest valid line if necessary
+                const validLine = Math.min(Math.max(0, lineNumber), lineCount - 1);
+
+                // Create a range for the target line
+                const range = new vscode.Range(validLine, 0, validLine, 0);
+
+                // Reveal the target line in the editor
+                editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+                editor.selection = new vscode.Selection(range.start, range.end);
+            }
+        } catch (error) {
+            vscode.window.showErrorMessage(`Unable to open or navigate to file: ${fileName}. Error: ${error.message}`);
+        }
     }
   
     async generateGroupedEventsHTMLTest() {
@@ -936,7 +1016,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
                 const subgoal = group.codeChanges[subgoalKey];
 
-                const diffHTML = this.generateDiffHTML(subgoal);
+                const diffHTML = this.generateDiffHTMLGroup(subgoal);
 
                     if(links.resources.length != 0 && count < links.resources.length) {
                         html += `
@@ -1063,7 +1143,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             for (const [index, event] of group.actions.entries()) {
                 let title = event.title || "Untitled";
                 if (event.type === 'code') {
-                    const diffHTML = this.generateDiffHTML(event);
+                    const diffHTML = this.generateDiffHTMLGroup(event);
     
                     if(resourcesExist) {
                         html += `
@@ -1208,7 +1288,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         return html;
     }
 
-    async testDiffHTML(anEvent) {
+    async generateDiffHtmlStray(anEvent) {
         try {
             const currentDir = getCurrentDir();
             const gitDir = path.join(currentDir, 'codeHistories.git');
@@ -1253,8 +1333,24 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 colorScheme: 'light',
                 showFiles: false,
             });
-    
-            return diffHtml;
+
+            // Search for matches with <div class="line-num2">...</div>
+            // const lineNumberMatches = diffHtml.match(/<div class="line-num2">(.*?)<\/div>/g);
+            // if (lineNumberMatches) {
+            //     lineNumberMatches.forEach((match) => {
+            //         const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
+            //         console.log('Found line number:', lineNumber);
+            //     });
+            // } else {
+            //     console.log('No line numbers with class "line-num2" found.');
+            // }
+
+            const modifiedHtml = diffHtml.replace(/<div class="line-num2">(.*?)<\/div>/g, (match) => {
+                const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
+                return `<div class="line-num2" data-linenumber="${lineNumber-1}" data-filename="${anEvent.file}">${lineNumber}</div>`;
+            });
+
+            return modifiedHtml;
     
         } catch (err) {
             console.error(`Error generating diff for ${anEvent.file}: ${err}`);
@@ -1318,7 +1414,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         for (const event of this.strayEvents) {
             if (event.type === "code") {
                 // Get the latest diff for this file
-                const diffHTMLForStrayChanges = await this.testDiffHTML(event);
+                const diffHTMLForStrayChanges = await this.generateDiffHtmlStray(event);
                 
                 // Store the latest diff for this file, replacing any previous entry
                 fileDiffs[event.file] = `
@@ -1365,14 +1461,14 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
     }
     
 
-    generateDiffHTML(codeActivity) {
+    generateDiffHTMLGroup(codeActivity) {
         // Get the event at startTime
-        const startCodeEventLines = this.get_code_lines(codeActivity.before_code);
+        let startCodeEventLines = this.get_code_lines(codeActivity.before_code);
 
         // Get the event at endTime
-        const endCodeEventLines = this.get_code_lines(codeActivity.after_code);
+        let endCodeEventLines = this.get_code_lines(codeActivity.after_code);
 
-        const diffString = Diff.createTwoFilesPatch(
+        let diffString = Diff.createTwoFilesPatch(
             'start',
             'end',
             codeActivity.before_code,
@@ -1383,13 +1479,24 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         );
 
         // Render the diff as HTML
-        const diffHtml = diff2html.html(diffString, {
+        let diffHtml = diff2html.html(diffString, {
             outputFormat: 'line-by-line',
             drawFileList: false,
             colorScheme: 'light',
             showFiles: false,
         });
-        
+
+        // Add clickable line numbers 
+        // find div class="line-num2" and add a data-linenumber and data-file attribute
+        // <div class="line-num2"> sometimes has number but sometimes doesn't, only add to those that have numbers
+
+        let modifiedHtml = diffHtml.replace(/<div class="line-num2">(\d+)<\/div>/g, (match, p1) => {
+            if (p1) {
+                return `<div class="line-num2" data-linenumber="${p1}" data-file="${codeActivity.file}">${p1}</div>`;
+            } 
+            return match;
+        });
+
         return diffHtml;
     }
       

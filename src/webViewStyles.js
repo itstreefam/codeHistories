@@ -203,6 +203,10 @@ const historyStyles = `
         scrollbar-color: #ccc #f5f5f5;
     }
 
+    .d2h-del, .d2h-ins, .dh2-cntx {
+        width: 100%;
+    }
+
     .d2h-code-side-linenumber{
         position: relative !important;
     }
@@ -213,7 +217,7 @@ const historyStyles = `
 
     .d2h-code-line {
         position: relative;
-        right: 10%;
+        padding: 0 2em !important;
     }
 
     .left-container{
