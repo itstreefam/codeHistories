@@ -403,6 +403,13 @@ class ContentTimelineManager {
     getFilename(documentPath) {
         return path.basename(documentPath);
     }
+
+    getWebviewContent() {
+        if (this.webviewPanel && this.webviewPanel.webview) {
+            return this.webviewPanel.webview.html;
+        }
+        return null;
+    }
 }
 
 module.exports = ContentTimelineManager;

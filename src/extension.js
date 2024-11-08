@@ -251,6 +251,7 @@ function activate(context) {
 			let webDataArray = JSON.parse(webData);
 
 			let webDataArrayFiltered = [];
+			let nonLocalWebEntries = []; // Collect only non-local URLs for history view
 			let startTime = timeSwitchedToChrome;
 			let endTime = timeSwitchedToCode;
 
@@ -260,6 +261,12 @@ function activate(context) {
 					let entry = webDataArray[i];
 					if (entry.time >= startTime && entry.time <= endTime) {
 						webDataArrayFiltered.unshift(entry); // Prepend to maintain order
+
+						// Collect only non-local URLs for history view
+						if (!helpers.isLocalUrl(entry.curUrl)) {
+							nonLocalWebEntries.unshift(entry);
+						}
+
 					} else if (entry.time < startTime) {
 						break; // Early exit, no need to check earlier entries
 					}
@@ -277,16 +284,16 @@ function activate(context) {
 			if(webDataArrayFiltered.length > 0){
 				console.log('webDataArrayFiltered: ', webDataArrayFiltered);
 
-				if(usingHistoryView){
-					let webEntriesForHistory = processWebData(webDataArrayFiltered);
+				if(usingHistoryView && nonLocalWebEntries.length > 0){
+					let webEntriesForHistory = processWebData(nonLocalWebEntries);
 					console.log('webEntriesForHistory: ', webEntriesForHistory);
 					await clusterManager.processWebEvents(webEntriesForHistory);
 				}
 
 				// check if webDataArrayFiltered contains a visit to localhost or 127.0.0.1
-				let webDataArrayFilteredContainsLocalhost = webDataArrayFiltered.filter(obj => obj.curUrl.includes('localhost') || containsIPAddresses(obj.curUrl));
+				let webDataArrayFilteredContainsLocalhost = webDataArrayFiltered.some(entry => helpers.isLocalUrl(entry.curUrl));
 				
-				if(webDataArrayFilteredContainsLocalhost.length > 0){
+				if(webDataArrayFilteredContainsLocalhost){
 					await tracker.gitAdd();
 					await tracker.checkWebData();
 					await tracker.gitCommit();
@@ -778,15 +785,6 @@ async function checkExtensionActivation() {
 	return true;
 }
 
-function containsIPAddresses(url) {
-	// Define regex patterns for matching IPv4 and IPv6 addresses
-	const ipv4Pattern = /\b(?:\d{1,3}\.){3}\d{1,3}\b/;
-	const ipv6Pattern = /\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b/;
-
-	// Use the regex `test` method to check if the URL contains an IPv4 or IPv6 address
-	return ipv4Pattern.test(url) || ipv6Pattern.test(url);
-}
-
 function deactivate() {
 	console.log('Thank you for trying out "codeHistories"!');
 
@@ -805,15 +803,17 @@ function deactivate() {
 			let dateStr = date.toISOString().split('T')[0];
 			let epochTimeInSeconds = Math.floor(date.getTime() / 1000);  // Get the current time in seconds
 
-			const webviewPath = path.join(currentDir, 'CH_cfg_and_logs', `webview_${dateStr}_${epochTimeInSeconds}.html`);
+			const webviewPath = path.join(currentDir, 'CH_cfg_and_logs', `history_webview_${dateStr}_${epochTimeInSeconds}.html`);
 			// console.log('webviewPath:', webviewPath);
 
 			let webviewContent = clusterManager.getWebviewContent();
-			webviewContent = clusterManager.commentOutVSCodeApi(webviewContent); // Comment out the VS Code API script so html can run as standalone in browser
-			// console.log('webviewContent:', webviewContent);
+			// webviewContent = clusterManager.commentOutVSCodeApi(webviewContent); // Comment out the VS Code API script so html can run as standalone in browser
+			// // console.log('webviewContent:', webviewContent);
 
 			fs.writeFileSync(webviewPath, webviewContent);			
-		} else if(usingContentTimelineView){
+		} 
+		
+		if(usingContentTimelineView){
 			// save webview inside CH_cfg_and_logs
 			const currentDir = getCurrentDir();
 
@@ -825,8 +825,6 @@ function deactivate() {
 			// console.log('webviewPath:', webviewPath);
 
 			let webviewContent = contentTimelineManager.getWebviewContent();
-			webviewContent = contentTimelineManager.commentOutVSCodeApi(webviewContent); // Comment out the VS Code API script so html can run as standalone in browser
-			// console.log('webviewContent:', webviewContent);
 
 			fs.writeFileSync(webviewPath, webviewContent);
 		}

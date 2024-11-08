@@ -580,8 +580,8 @@ class ClusterManager {
             codeActivity.title = await this.generateSubGoalTitle(codeActivity);
         }
 
-        // grab only the web events from the stray events that has time between the start and end time of codeActivity
-        let webEvents = this.strayEvents.filter(event => event.type !== "code" && event.time >= codeActivity.startTime && event.time <= codeActivity.endTime);
+        // grab only the web events from the stray events that has time before the endCodeEvent
+        let webEvents = this.strayEvents.filter(event => event.type !== "code" && event.time <= endCodeEvent.time);
 
         // Initialize an empty array to hold structured web events
         let structureWebEvents = [];
