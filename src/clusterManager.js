@@ -841,7 +841,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                         element.classList.add('active'); // Reapply the active state
                         const content = element.nextElementSibling;
                         if (content) {
-                            content.style.display = 'block'; // Ensure content is visible if active
+                            content.style.display = 'flex'; // Ensure content is visible if active
                         }
                     }
                 });
@@ -854,7 +854,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                         this.classList.toggle('active');
                         const content = this.parentElement.nextElementSibling;
                         if (content) {
-                            content.style.display = content.style.display === 'block' ? 'none' : 'block';
+                            content.style.display = content.style.display === 'flex' ? 'none' : 'flex';
                             this.textContent = this.textContent === '+' ? '-' : '+';
                         }
                     });
@@ -1410,6 +1410,10 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
     
         // Track the most recent change for each file
         const fileDiffs = {};
+        
+        // Track unique web visits and searches
+        const uniqueVisits = new Set();
+        const uniqueSearches = new Set();
     
         for (const event of this.strayEvents) {
             if (event.type === "code") {
@@ -1432,21 +1436,27 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                     </li>
                 `;
             } else if (event.type === "search") {
-                // Handle search events
+                // Handle search events and avoid duplicates
                 const searchedTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf("-")).trim();
-                html += `
-                    <li class="stray-event" id="search-stray-${idx}">
-                        <p>You searched for "${searchedTitle}"</p>
-                    </li>
-                `;
+                if (!uniqueSearches.has(searchedTitle)) {
+                    uniqueSearches.add(searchedTitle);
+                    html += `
+                        <li class="stray-event" id="search-stray-${idx}">
+                            <p>You searched for "${searchedTitle}"</p>
+                        </li>
+                    `;
+                }
             } else if (event.type === "visit" || event.type === "revisit") {
-                // Handle visit or revisit events
+                // Handle visit or revisit events and avoid duplicates
                 const pageTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf(";")).trim();
-                html += `
-                    <li class="stray-event" id="visit-stray-${idx}">
-                        <p>You visited the site <a href="${event.webpage}" target="_blank">${pageTitle}</a></p>
-                    </li>
-                `;
+                if (!uniqueVisits.has(event.webpage)) {
+                    uniqueVisits.add(event.webpage);
+                    html += `
+                        <li class="stray-event" id="visit-stray-${idx}">
+                            <p>You visited the site <a href="${event.webpage}" target="_blank">${pageTitle}</a></p>
+                        </li>
+                    `;
+                }
             }
     
             idx += 1;  // Increment index for the next item
@@ -1458,7 +1468,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         });
     
         return html;  // Return the generated HTML
-    }
+    }    
     
 
     generateDiffHTMLGroup(codeActivity) {
