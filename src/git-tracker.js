@@ -401,6 +401,48 @@ class gitTracker {
             return entries;
         } catch (err) {
             console.error(`Error grabbing latest commit from codeHistories.git: ${err}`);
+            return [];
+        }
+    }
+
+    // this function should access the list of all files in the latest commit
+    async grabAllLatestCommitFiles(){
+        try {
+            const gitDir = path.join(this._currentDir, 'codeHistories.git');
+            const workTree = this._currentDir;
+            const lsCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" ls-tree -r --name-only HEAD`;
+            const { stdout } = await exec(lsCmd, { cwd: workTree });
+            const currentCommitTime = await this.getLastCommitTime();
+            const files = stdout.trim().split('\n');
+            let filesToConsider = ['output.txt', '.py', '.js', '.html', '.css'];
+            let entries = [];
+            for (const file of files) {
+                if(file === 'output.txt'){
+                    let documentText = await fs.promises.readFile(`${this._currentDir}/output.txt`, 'utf8');
+                    let entry = {
+                        type: 'output',
+                        document: 'output.txt',
+                        time: currentCommitTime,
+                        code_text: documentText,
+                        notes: `output: output.txt;`,
+                    };
+                    entries.push(entry);
+                } else if(filesToConsider.some(ext => file.endsWith(ext))){
+                    let documentText = await fs.promises.readFile(`${this._currentDir}/${file}`, 'utf8');
+                    let entry = {
+                        type: 'code',
+                        document: file,
+                        time: currentCommitTime,
+                        code_text: documentText,
+                        notes: `code: ${file};`,
+                    };
+                    entries.push(entry);
+                }
+            }
+            return entries;
+        } catch (err) {
+            console.error(`Error grabbing all latest commit files: ${err}`);
+            return [];
         }
     }
 
@@ -414,6 +456,8 @@ class gitTracker {
             return parseInt(stdout.trim());
         } catch (err) {
             console.error(`Error getting last commit time: ${err}`);
+            console.log(`Returning current time as last commit time`);
+            return Math.floor(Date.now() / 1000);
         }
     }
 }

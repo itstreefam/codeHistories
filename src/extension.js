@@ -111,8 +111,9 @@ function activate(context) {
 		}
 	}
 
-	clusterManager = new ClusterManager(context);
-	// clusterManager.initializeWebview();
+	clusterManager = new ClusterManager(context, tracker);
+	clusterManager.initializeClusterManager();
+
 	contentTimelineManager = new ContentTimelineManager(context);
 
 	vscode.window.onDidStartTerminalShellExecution(async event => {
@@ -485,9 +486,6 @@ async function onDidExecuteShellCommandHelper(event, clusterManager, contentTime
 					await tracker.gitCommit();
 					let codeEntries = await tracker.grabLatestCommitFiles();
 					await clusterManager.processCodeEvents(codeEntries);
-					// if(eventEntry){
-					// 	await clusterManager.processEvent(eventEntry);
-					// }
 				} else if(usingContentTimelineView) {
 					// await tracker.gitCommit();
 					await contentTimelineManager.processEvent(executionInfo);
@@ -595,7 +593,7 @@ async function showTerminalProfileQuickPick() {
 
 		let profileName = selectedProfile.name;
 
-		if (!profileName) {
+		if (!selectedProfile || !profileName) {
 			vscode.window.showErrorMessage("No terminal profile selected. Selecting the default terminal profile.");
 			return;
 		}
@@ -688,6 +686,7 @@ async function showTerminalProfileQuickPick() {
 
 		await handleTerminal(terminalName, currentDir);
 	} catch (error) {
+		console.error('Error selecting terminal profile:', error);
 		vscode.window.showErrorMessage("No terminal profile selected. Selecting the default terminal profile.");
 		return;
 	}
@@ -775,6 +774,14 @@ async function quickAutoCommitHelper() {
 	await tracker.gitAdd();
 	await tracker.checkWebData();
 	await tracker.gitCommit();
+	if(usingHistoryView){
+		let codeEntries = await tracker.grabLatestCommitFiles();
+		await clusterManager.processCodeEvents(codeEntries);
+	}
+
+	if(usingContentTimelineView){
+		await contentTimelineManager.processEvent(eventEntry);
+	}
 }
 
 async function checkExtensionActivation() {

@@ -24,8 +24,9 @@ const openai = new OpenAI({
 });
 
 class ClusterManager {
-    constructor(context) {
+    constructor(context, gitTracker) {
         this.context = context;
+        this.gitTracker = gitTracker;
         this.displayForGroupedEvents = []; // This high-level array will have subgoal for each grouping found
         this.inCluster = {};  // Store a map where the key is a filename and the value tracks if we are currently grouping events into a cluster for that file
         this.clusterStartTime = {};  // Store a map where the key is a filename and the value tracks the start time of the current cluster for that file
@@ -33,8 +34,8 @@ class ClusterManager {
         this.strayEvents = [];  // Stores events that do not fit into any cluster
         this.pastEvents = null;  // Stores a map where the key is a filename and the value is the last event for that specific file
         this.allPastEvents = {}; // Stores all past events for all files
-        this.MAX_NEW_LINES = 4;  // Maximum number of new lines that can be added/deleted between events
-        this.debug = false;  // Debug flag to print out additional information
+        this.MAX_NEW_LINES = 3;  // Maximum number of new lines that can be added/deleted between events
+        this.debug = true;  // Debug flag to print out additional information
         this.webviewPanel = null;
         this.currentCodeEvent = null;
         this.currentWebEvent = null;
@@ -44,6 +45,7 @@ class ClusterManager {
         // this.initializeResourcesTemporaryTest();
         this.debugging = true;
         this.prevCommittedEvents = [];
+        this.isInitialized = false;
     }
 
     initializeTemporaryTest(){
@@ -60,6 +62,13 @@ class ClusterManager {
         const testData = new temporaryTest(String.raw`C:\users\thien\Downloads\wordleStory.json`); // change path of test data here
         this.codeResources = testData.processResources(testData.data);
         console.log("Resources", this.codeResources);
+    }
+
+    async initializeClusterManager() {
+        // Grab the initial commit data without displaying it in the web panel
+        const initialCodeEntries = await this.gitTracker.grabAllLatestCommitFiles();
+        await this.processCodeEvents(initialCodeEntries);
+        this.isInitialized = true;
     }
 
     async initializeWebview() {
@@ -152,6 +161,10 @@ class ClusterManager {
         
         this.prevCommittedEvents = codeEventsList;
 
+        if(!this.isInitialized){
+            return;
+        }
+
         // Trigger webview if not opened
         if (!this.webviewPanel) {
             await this.initializeWebview();
@@ -185,45 +198,8 @@ class ClusterManager {
             this.strayEvents.push(this.currentWebEvent); // this is processed event
         }
 
-        // Trigger webview if not opened
-        if (!this.webviewPanel) {
-            await this.initializeWebview();
-        } else {
-            // If webview is already opened, just update the content
-            await this.updateWebPanel();
-        }
-    }
-
-    // Method to process a new event in real-time
-    async processEvent(entry) {
-        const eventType = this.getEventType(entry);
-
-        if (!this.currentGroup) {
-            this.startNewGroup();
-        }
-
-        // console.log('In processEvent', entry, eventType);
-
-        if (eventType === "code") {
-            let filename = this.getFilename(entry.notes);
-            this.currentCodeEvent = {
-                type: "code",
-                file: filename,
-                time: entry.time,
-                code_text: entry.code_text,
-                title: `Code changes in ${filename}`
-            };
-
-            await this.handleCodeEvent(entry); // this takes in raw event
-        } else if (eventType === "search" || eventType === "visit" || eventType === "revisit") {
-            this.currentWebEvent = {
-                type: eventType,
-                time: entry.time,
-                webTitle: entry.notes,
-                webpage: entry.timed_url,
-            };
-
-            this.strayEvents.push(this.currentWebEvent); // this is processed event
+        if(!this.isInitialized){
+            return;
         }
 
         // Trigger webview if not opened
@@ -504,9 +480,6 @@ class ClusterManager {
             //     this.inCluster[filename] = false;
             // }
         }
-
-        // update the web panel after processing the event
-        await this.updateWebPanel();
     }
 
     // Method to check if only whitespace changes have been made
