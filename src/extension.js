@@ -242,32 +242,38 @@ function activate(context) {
 		}
 	};
 
-	let lastProcessedTimestamp = null;
-	let webData = [];
-
 	const performGitActions = async () => {
 		try {
-			// Small delay to ensure webData has latest entries
+			// search between timeSwitchedToChrome and timeSwitchedToCode in webData
 			await new Promise(resolve => setTimeout(resolve, 1000));
-			webData = fs.readFileSync(path.join(currentDir, 'webData'), 'utf8');
-
+			let webData = fs.readFileSync(path.join(currentDir, 'webData'), 'utf8');
+			
 			let webDataArray = JSON.parse(webData);
-			console.log('strayEvents', clusterManager.strayEvents);
 
-			// Initialize lastProcessedTimestamp to timeSwitchedToChrome if it's the first run
-			if (lastProcessedTimestamp === null) {
-				// if timeSwitchedToChrome is unknown, we will set the lastProcessedTimestamp to the time of last commit
-				// if(timeSwitchedToChrome > 0){
-				// 	lastProcessedTimestamp = timeSwitchedToChrome;
-				// } else {
-				// 	lastProcessedTimestamp = await tracker.getLastCommitTime();
-				// }
-				lastProcessedTimestamp = timeSwitchedToChrome;
-				console.log('lastProcessedTimestamp initialized to timeSwitchedToChrome:', lastProcessedTimestamp);
+			let webDataArrayFiltered = [];
+			let startTime = timeSwitchedToChrome;
+			let endTime = timeSwitchedToCode;
+
+			if(startTime > 0 && endTime > 0){
+				// Traverse the array backwards
+				for (let i = webDataArray.length - 1; i >= 0; i--) {
+					let entry = webDataArray[i];
+					if (entry.time >= startTime && entry.time <= endTime) {
+						webDataArrayFiltered.unshift(entry); // Prepend to maintain order
+					} else if (entry.time < startTime) {
+						break; // Early exit, no need to check earlier entries
+					}
+				}
+			} else {
+				if(startTime <= 0){
+					console.error('Invalid startTime:', startTime);
+				}
+				if(endTime <= 0){
+					console.error('Invalid endTime:', endTime);
+				}
 			}
 
-			// Filter out entries that have already been processed
-			let webDataArrayFiltered = webDataArray.filter(entry => entry.time > lastProcessedTimestamp && entry.time <= timeSwitchedToCode);
+			// console.log('webDataArrayFiltered:', webDataArrayFiltered);
 			if(webDataArrayFiltered.length > 0){
 				console.log('webDataArrayFiltered: ', webDataArrayFiltered);
 
@@ -292,10 +298,6 @@ function activate(context) {
 					// let currentTime = Math.floor(Date.now() / 1000);
 					// console.log('currentTime: ', currentTime);
 				}
-
-				// Update lastProcessedTimestamp after processing all filtered entries
-				lastProcessedTimestamp = webDataArrayFiltered[webDataArrayFiltered.length - 1].time;
-				console.log('lastProcessedTimestamp updated:', lastProcessedTimestamp);
 			}
 		} catch (error) {
 			console.log('Error performing Git actions:', error);
@@ -811,6 +813,22 @@ function deactivate() {
 			// console.log('webviewContent:', webviewContent);
 
 			fs.writeFileSync(webviewPath, webviewContent);			
+		} else if(usingContentTimelineView){
+			// save webview inside CH_cfg_and_logs
+			const currentDir = getCurrentDir();
+
+			let date = new Date();
+			let dateStr = date.toISOString().split('T')[0];
+			let epochTimeInSeconds = Math.floor(date.getTime() / 1000);  // Get the current time in seconds
+
+			const webviewPath = path.join(currentDir, 'CH_cfg_and_logs', `content_timeline_webview_${dateStr}_${epochTimeInSeconds}.html`);
+			// console.log('webviewPath:', webviewPath);
+
+			let webviewContent = contentTimelineManager.getWebviewContent();
+			webviewContent = contentTimelineManager.commentOutVSCodeApi(webviewContent); // Comment out the VS Code API script so html can run as standalone in browser
+			// console.log('webviewContent:', webviewContent);
+
+			fs.writeFileSync(webviewPath, webviewContent);
 		}
 	} catch (error) {
 		console.error('Error saving webview:', error);
