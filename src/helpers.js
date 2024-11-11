@@ -89,6 +89,15 @@ function extractText(content, startKeyword, endKeyword) {
     return content;
 }
 
+function isLocalUrl(url) {
+    // Define regex patterns for matching IPv4 and IPv6 addresses
+    const ipv4Pattern = /\b(?:\d{1,3}\.){3}\d{1,3}\b/;
+    const ipv6Pattern = /\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b/;
+
+    // Use the regex `test` method to check if the URL contains an IPv4 or IPv6 address
+    return url.includes('localhost') || ipv4Pattern.test(url) || ipv6Pattern.test(url);
+}
+
 module.exports = {
     getCurrentDir,
     debounce,
@@ -97,5 +106,6 @@ module.exports = {
     user,
     hostname,
     runPythonScript,
-    extractText
+    extractText,
+    isLocalUrl
 };

@@ -198,6 +198,10 @@ const historyStyles = `
         scrollbar-color: #ccc #f5f5f5;
     }
 
+    .d2h-del, .d2h-ins, .dh2-cntx {
+        width: 100%;
+    }
+
     .d2h-code-side-linenumber{
         position: relative !important;
     }
@@ -208,7 +212,7 @@ const historyStyles = `
 
     .d2h-code-line {
         position: relative;
-        right: 10%;
+        padding: 0 2em !important;
     }
 
     .left-container{
@@ -216,7 +220,7 @@ const historyStyles = `
     }
 
     .full-container{
-        width: 100%;
+        width: 95%;
     }
 
     .resources {
@@ -297,8 +301,34 @@ const historyStyles = `
 
 // Light theme styles for content timeline
 const contentTimelineStyles = `
+    /* Custom scroll bar styling */
     html {
-        scrollbar-color: var(--vscode-editor-foreground) !important;
+        scrollbar-width: auto;
+        scrollbar-color: #aaa #f0f0f0; 
+    }
+
+    body, .event {
+        scrollbar-width: auto;
+        scrollbar-color: #aaa #f0f0f0; 
+    }
+
+    /* For Webkit-based browsers */
+    ::-webkit-scrollbar {
+        width: 12px;
+        height: 12px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: #f0f0f0;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background-color: #aaa;
+        border: 2px solid #f0f0f0;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background-color: #aaa;
     }
 
     body {

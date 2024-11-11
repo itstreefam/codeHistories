@@ -171,6 +171,46 @@ class gitTracker {
                 await this.isGitInitialized(this.codeHistoriesGit);
                 break;
         }
+
+        // after handling the git folders, we will check and make sure that the 
+        // "worktree" entry in codeHistories.git/config is set to the current directory with respect to the machine
+        await this.checkAndUpdateWorkTree();
+    }
+
+    async checkAndUpdateWorkTree() {
+        try {
+            if (this.isUsingCodeHistoriesGit) {
+                const gitDir = path.join(this._currentDir, 'codeHistories.git');
+                
+                // Ensure workTree path uses forward slashes
+                const workTree = this._currentDir.replace(/\\/g, '/'); 
+                const configPath = path.join(gitDir, 'config');
+    
+                // Read the config file content
+                let config = await fs.promises.readFile(configPath, 'utf8');
+                
+                // Define regex to match the worktree line under [core]
+                const workTreeRegex = /(\[core\][\s\S]*?)(worktree\s*=\s*.+)/;
+    
+                if (workTreeRegex.test(config)) {
+                    // If there's an existing worktree line, replace it with the correct path
+                    config = config.replace(workTreeRegex, `$1worktree = ${workTree}`);
+                    console.log(`Updated existing worktree path in codeHistories.git/config`);
+                } else {
+                    // If no worktree line is found, add it under the [core] section
+                    const coreSectionRegex = /\[core\]/;
+                    if (coreSectionRegex.test(config)) {
+                        config = config.replace(coreSectionRegex, `[core]\n\tworktree = ${workTree}`);
+                    }
+                    console.log(`Added new worktree entry in codeHistories.git/config`);
+                }
+
+                await fs.promises.writeFile(configPath, config, 'utf8');
+                console.log(`Config file updated successfully.`);
+            }
+        } catch (err) {
+            console.error(`Error checking and updating worktree: ${err}`);
+        }
     }
 
     async gitAdd(){
@@ -401,6 +441,48 @@ class gitTracker {
             return entries;
         } catch (err) {
             console.error(`Error grabbing latest commit from codeHistories.git: ${err}`);
+            return [];
+        }
+    }
+
+    // this function should access the list of all files in the latest commit
+    async grabAllLatestCommitFiles(){
+        try {
+            const gitDir = path.join(this._currentDir, 'codeHistories.git');
+            const workTree = this._currentDir;
+            const lsCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" ls-tree -r --name-only HEAD`;
+            const { stdout } = await exec(lsCmd, { cwd: workTree });
+            const currentCommitTime = await this.getLastCommitTime();
+            const files = stdout.trim().split('\n');
+            let filesToConsider = ['output.txt', '.py', '.js', '.html', '.css'];
+            let entries = [];
+            for (const file of files) {
+                if(file === 'output.txt'){
+                    let documentText = await fs.promises.readFile(`${this._currentDir}/output.txt`, 'utf8');
+                    let entry = {
+                        type: 'output',
+                        document: 'output.txt',
+                        time: currentCommitTime,
+                        code_text: documentText,
+                        notes: `output: output.txt;`,
+                    };
+                    entries.push(entry);
+                } else if(filesToConsider.some(ext => file.endsWith(ext))){
+                    let documentText = await fs.promises.readFile(`${this._currentDir}/${file}`, 'utf8');
+                    let entry = {
+                        type: 'code',
+                        document: file,
+                        time: currentCommitTime,
+                        code_text: documentText,
+                        notes: `code: ${file};`,
+                    };
+                    entries.push(entry);
+                }
+            }
+            return entries;
+        } catch (err) {
+            console.error(`Error grabbing all latest commit files: ${err}`);
+            return [];
         }
     }
 
@@ -414,6 +496,8 @@ class gitTracker {
             return parseInt(stdout.trim());
         } catch (err) {
             console.error(`Error getting last commit time: ${err}`);
+            console.log(`Returning current time as last commit time`);
+            return Math.floor(Date.now() / 1000);
         }
     }
 }

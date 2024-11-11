@@ -24,8 +24,9 @@ const openai = new OpenAI({
 });
 
 class ClusterManager {
-    constructor(context) {
+    constructor(context, gitTracker) {
         this.context = context;
+        this.gitTracker = gitTracker;
         this.displayForGroupedEvents = []; // This high-level array will have subgoal for each grouping found
         this.inCluster = {};  // Store a map where the key is a filename and the value tracks if we are currently grouping events into a cluster for that file
         this.clusterStartTime = {};  // Store a map where the key is a filename and the value tracks the start time of the current cluster for that file
@@ -33,8 +34,8 @@ class ClusterManager {
         this.strayEvents = [];  // Stores events that do not fit into any cluster
         this.pastEvents = null;  // Stores a map where the key is a filename and the value is the last event for that specific file
         this.allPastEvents = {}; // Stores all past events for all files
-        this.MAX_NEW_LINES = 4;  // Maximum number of new lines that can be added/deleted between events
-        this.debug = false;  // Debug flag to print out additional information
+        this.MAX_NEW_LINES = 3;  // Maximum number of new lines that can be added/deleted between events
+        this.debug = true;  // Debug flag to print out additional information
         this.webviewPanel = null;
         this.currentCodeEvent = null;
         this.currentWebEvent = null;
@@ -44,6 +45,8 @@ class ClusterManager {
         this.initializeResourcesTemporaryTest();
         this.debugging = true;
         this.prevCommittedEvents = [];
+        this.isInitialized = false;
+        this.isPanelClosed = false;
     }
 
     initializeTemporaryTest(){
@@ -62,7 +65,18 @@ class ClusterManager {
         console.log("Resources", this.codeResources);
     }
 
+    async initializeClusterManager() {
+        // Grab the initial commit data without displaying it in the web panel
+        const initialCodeEntries = await this.gitTracker.grabAllLatestCommitFiles();
+        await this.processCodeEvents(initialCodeEntries);
+        this.isInitialized = true;
+    }
+
     async initializeWebview() {
+        if(this.isPanelClosed){
+            return;
+        }
+
         // Check if the webview is already opened
         if (this.webviewPanel) {
             this.webviewPanel.reveal(vscode.ViewColumn.Beside);
@@ -93,6 +107,7 @@ class ClusterManager {
 
         // Save the state when the webview is closed
         this.webviewPanel.onDidDispose(() => {
+            this.isPanelClosed = true;
             this.webviewPanel = null; // Clean up the reference
         });
 
@@ -103,6 +118,7 @@ class ClusterManager {
 
             // Set a small timeout to ensure the state is sent before we consider it disposed
             setTimeout(() => {
+                this.isPanelClosed = true;
                 this.webviewPanel = null;
             }, 1000); // Adjust timeout if necessary
         });
@@ -152,6 +168,10 @@ class ClusterManager {
         
         this.prevCommittedEvents = codeEventsList;
 
+        if(!this.isInitialized){
+            return;
+        }
+
         // Trigger webview if not opened
         if (!this.webviewPanel) {
             await this.initializeWebview();
@@ -185,45 +205,8 @@ class ClusterManager {
             this.strayEvents.push(this.currentWebEvent); // this is processed event
         }
 
-        // Trigger webview if not opened
-        if (!this.webviewPanel) {
-            await this.initializeWebview();
-        } else {
-            // If webview is already opened, just update the content
-            await this.updateWebPanel();
-        }
-    }
-
-    // Method to process a new event in real-time
-    async processEvent(entry) {
-        const eventType = this.getEventType(entry);
-
-        if (!this.currentGroup) {
-            this.startNewGroup();
-        }
-
-        // console.log('In processEvent', entry, eventType);
-
-        if (eventType === "code") {
-            let filename = this.getFilename(entry.notes);
-            this.currentCodeEvent = {
-                type: "code",
-                file: filename,
-                time: entry.time,
-                code_text: entry.code_text,
-                title: `Code changes in ${filename}`
-            };
-
-            await this.handleCodeEvent(entry); // this takes in raw event
-        } else if (eventType === "search" || eventType === "visit" || eventType === "revisit") {
-            this.currentWebEvent = {
-                type: eventType,
-                time: entry.time,
-                webTitle: entry.notes,
-                webpage: entry.timed_url,
-            };
-
-            this.strayEvents.push(this.currentWebEvent); // this is processed event
+        if(!this.isInitialized){
+            return;
         }
 
         // Trigger webview if not opened
@@ -504,9 +487,6 @@ class ClusterManager {
             //     this.inCluster[filename] = false;
             // }
         }
-
-        // update the web panel after processing the event
-        await this.updateWebPanel();
     }
 
     // Method to check if only whitespace changes have been made
@@ -580,8 +560,8 @@ class ClusterManager {
             codeActivity.title = await this.generateSubGoalTitle(codeActivity);
         }
 
-        // grab only the web events from the stray events that has time between the start and end time of codeActivity
-        let webEvents = this.strayEvents.filter(event => event.type !== "code" && event.time >= codeActivity.startTime && event.time <= codeActivity.endTime);
+        // grab only the web events from the stray events that has time before the endCodeEvent
+        let webEvents = this.strayEvents.filter(event => event.type !== "code" && event.time <= endCodeEvent.time);
 
         // Initialize an empty array to hold structured web events
         let structureWebEvents = [];
@@ -841,7 +821,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                         element.classList.add('active'); // Reapply the active state
                         const content = element.nextElementSibling;
                         if (content) {
-                            content.style.display = 'block'; // Ensure content is visible if active
+                            content.style.display = 'flex'; // Ensure content is visible if active
                         }
                     }
                 });
@@ -849,15 +829,13 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
 
             // Attach collapsible event listeners
             function attachCollapsibleListeners() {
-                document.querySelectorAll('.collapsible').forEach(collapsibleItem => {
-                    collapsibleItem.addEventListener('click', function () {
+                document.querySelectorAll('.collapsible').forEach(button => {
+                    button.addEventListener('click', function () {
                         this.classList.toggle('active');
-                        // const content = this.nextElementSibling;
-                        const content = this.parentElement.nextElementSibling; 
-                        if (content.style.display === 'flex') {
-                            content.style.display = 'none';
-                        } else {
-                            content.style.display = 'flex';
+                        const content = this.parentElement.nextElementSibling;
+                        if (content) {
+                            content.style.display = content.style.display === 'flex' ? 'none' : 'flex';
+                            this.textContent = this.textContent === '+' ? '-' : '+';
                         }
                     });
                 });
@@ -911,12 +889,92 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                     document.removeEventListener('mousemove', handleMouseMove);
                 }
             });
+
+            // Add event for line navigation
+            document.querySelectorAll('.line-num2').forEach(lineNumber => {
+                lineNumber.addEventListener('click', function () {
+                    const fileName = lineNumber.getAttribute('data-filename');
+                    const line = lineNumber.getAttribute('data-linenumber');
+                    vscode.postMessage({
+                        command: 'navigateToLine',
+                        fileName: fileName,
+                        line: line
+                    });
+                });    
+            });
         
         })();
     </script>
             </body>
             </html>
         `;
+
+        this.webviewPanel.webview.onDidReceiveMessage((message) => {
+            if (message.command === 'navigateToLine') {
+                this.navigateToLine(message.fileName, message.line);
+            }
+        });
+    }
+
+    async navigateToLine(fileName, lineNumber) {
+        let fileUri;
+        if(path.isAbsolute(fileName)){
+            fileUri = vscode.Uri.file(fileName);
+        } else {
+            // resolve the filename relative to the workspace
+            const workspaceFolder = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0];
+            if(workspaceFolder){
+                const resolvedPath = path.join(workspaceFolder.uri.fsPath, fileName);
+                fileUri = vscode.Uri.file(resolvedPath);
+            } else {
+                vscode.window.showErrorMessage('No workspace folder is open. Unable to resolve relative file path.');
+                return;
+            }
+        }
+    
+        try {
+            // Check if the file is already opened in any visible editor
+            const openedEditor = vscode.window.visibleTextEditors.find(editor => {
+                const editorFilePath = editor.document.uri.fsPath;
+                return editorFilePath === fileUri.fsPath;
+            });
+
+            if (openedEditor) {
+                // The file is already opened, navigate to the correct line
+                const document = openedEditor.document;
+                const lineCount = document.lineCount;
+
+                // Validate the line number and find the nearest valid line if necessary
+                const validLine = Math.min(Math.max(0, lineNumber), lineCount - 1);
+
+                // Create a range for the target line
+                const range = new vscode.Range(validLine, 0, validLine, 0);
+
+                // Reveal the target line in the editor
+                openedEditor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+                openedEditor.selection = new vscode.Selection(range.start, range.end);
+            } else {
+                // The file is not opened, open it in a new tab on the main editor (ViewColumn.One)
+                const document = await vscode.workspace.openTextDocument(fileUri);
+                const editor = await vscode.window.showTextDocument(document, {
+                    viewColumn: vscode.ViewColumn.One, // Open in the left/main editor tab
+                    preserveFocus: false // Focus on the new tab
+                });
+                const lineCount = document.lineCount;
+
+                // Validate the line number and find the nearest valid line if necessary
+                const validLine = Math.min(Math.max(0, lineNumber), lineCount - 1);
+
+                // Create a range for the target line
+                const range = new vscode.Range(validLine, 0, validLine, 0);
+
+                // Reveal the target line in the editor
+                editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+                editor.selection = new vscode.Selection(range.start, range.end);
+            }
+        } catch (error) {
+            vscode.window.showErrorMessage(`Unable to open or navigate to file: ${fileName}. Error: ${error.message}`);
+        }
     }
   
     async generateGroupedEventsHTMLTest() {
@@ -938,7 +996,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
                 const subgoal = group.codeChanges[subgoalKey];
 
-                const diffHTML = this.generateDiffHTML(subgoal);
+                const diffHTML = this.generateDiffHTMLGroup(subgoal);
 
                     if(links.resources.length != 0 && count < links.resources.length) {
                         html += `
@@ -1070,7 +1128,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             for (const [index, event] of group.actions.entries()) {
                 let title = event.title || "Untitled";
                 if (event.type === 'code') {
-                    const diffHTML = this.generateDiffHTML(event);
+                    const diffHTML = this.generateDiffHTMLGroup(event);
     
                     if(resourcesExist) {
                         html += `
@@ -1197,13 +1255,6 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 html += `
                     <script> 
                         (() => {
-                            const button = document.getElementById('plusbtn-${groupKey}-${index}');
-                            if (button) {
-                                button.addEventListener('click', () => {
-                                    button.textContent = button.textContent === '+' ? '-' : '+';
-                                });
-                            }
-
                             const editButton = document.getElementById('button-${groupKey}-${index}');
                             if (editButton) {
                                 editButton.addEventListener('click', function() {
@@ -1222,7 +1273,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         return html;
     }
 
-    async testDiffHTML(anEvent) {
+    async generateDiffHtmlStray(anEvent) {
         try {
             const currentDir = getCurrentDir();
             const gitDir = path.join(currentDir, 'codeHistories.git');
@@ -1260,15 +1311,39 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 anEvent.file,
                 { ignoreWhitespace: true } // this is important
             );
-    
+
+            // Check if there are real content changes (e.g., additions or deletions)
+            const hasRealChanges = diffString.includes('@@') && (diffString.includes('+') || diffString.includes('-'));
+            if (!hasRealChanges) {
+                // If no real content changes, return an empty string
+                // Indicating we should skip displaying this event in the webview
+                return '';
+            }
+
             const diffHtml = diff2html.html(diffString, {
                 outputFormat: 'line-by-line',
                 drawFileList: false,
                 colorScheme: 'light',
                 showFiles: false,
             });
-    
-            return diffHtml;
+
+            // Search for matches with <div class="line-num2">...</div>
+            // const lineNumberMatches = diffHtml.match(/<div class="line-num2">(.*?)<\/div>/g);
+            // if (lineNumberMatches) {
+            //     lineNumberMatches.forEach((match) => {
+            //         const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
+            //         console.log('Found line number:', lineNumber);
+            //     });
+            // } else {
+            //     console.log('No line numbers with class "line-num2" found.');
+            // }
+
+            const modifiedHtml = diffHtml.replace(/<div class="line-num2">(.*?)<\/div>/g, (match) => {
+                const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
+                return `<div class="line-num2" data-linenumber="${lineNumber-1}" data-filename="${anEvent.file}">${lineNumber}</div>`;
+            });
+
+            return modifiedHtml;
     
         } catch (err) {
             console.error(`Error generating diff for ${anEvent.file}: ${err}`);
@@ -1328,42 +1403,56 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
     
         // Track the most recent change for each file
         const fileDiffs = {};
+        
+        // Track unique web visits and searches
+        const uniqueVisits = new Set();
+        const uniqueSearches = new Set();
     
         for (const event of this.strayEvents) {
             if (event.type === "code") {
                 // Get the latest diff for this file
-                const diffHTMLForStrayChanges = await this.testDiffHTML(event);
-                
-                // Store the latest diff for this file, replacing any previous entry
-                fileDiffs[event.file] = `
-                    <li class="stray-event" id="code-${idx}">
-                        <div class="li-header">
-                            <button type="button" class="collapsible">+</button>
-                            You made changes to <em>${event.file}</em>
-                        </div>
-                        <div class="content">
-                            <div class="left-container">
-                                ${diffHTMLForStrayChanges}
+                const diffHTMLForStrayChanges = await this.generateDiffHtmlStray(event);
+
+                // Only store the diff if there's content to display
+                if (diffHTMLForStrayChanges.trim()) {
+                    // Store the latest diff for this file, replacing any previous entry
+                    fileDiffs[event.file] = `
+                        <li class="stray-event" id="code-stray-${idx}">
+                            <div class="li-header">
+                                <button type="button" class="collapsible" id="plusbtn-code-stray-${idx}">+</button>
+                                You made changes to <em>${event.file}</em>
+                                <div class="placeholder"></div>
                             </div>
-                        </div>
-                    </li>
-                `;
+                            <div class="content" id="content-code-stray-${idx}" style="display: none;">
+                                <div class="full-container">
+                                    ${diffHTMLForStrayChanges}
+                                </div>
+                            </div>
+                        </li>
+                    `;
+                }
             } else if (event.type === "search") {
-                // Handle search events
+                // Handle search events and avoid duplicates
                 const searchedTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf("-")).trim();
-                html += `
-                    <li class="stray-event" id="search-${idx}">
-                        <p>You searched for "${searchedTitle}"</p>
-                    </li>
-                `;
+                if (!uniqueSearches.has(searchedTitle)) {
+                    uniqueSearches.add(searchedTitle);
+                    html += `
+                        <li class="stray-event" id="search-stray-${idx}">
+                            <p>You searched for "${searchedTitle}"</p>
+                        </li>
+                    `;
+                }
             } else if (event.type === "visit" || event.type === "revisit") {
-                // Handle visit or revisit events
+                // Handle visit or revisit events and avoid duplicates
                 const pageTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf(";")).trim();
-                html += `
-                    <li class="stray-event" id="visit-${idx}">
-                        <p>You visited the site <a href="${event.webpage}" target="_blank">${pageTitle}</a></p>
-                    </li>
-                `;
+                if (!uniqueVisits.has(event.webpage)) {
+                    uniqueVisits.add(event.webpage);
+                    html += `
+                        <li class="stray-event" id="visit-stray-${idx}">
+                            <p>You visited the site <a href="${event.webpage}" target="_blank">${pageTitle}</a></p>
+                        </li>
+                    `;
+                }
             }
     
             idx += 1;  // Increment index for the next item
@@ -1375,17 +1464,17 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         });
     
         return html;  // Return the generated HTML
-    }
+    }    
     
 
-    generateDiffHTML(codeActivity) {
+    generateDiffHTMLGroup(codeActivity) {
         // Get the event at startTime
-        const startCodeEventLines = this.get_code_lines(codeActivity.before_code);
+        let startCodeEventLines = this.get_code_lines(codeActivity.before_code);
 
         // Get the event at endTime
-        const endCodeEventLines = this.get_code_lines(codeActivity.after_code);
+        let endCodeEventLines = this.get_code_lines(codeActivity.after_code);
 
-        const diffString = Diff.createTwoFilesPatch(
+        let diffString = Diff.createTwoFilesPatch(
             'start',
             'end',
             codeActivity.before_code,
@@ -1396,13 +1485,24 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         );
 
         // Render the diff as HTML
-        const diffHtml = diff2html.html(diffString, {
+        let diffHtml = diff2html.html(diffString, {
             outputFormat: 'line-by-line',
             drawFileList: false,
             colorScheme: 'light',
             showFiles: false,
         });
-      
+
+        // Add clickable line numbers 
+        // find div class="line-num2" and add a data-linenumber and data-file attribute
+        // <div class="line-num2"> sometimes has number but sometimes doesn't, only add to those that have numbers
+
+        let modifiedHtml = diffHtml.replace(/<div class="line-num2">(\d+)<\/div>/g, (match, p1) => {
+            if (p1) {
+                return `<div class="line-num2" data-linenumber="${p1}" data-file="${codeActivity.file}">${p1}</div>`;
+            } 
+            return match;
+        });
+
         return diffHtml;
     }
       
