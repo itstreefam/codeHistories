@@ -302,8 +302,34 @@ const historyStyles = `
 
 // Light theme styles for content timeline
 const contentTimelineStyles = `
+    /* Custom scroll bar styling */
     html {
-        scrollbar-color: var(--vscode-editor-foreground) !important;
+        scrollbar-width: auto;
+        scrollbar-color: #aaa #f0f0f0; 
+    }
+
+    body, .event {
+        scrollbar-width: auto;
+        scrollbar-color: #aaa #f0f0f0; 
+    }
+
+    /* For Webkit-based browsers */
+    ::-webkit-scrollbar {
+        width: 12px;
+        height: 12px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: #f0f0f0;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background-color: #aaa;
+        border: 2px solid #f0f0f0;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background-color: #aaa;
     }
 
     body {
