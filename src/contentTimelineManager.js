@@ -5,8 +5,9 @@ const path = require('path');
 const { contentTimelineStyles } = require('./webViewStyles');
 
 class ContentTimelineManager {
-    constructor(context) {
+    constructor(context, gitTracker) {
         this.context = context;
+        this.gitTracker = gitTracker;
         this.contentTimeline = [];
         this.webviewPanel = null;
         this.currentEvent = null;
@@ -14,9 +15,18 @@ class ContentTimelineManager {
         this.eventHtmlMap = {}; // Map to track event ID and its corresponding HTML element
         this.previousSaveContent = {}; // To store the previous version of the file content
         this.styles = contentTimelineStyles;
+        this.isInitialized = false;
     }
 
-    initializeWebview(){
+    async initializeContentTimelineManager() {
+        const initialCodeEntries = await this.gitTracker.grabAllLatestCommitFiles();
+        for (const entry of initialCodeEntries) {
+            await this.processEvent(entry);
+        }
+        this.isInitialized = true;
+    }
+
+    async initializeWebview(){
         // Check if the webview is already opened
         if (this.webviewPanel) {
             this.webviewPanel.reveal(vscode.ViewColumn.Beside);
@@ -42,7 +52,7 @@ class ContentTimelineManager {
             this.webviewPanel.webview.postMessage({ type: 'restoreState', state: this.previousState });
         } else {
             // Set the initial HTML content if no previous state exists
-            this.updateWebPanel();
+            await this.updateWebPanel();
         }
 
         // Save the state when the webview is closed
@@ -70,7 +80,7 @@ class ContentTimelineManager {
         });
     }
 
-    processEvent(event) {
+    async processEvent(event) {
         this.currentEvent = {
             id: this.idCounter++,
             time: event.time,
@@ -78,24 +88,28 @@ class ContentTimelineManager {
             data: event
         };
 
-        if (event.type === 'save') {
-            this.handleSaveEvent(this.currentEvent);
+        if (event.type === 'save' || event.type === 'code') {
+            await this.handleSaveEvent(this.currentEvent);
         } else if (event.type === 'execution') {
-            this.handleExecutionEvent(this.currentEvent);
+            await this.handleExecutionEvent(this.currentEvent);
         } else if (event.type === 'selection') {
-            this.handleSelectionEvent(this.currentEvent);
+            await this.handleSelectionEvent(this.currentEvent);
+        }
+
+        if(!this.isInitialized){
+            return;
         }
 
         // Trigger webview if not opened
         if (!this.webviewPanel) {
-            this.initializeWebview();
+            await this.initializeWebview();
         } else {
             // If webview is already opened, just update the content
-            this.updateWebPanel();
+            await this.updateWebPanel();
         }
     }
 
-    handleSelectionEvent(event) {
+    async handleSelectionEvent(event) {
         const fileName = this.getFilename(event.data.document);
         let htmlLines = '';
 
@@ -134,38 +148,42 @@ class ContentTimelineManager {
         event.data.diffHtml = htmlLines;
 
         this.contentTimeline.push(event);
-        this.eventHtmlMap[event.id] = this.generateEventHTML(event);
+        this.eventHtmlMap[event.id] = await this.generateEventHTML(event);
     }
 
-    handleSaveEvent(event) {
+    async handleSaveEvent(event) {
+        console.log('In handleSaveEvent:', event);
+
+
         const documentPath = event.data.document;
         const newContent = event.data.code_text;
         const fileName = this.getFilename(documentPath);
     
         let diffHtml = '';
-        if (this.previousSaveContent[documentPath]) {
+        if (this.previousSaveContent[fileName]) {
             const diff = Diff.createTwoFilesPatch(
                 'Previous Version',
                 'Current Version',
-                this.previousSaveContent[documentPath],
+                this.previousSaveContent[fileName],
                 newContent,
                 '',
                 ''
             );
     
-            diffHtml = this.generateDiffHTML(diff, fileName);
+            diffHtml = await this.generateDiffHTML(diff, fileName);
         }
     
-        this.previousSaveContent[documentPath] = newContent;
+        this.previousSaveContent[fileName] = newContent;
+        // console.log('In handleSaveEvent:', this.previousSaveContent);
     
         event.data.diffHtml = diffHtml;
         event.data.notes = `Save at ${new Date(event.time * 1000).toLocaleDateString()} ${new Date(event.time * 1000).toLocaleTimeString()}`;
     
         this.contentTimeline.push(event);
-        this.eventHtmlMap[event.id] = this.generateEventHTML(event);
+        this.eventHtmlMap[event.id] = await this.generateEventHTML(event);
     }    
     
-    handleExecutionEvent(event) {
+    async handleExecutionEvent(event) {
         const buildEvent = {
             id: this.idCounter++,
             time: event.time,
@@ -177,10 +195,10 @@ class ContentTimelineManager {
         };
 
         this.contentTimeline.push(buildEvent);
-        this.eventHtmlMap[buildEvent.id] = this.generateBuildHTML(buildEvent);
+        this.eventHtmlMap[buildEvent.id] = await this.generateBuildHTML(buildEvent);
     }
 
-    generateDiffHTML(diff, fileName) {
+    async generateDiffHTML(diff, fileName) {
         const diffHtml = diff2html.html(diff, {
             outputFormat: 'side-by-side',
             drawFileList: false,
@@ -216,7 +234,7 @@ class ContentTimelineManager {
         return `<div class="diff-container">${finalHtml}</div>`;
     }    
 
-    generateEventHTML(event) {
+    async generateEventHTML(event) {
         const fileName = this.getFilename(event.data.document);
 
         return `
@@ -234,7 +252,7 @@ class ContentTimelineManager {
         `;
     }
 
-    generateBuildHTML(event) {
+    async generateBuildHTML(event) {
         return `
             <hr>
             <div id="event-${event.id}">
@@ -244,7 +262,7 @@ class ContentTimelineManager {
         `;
     }
 
-    updateWebPanel() {
+    async updateWebPanel() {
         if(!this.webviewPanel){
             this.webviewPanel = vscode.window.createWebviewPanel(
                 'contentTimelineWebview',
@@ -401,6 +419,7 @@ class ContentTimelineManager {
     }
     
     getFilename(documentPath) {
+        // Extract the filename from the full path
         return path.basename(documentPath);
     }
 

@@ -114,7 +114,8 @@ function activate(context) {
 	clusterManager = new ClusterManager(context, tracker);
 	clusterManager.initializeClusterManager();
 
-	contentTimelineManager = new ContentTimelineManager(context);
+	contentTimelineManager = new ContentTimelineManager(context, tracker);
+	contentTimelineManager.initializeContentTimelineManager();
 
 	vscode.window.onDidStartTerminalShellExecution(async event => {
 		await onDidExecuteShellCommandHelper(event, clusterManager, contentTimelineManager);
@@ -125,14 +126,14 @@ function activate(context) {
 		// console.log('eventEntry:', eventEntry);
 
 		if(usingContentTimelineView){
-			contentTimelineManager.processEvent(entry); // for content timeline view, process the event immediately
+			await contentTimelineManager.processEvent(entry); // for content timeline view, process the event immediately
 		}
 	});
 
 	if(usingContentTimelineView){
 		myCustomEmitter.on('selection', async (entry) => {
 			// console.log('selection:', entry);
-			contentTimelineManager.processEvent(entry);
+			await contentTimelineManager.processEvent(entry);
 		});
 	}
 
