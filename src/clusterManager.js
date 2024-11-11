@@ -46,6 +46,7 @@ class ClusterManager {
         this.debugging = true;
         this.prevCommittedEvents = [];
         this.isInitialized = false;
+        this.isPanelClosed = false;
     }
 
     initializeTemporaryTest(){
@@ -72,6 +73,10 @@ class ClusterManager {
     }
 
     async initializeWebview() {
+        if(this.isPanelClosed){
+            return;
+        }
+
         // Check if the webview is already opened
         if (this.webviewPanel) {
             this.webviewPanel.reveal(vscode.ViewColumn.Beside);
@@ -102,6 +107,7 @@ class ClusterManager {
 
         // Save the state when the webview is closed
         this.webviewPanel.onDidDispose(() => {
+            this.isPanelClosed = true;
             this.webviewPanel = null; // Clean up the reference
         });
 
@@ -112,6 +118,7 @@ class ClusterManager {
 
             // Set a small timeout to ensure the state is sent before we consider it disposed
             setTimeout(() => {
+                this.isPanelClosed = true;
                 this.webviewPanel = null;
             }, 1000); // Adjust timeout if necessary
         });

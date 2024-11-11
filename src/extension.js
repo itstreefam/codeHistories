@@ -74,7 +74,7 @@ function activate(context) {
 	// Listen for selection changes with debounced handling
 	context.subscriptions.push(vscode.window.onDidChangeTextEditorSelection(event => {
 		const key = event.textEditor.document.uri.fsPath;
-		const debouncedSelectionChangeHandler = debounce(selection.handleTextEditorSelectionChange, 500, key);
+		const debouncedSelectionChangeHandler = debounce(selection.handleTextEditorSelectionChange, 800, key);
 		// console.log('Selection event:', event);
 		debouncedSelectionChangeHandler(event.textEditor);
 	}));
@@ -152,10 +152,12 @@ function activate(context) {
 	let testRunPythonScript = vscode.commands.registerCommand('codeHistories.testRunPythonScript', testRunPythonScriptHelper);
 	let testDBConstructor = vscode.commands.registerCommand('codeHistories.testDBConstructor', testDBConstructorHelper);
 	let historyWebview = vscode.commands.registerCommand('codeHistories.historyWebview', function () {
+		clusterManager.isPanelClosed = !clusterManager.isPanelClosed;
 		clusterManager.initializeWebview();
     });
 
 	let contentTimelineWebview = vscode.commands.registerCommand('codeHistories.contentTimelineWebview', function () {
+		contentTimelineManager.isPanelClosed = !contentTimelineManager.isPanelClosed;
 		contentTimelineManager.initializeWebview();
 	});	
 
@@ -169,7 +171,7 @@ function activate(context) {
 	context.subscriptions.push(selectTerminalProfile);
 	context.subscriptions.push(testRunPythonScript);
 	context.subscriptions.push(testDBConstructor);
-	
+
 	if(usingHistoryView){
 		context.subscriptions.push(historyWebview);
 		updateContextKeys();
