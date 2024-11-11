@@ -1306,7 +1306,15 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 anEvent.file,
                 { ignoreWhitespace: true } // this is important
             );
-    
+
+            // Check if there are real content changes (e.g., additions or deletions)
+            const hasRealChanges = diffString.includes('@@') && (diffString.includes('+') || diffString.includes('-'));
+            if (!hasRealChanges) {
+                // If no real content changes, return an empty string
+                // Indicating we should skip displaying this event in the webview
+                return '';
+            }
+
             const diffHtml = diff2html.html(diffString, {
                 outputFormat: 'line-by-line',
                 drawFileList: false,
@@ -1399,22 +1407,25 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             if (event.type === "code") {
                 // Get the latest diff for this file
                 const diffHTMLForStrayChanges = await this.generateDiffHtmlStray(event);
-                
-                // Store the latest diff for this file, replacing any previous entry
-                fileDiffs[event.file] = `
-                    <li class="stray-event" id="code-stray-${idx}">
-                        <div class="li-header">
-                            <button type="button" class="collapsible" id="plusbtn-code-stray-${idx}">+</button>
-                            You made changes to <em>${event.file}</em>
-                            <div class="placeholder"></div>
-                        </div>
-                        <div class="content" id="content-code-stray-${idx}" style="display: none;">
-                            <div class="full-container">
-                                ${diffHTMLForStrayChanges}
+
+                // Only store the diff if there's content to display
+                if (diffHTMLForStrayChanges.trim()) {
+                    // Store the latest diff for this file, replacing any previous entry
+                    fileDiffs[event.file] = `
+                        <li class="stray-event" id="code-stray-${idx}">
+                            <div class="li-header">
+                                <button type="button" class="collapsible" id="plusbtn-code-stray-${idx}">+</button>
+                                You made changes to <em>${event.file}</em>
+                                <div class="placeholder"></div>
                             </div>
-                        </div>
-                    </li>
-                `;
+                            <div class="content" id="content-code-stray-${idx}" style="display: none;">
+                                <div class="full-container">
+                                    ${diffHTMLForStrayChanges}
+                                </div>
+                            </div>
+                        </li>
+                    `;
+                }
             } else if (event.type === "search") {
                 // Handle search events and avoid duplicates
                 const searchedTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf("-")).trim();
