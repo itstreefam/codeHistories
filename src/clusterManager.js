@@ -41,8 +41,8 @@ class ClusterManager {
         this.currentWebEvent = null;
         this.idCounter = 0;
         this.styles = historyStyles;
-        this.initializeTemporaryTest();
-        this.initializeResourcesTemporaryTest();
+        // this.initializeTemporaryTest();
+        // this.initializeResourcesTemporaryTest();
         this.debugging = true;
         this.prevCommittedEvents = [];
         this.isInitialized = false;
@@ -732,10 +732,10 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             );
         }
 
-        // const groupedEventsHTML = await this.generateGroupedEventsHTML();
-        // const strayEventsHTML = await this.generateStrayEventsHTML();
-        const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
-        const strayEventsHTML = await this.generateStrayEventsHTMLTest();
+        const groupedEventsHTML = await this.generateGroupedEventsHTML();
+        const strayEventsHTML = await this.generateStrayEventsHTML();
+        // const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
+        // const strayEventsHTML = await this.generateStrayEventsHTMLTest();
 
         this.webviewPanel.webview.html = `
             <!DOCTYPE html>
@@ -1166,18 +1166,26 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                     const visitActions = group.actions.filter(a => a.type === "visit" || a.type === "revisit");
     
                     if (resourcesExist) {
+                        const uniqueURLs = new Set();
+                        if (searchAction && searchAction.actions.length > 0) {
+                            for (let visit of searchAction.actions) {
+                                if (!uniqueURLs.has(visit.webpage)) {
+                                    uniqueURLs.add(visit.webpage);
+                                }
+                            }
+                        }
                         if (searchAction && searchAction.actions.length > 0) {
                             html += `
                                 <div class="container">
                                     <i class="bi bi-bookmark"></i>
-                                    <div class="centered">${searchAction.actions.length}</div>
+                                    <div class="centered">${uniqueURLs.size}</div>
                                 </div>
                             `;
                         } else if (visitActions.length > 0) {
                             html += `
                                 <div class="container">
                                     <i class="bi bi-bookmark"></i>
-                                    <div class="centered">${visitActions.length}</div>
+                                    <div class="centered">${uniqueURLs.size}</div>
                                 </div>
                             `;
                         }
