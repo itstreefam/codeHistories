@@ -50,7 +50,7 @@ class ClusterManager {
     }
 
     initializeTemporaryTest(){
-        const testData = new temporaryTest(String.raw`C:\users\thien\Downloads\wordleStory.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\users\zhouh\Downloads\wordleStory.json`); // change path of test data here
         // codeActivities has id, title, and code changes
         // the focus atm would be code changes array which contains smaller codeActivity objects
         // for eg, to access before_code, we would do this.codeActivities[0].codeChanges[0].before_code
@@ -60,7 +60,7 @@ class ClusterManager {
     }
 
     initializeResourcesTemporaryTest(){
-        const testData = new temporaryTest(String.raw`C:\users\thien\Downloads\wordleStory.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\users\zhouh\Downloads\wordleStory.json`); // change path of test data here
         this.codeResources = testData.processResources(testData.data);
         console.log("Resources", this.codeResources);
     }
@@ -1032,17 +1032,22 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                         
                             if (count < links.resources.length) {
                                 const link = links.resources[count];
+                                // html += `<ul class="link_list">`
                                 for(let i = 0; i < link.actions.length; i++) {
                                     const eachLink = links.resources[count].actions[i];
                                     html += `   
                                         <div class="tooltip">
-                                            ${eachLink.webTitle}: <a>${eachLink.webpage}</a>
+                                            <a href="${eachLink.webpage}">${eachLink.webTitle}</a><br>
                                             <span class="tooltiptext"  style="scale: 2"><img class="thumbnail" src="${eachLink.img}" alt="Thumbnail"></span>
                                             <br>
                                         </div>
+                                        <br>
                                     `
                                 }
-                                html += `</div>`
+                                //  </ul>
+                                html += `
+                                   
+                                </div>`
                             } else {
                                 html += `</div>`
                             }
@@ -1161,18 +1166,26 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                     const visitActions = group.actions.filter(a => a.type === "visit" || a.type === "revisit");
     
                     if (resourcesExist) {
+                        const uniqueURLs = new Set();
+                        if (searchAction && searchAction.actions.length > 0) {
+                            for (let visit of searchAction.actions) {
+                                if (!uniqueURLs.has(visit.webpage)) {
+                                    uniqueURLs.add(visit.webpage);
+                                }
+                            }
+                        }
                         if (searchAction && searchAction.actions.length > 0) {
                             html += `
                                 <div class="container">
                                     <i class="bi bi-bookmark"></i>
-                                    <div class="centered">${searchAction.actions.length}</div>
+                                    <div class="centered">${uniqueURLs.size}</div>
                                 </div>
                             `;
                         } else if (visitActions.length > 0) {
                             html += `
                                 <div class="container">
                                     <i class="bi bi-bookmark"></i>
-                                    <div class="centered">${visitActions.length}</div>
+                                    <div class="centered">${uniqueURLs.size}</div>
                                 </div>
                             `;
                         }
