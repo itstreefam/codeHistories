@@ -46,6 +46,9 @@ var usingContentTimelineView = false;
 var clusterManager = null;
 var contentTimelineManager = null;
 
+// this controls whether one wants to always show webview (even if it is closed) or not
+var persist = true;
+
 function updateContextKeys() {
     vscode.commands.executeCommand('setContext', 'codeHistories.usingContentTimelineView', usingContentTimelineView);
     vscode.commands.executeCommand('setContext', 'codeHistories.usingHistoryWebview', usingHistoryView);
@@ -111,10 +114,10 @@ function activate(context) {
 		}
 	}
 
-	clusterManager = new ClusterManager(context, tracker);
+	clusterManager = new ClusterManager(context, tracker, persist);
 	clusterManager.initializeClusterManager();
 
-	contentTimelineManager = new ContentTimelineManager(context, tracker);
+	contentTimelineManager = new ContentTimelineManager(context, tracker, persist);
 	contentTimelineManager.initializeContentTimelineManager();
 
 	vscode.window.onDidStartTerminalShellExecution(async event => {
@@ -153,12 +156,28 @@ function activate(context) {
 	let testDBConstructor = vscode.commands.registerCommand('codeHistories.testDBConstructor', testDBConstructorHelper);
 	let historyWebview = vscode.commands.registerCommand('codeHistories.historyWebview', function () {
 		clusterManager.isPanelClosed = !clusterManager.isPanelClosed;
-		clusterManager.initializeWebview();
+		if(persist === true){
+			if(clusterManager.isPanelClosed){
+				clusterManager.initializeWebview();
+			} else {
+				clusterManager.disposeWebview(); // close but still remember contents
+			}
+		} else {
+			clusterManager.initializeWebview();
+		}
     });
 
 	let contentTimelineWebview = vscode.commands.registerCommand('codeHistories.contentTimelineWebview', function () {
 		contentTimelineManager.isPanelClosed = !contentTimelineManager.isPanelClosed;
-		contentTimelineManager.initializeWebview();
+		if(persist === true){
+			if(contentTimelineManager.isPanelClosed){
+				contentTimelineManager.initializeWebview();
+			} else {
+				contentTimelineManager.disposeWebview(); //same here (just a convenient way to toggle on and off instead of having to click x)
+			}
+		} else {
+			contentTimelineManager.initializeWebview();
+		}
 	});	
 
 	context.subscriptions.push(activateCodeHistories);

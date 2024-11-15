@@ -5,7 +5,7 @@ const path = require('path');
 const { contentTimelineStyles } = require('./webViewStyles');
 
 class ContentTimelineManager {
-    constructor(context, gitTracker) {
+    constructor(context, gitTracker, stayPersistent) {
         this.context = context;
         this.gitTracker = gitTracker;
         this.contentTimeline = [];
@@ -17,6 +17,7 @@ class ContentTimelineManager {
         this.styles = contentTimelineStyles;
         this.isInitialized = false;
         this.isPanelClosed = false;
+        this.stayPersistent = stayPersistent;
     }
 
     async initializeContentTimelineManager() {
@@ -28,7 +29,7 @@ class ContentTimelineManager {
     }
 
     async initializeWebview(){
-        if(this.isPanelClosed){
+        if(this.isPanelClosed && this.stayPersistent === false){
             return;
         }
 
@@ -62,7 +63,7 @@ class ContentTimelineManager {
 
         // Save the state when the webview is closed
         this.webviewPanel.onDidDispose(() => {
-            this.isPanelClosed = true;
+            if(this.stayPersistent === false) this.isPanelClosed = true;
             this.webviewPanel = null; // Clean up the reference
         });
 
@@ -73,7 +74,7 @@ class ContentTimelineManager {
 
             // Set a small timeout to ensure the state is sent before we consider it disposed
             setTimeout(() => {
-                this.isPanelClosed = true;
+                if(this.stayPersistent === false) this.isPanelClosed = true;
                 this.webviewPanel = null;
             }, 1000); // Adjust timeout if necessary
         });
@@ -101,6 +102,14 @@ class ContentTimelineManager {
             await this.handleExecutionEvent(this.currentEvent);
         } else if (event.type === 'selection') {
             await this.handleSelectionEvent(this.currentEvent);
+            
+            // always update silently
+            // if webview is open, update it; but if not still update but don't open it
+            if(this.webviewPanel){
+                await this.updateWebPanel();
+            } else {
+                await this.updateWebPanelSilently();
+            }
         }
 
         if(!this.isInitialized){
@@ -364,6 +373,89 @@ class ContentTimelineManager {
         });
     }
 
+    async updateWebPanelSilently() {
+        this.webviewPanel.webview.html = `
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <title>Content Timeline</title>
+                <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/diff2html/bundles/css/diff2html.min.css" />
+                <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/diff2html/bundles/js/diff2html.min.js"></script>
+                <style>
+                    ${this.styles}
+                </style>
+            </head>
+            <body>
+                <h1>Content Timeline</h1>
+                <div id="content">
+                    ${Object.values(this.eventHtmlMap).join('')}
+                </div>
+            </body>
+            <script>
+                (function() {
+                    const vscode = acquireVsCodeApi();
+
+                    window.addEventListener('click', function(event) {
+                        const target = event.target;
+
+                        // Find the closest clickable-line SPAN or DIV (for both line content and line numbers)
+                        const lineElement = target.closest('.clickable-line');
+                        if (lineElement) {
+                            // Print out the HTML tag of the clicked element for debugging
+                            console.log("Clicked element:", lineElement.outerHTML);
+
+                            // Continue with the existing logic (optional)
+                            const lineNumber = lineElement.getAttribute('data-line-number');
+                            const fileName = lineElement.getAttribute('data-filename');
+
+                            console.log('Line Number:', lineNumber);
+                            console.log('File Name:', fileName);
+
+                            vscode.postMessage({
+                                command: 'navigateToLine',
+                                line: lineNumber,
+                                fileName: fileName
+                            });
+                        }
+                    });
+
+                    // Listen for messages from the extension
+                    window.addEventListener('message', event => {
+                        const message = event.data;
+
+                        if (message.type === 'restoreState') {
+                            const previousState = message.state;
+                            if (previousState) {
+                                document.body.innerHTML = previousState.html || '';
+
+                                // Restore scroll position
+                                window.scrollTo(previousState.scrollX || 0, previousState.scrollY || 0);
+                            }
+                        } else if (message.type === 'saveStateRequest') {
+                            // Send the current state (HTML content and scroll positions) back to the extension
+                            vscode.postMessage({
+                                type: 'saveState',
+                                state: {
+                                    html: document.body.innerHTML,
+                                    scrollX: window.scrollX,
+                                    scrollY: window.scrollY
+                                }
+                            });
+                        }
+                    });
+                })();
+            </script>
+            </html>
+        `;
+
+        this.webviewPanel.webview.onDidReceiveMessage((message) => {
+            if (message.command === 'navigateToLine') {
+                this.navigateToLine(message.fileName, message.line);
+            }
+        });
+    }
+
     async navigateToLine(fileName, lineNumber) {
         let fileUri;
         if(path.isAbsolute(fileName)){
@@ -435,6 +527,12 @@ class ContentTimelineManager {
             return this.webviewPanel.webview.html;
         }
         return null;
+    }
+
+    disposeWebview() {
+        if (this.webviewPanel) {
+            this.webviewPanel.dispose();
+        }
     }
 }
 

@@ -24,7 +24,7 @@ const openai = new OpenAI({
 });
 
 class ClusterManager {
-    constructor(context, gitTracker) {
+    constructor(context, gitTracker, stayPersistent) {
         this.context = context;
         this.gitTracker = gitTracker;
         this.displayForGroupedEvents = []; // This high-level array will have subgoal for each grouping found
@@ -47,6 +47,7 @@ class ClusterManager {
         this.prevCommittedEvents = [];
         this.isInitialized = false;
         this.isPanelClosed = false;
+        this.stayPersistent = stayPersistent;
     }
 
     initializeTemporaryTest(){
@@ -73,7 +74,7 @@ class ClusterManager {
     }
 
     async initializeWebview() {
-        if(this.isPanelClosed){
+        if(this.isPanelClosed && this.stayPersistent === false){
             return;
         }
 
@@ -107,7 +108,7 @@ class ClusterManager {
 
         // Save the state when the webview is closed
         this.webviewPanel.onDidDispose(() => {
-            this.isPanelClosed = true;
+            if(this.stayPersistent === false) this.isPanelClosed = true;
             this.webviewPanel = null; // Clean up the reference
         });
 
@@ -118,7 +119,7 @@ class ClusterManager {
 
             // Set a small timeout to ensure the state is sent before we consider it disposed
             setTimeout(() => {
-                this.isPanelClosed = true;
+                if(this.stayPersistent === false) this.isPanelClosed = true;
                 this.webviewPanel = null;
             }, 1000); // Adjust timeout if necessary
         });
@@ -1560,6 +1561,12 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             return this.webviewPanel.webview.html;
         }
         return null;
+    }
+
+    disposeWebview() {
+        if (this.webviewPanel) {
+            this.webviewPanel.dispose();
+        }
     }
     
     // Function to comment out VS Code API calls before saving the HTML
