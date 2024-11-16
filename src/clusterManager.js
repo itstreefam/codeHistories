@@ -1557,10 +1557,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
     }
 
     getWebviewContent() {
-        if (this.webviewPanel && this.webviewPanel.webview) {
-            return this.webviewPanel.webview.html;
-        }
-        return null;
+        return this.webviewPanel.webview.html;
     }
 
     disposeWebview() {

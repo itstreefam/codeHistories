@@ -523,10 +523,7 @@ class ContentTimelineManager {
     }
 
     getWebviewContent() {
-        if (this.webviewPanel && this.webviewPanel.webview) {
-            return this.webviewPanel.webview.html;
-        }
-        return null;
+        return this.webviewPanel.webview.html;
     }
 
     disposeWebview() {
