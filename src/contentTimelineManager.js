@@ -80,10 +80,10 @@ class ContentTimelineManager {
         });
 
         // Listen for messages from the webview to save the state
-        this.webviewPanel.webview.onDidReceiveMessage(message => {
+        this.webviewPanel.webview.onDidReceiveMessage(async message => {
             if (message.type === 'saveState') {
                 // Save the state returned by the webview (including scroll positions)
-                this.context.globalState.update('contentTimelineWebviewState', message.state);
+                await this.context.globalState.update('contentTimelineWebviewState', message.state);
             }
         });
     }
@@ -366,9 +366,9 @@ class ContentTimelineManager {
             </html>
         `;
 
-        this.webviewPanel.webview.onDidReceiveMessage((message) => {
+        this.webviewPanel.webview.onDidReceiveMessage(async (message) => {
             if (message.command === 'navigateToLine') {
-                this.navigateToLine(message.fileName, message.line);
+                await this.navigateToLine(message.fileName, message.line);
             }
         });
     }
@@ -449,9 +449,9 @@ class ContentTimelineManager {
             </html>
         `;
 
-        this.webviewPanel.webview.onDidReceiveMessage((message) => {
+        this.webviewPanel.webview.onDidReceiveMessage(async (message) => {
             if (message.command === 'navigateToLine') {
-                this.navigateToLine(message.fileName, message.line);
+                await this.navigateToLine(message.fileName, message.line);
             }
         });
     }

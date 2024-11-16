@@ -125,14 +125,14 @@ class ClusterManager {
         });
 
         // Listen for messages from the webview to save the state
-        this.webviewPanel.webview.onDidReceiveMessage(message => {
+        this.webviewPanel.webview.onDidReceiveMessage(async message => {
             if (message.type === 'saveState') {
                 // Save the state returned by the webview
-                this.context.globalState.update('historyWebviewState', message.state);
+                await this.context.globalState.update('historyWebviewState', message.state);
             }
 
             if (message.command === 'updateCodeTitle') {
-                this.updateCodeTitle(message.groupKey, message.eventId, message.title);
+                await this.updateCodeTitle(message.groupKey, message.eventId, message.title);
             }
         });
     }
@@ -910,9 +910,9 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             </html>
         `;
 
-        this.webviewPanel.webview.onDidReceiveMessage((message) => {
+        this.webviewPanel.webview.onDidReceiveMessage(async (message) => {
             if (message.command === 'navigateToLine') {
-                this.navigateToLine(message.fileName, message.line);
+                await this.navigateToLine(message.fileName, message.line);
             }
         });
     }
