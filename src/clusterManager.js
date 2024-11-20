@@ -1428,11 +1428,11 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                     fileDiffs[event.file] = `
                         <li class="stray-event" id="code-stray-${idx}">
                             <div class="li-header">
-                                <button type="button" class="collapsible" id="plusbtn-code-stray-${idx}">+</button>
+                                <button type="button" class="collapsible active" id="plusbtn-code-stray-${idx}">-</button>
                                 You made changes to <em>${event.file}</em>
                                 <div class="placeholder"></div>
                             </div>
-                            <div class="content" id="content-code-stray-${idx}" style="display: none;">
+                            <div class="content" id="content-code-stray-${idx}" style="display: flex;">
                                 <div class="full-container">
                                     ${diffHTMLForStrayChanges}
                                 </div>
