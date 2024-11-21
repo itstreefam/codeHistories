@@ -48,6 +48,8 @@ class ClusterManager {
         this.isInitialized = false;
         this.isPanelClosed = false;
         this.stayPersistent = stayPersistent;
+        this.allSaves = {}; // Stores all save events per file
+        this.initialSaves = {}; // Tracks the first save for comparison
     }
 
     initializeTemporaryTest(){
@@ -164,6 +166,8 @@ class ClusterManager {
                 };
 
                 await this.handleCodeEvent(entry, previousEventList); // this takes in raw event
+                
+                await this.handleSaveEvent(entry);
             }
         }
         
@@ -249,6 +253,41 @@ class ClusterManager {
             actions: [],
         };
     }
+
+    async handleSaveEvent(event) {
+        console.log('In handleSaveEvent', event);
+
+        const documentPath = event.document;
+        const newContent = event.code_text;
+        
+        // Extract the filename from the document path
+        const filename = path.basename(documentPath);
+    
+        // Initialize save tracking for the file if not already done
+        if (!this.allSaves[filename]) {
+            this.allSaves[filename] = [];
+        }
+    
+        // Add the current save event to allSaves
+        this.allSaves[filename].push({file: filename, time: event.time, code_text: newContent});
+    
+        // Set the initial save if not already set
+        if (!this.initialSaves[filename]) {
+            this.initialSaves[filename] = {file: filename, time: event.time, code_text: newContent};
+        }
+
+        if(!this.isInitialized){
+            return;
+        }
+
+        // Trigger webview if not opened
+        if (!this.webviewPanel) {
+            await this.initializeWebview();
+        } else {
+            // If webview is already opened, just update the content
+            await this.updateWebPanel();
+        }
+    }    
 
     // event: code event of a file in the current commit
     // previousEventList: list of code events in the previous commit
@@ -517,6 +556,14 @@ class ClusterManager {
 
         // grab the last code event from the stray events
         let endCodeEvent = [...this.strayEvents].reverse().find(event => event.type === "code" && event.file === filename);
+
+        if (endCodeEvent) {
+            this.initialSaves[filename] = {
+                file: filename,
+                time: endCodeEvent.time,
+                code_text: endCodeEvent.code_text,
+            };
+        }
 
         console.log('Finalizing group:', filename, startCodeEvent, endCodeEvent);
 
@@ -1284,40 +1331,64 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
 
     async generateDiffHtmlStray(anEvent) {
         try {
-            const currentDir = getCurrentDir();
-            const gitDir = path.join(currentDir, 'codeHistories.git');
-            const workTree = currentDir;
+            // const currentDir = getCurrentDir();
+            // const gitDir = path.join(currentDir, 'codeHistories.git');
+            // const workTree = currentDir;
     
-            // Get the second-to-last commit hash
-            const logCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" log -2 --format="%H"`;
-            const { stdout: logOutput } = await exec(logCmd, { cwd: workTree });
-            const commitHashes = logOutput.trim().split('\n');
-            const previousCommitHash = commitHashes[1];  // HEAD~1 is the second hash
+            // // Get the second-to-last commit hash
+            // const logCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" log -2 --format="%H"`;
+            // const { stdout: logOutput } = await exec(logCmd, { cwd: workTree });
+            // const commitHashes = logOutput.trim().split('\n');
+            // const previousCommitHash = commitHashes[1];  // HEAD~1 is the second hash
     
-            // Get the content of the file from the previous commit
-            const previousFilePath = path.join(currentDir, anEvent.file);
-            let previousFileContent = '';
+            // // Get the content of the file from the previous commit
+            // const previousFilePath = path.join(currentDir, anEvent.file);
+            // let previousFileContent = '';
     
-            try {
-                // Simulating reading the file content from the previous commit using fs.promises.readFile
-                const showCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" show ${previousCommitHash}:${anEvent.file}`;
-                const { stdout: previousFileOutput } = await exec(showCmd, { cwd: workTree });
-                previousFileContent = previousFileOutput;
-            } catch (err) {
-                // If the file did not exist in the previous commit, treat it as a newly created file
-                console.log(`File didn't exist in the previous commit. Treating as a new file: ${anEvent.file}`);
-                previousFileContent = '';  // No content in previous commit
+            // try {
+            //     // Simulating reading the file content from the previous commit using fs.promises.readFile
+            //     const showCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" show ${previousCommitHash}:${anEvent.file}`;
+            //     const { stdout: previousFileOutput } = await exec(showCmd, { cwd: workTree });
+            //     previousFileContent = previousFileOutput;
+            // } catch (err) {
+            //     // If the file did not exist in the previous commit, treat it as a newly created file
+            //     console.log(`File didn't exist in the previous commit. Treating as a new file: ${anEvent.file}`);
+            //     previousFileContent = '';  // No content in previous commit
+            // }
+    
+            // const currentFileContent = await fs.promises.readFile(previousFilePath, 'utf8')
+    
+            // const diffString = Diff.createTwoFilesPatch(
+            //     `start`,
+            //     `end`,
+            //     previousFileContent,
+            //     currentFileContent,
+            //     anEvent.file,
+            //     anEvent.file,
+            //     { ignoreWhitespace: true } // this is important
+            // );
+
+            const filename = anEvent.file;
+
+            // Retrieve the initial and latest save for the file
+            const initialSave = this.initialSaves[filename];
+            const allSavesForFile = this.allSaves[filename] || [];
+            const latestSave = allSavesForFile[allSavesForFile.length - 1];
+
+            if (!initialSave || !latestSave) {
+                return '<p>No sufficient save data for comparison.</p>';
             }
-    
-            const currentFileContent = await fs.promises.readFile(previousFilePath, 'utf8')
-    
+
+            const initialContent = initialSave.code_text || '';
+            const latestContent = latestSave.code_text || '';
+
             const diffString = Diff.createTwoFilesPatch(
-                `start`,
-                `end`,
-                previousFileContent,
-                currentFileContent,
-                anEvent.file,
-                anEvent.file,
+                'Initial Save',
+                'Latest Save',
+                initialContent,
+                latestContent,
+                filename,
+                filename,
                 { ignoreWhitespace: true } // this is important
             );
 
@@ -1402,13 +1473,54 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         return html;
     }
 
+    async generateDiffHtmlSave(filename) {
+        try {
+            const initialSave = this.initialSaves[filename];
+            const allSavesForFile = this.allSaves[filename] || [];
+            const latestSave = allSavesForFile[allSavesForFile.length - 1];
+    
+            // If no initial or latest save exists, return an empty string
+            if (!initialSave || !latestSave) {
+                return '';
+            }
+    
+            const initialContent = initialSave.code_text || '';
+            const latestContent = latestSave.code_text || '';
+    
+            const diffString = Diff.createTwoFilesPatch(
+                'Initial Save',
+                'Latest Save',
+                initialContent,
+                latestContent,
+                filename,
+                filename,
+                { ignoreWhitespace: true } // Ignore whitespace-only changes
+            );
+    
+            // Check if there are real content changes (e.g., additions or deletions)
+            if (!diffString.includes('@@')) {
+                return ''; // No meaningful changes
+            }
+    
+            return diff2html.html(diffString, {
+                outputFormat: 'line-by-line',
+                drawFileList: false,
+                colorScheme: 'light',
+                showFiles: false,
+            });
+        } catch (err) {
+            console.error(`Error generating diff for file: ${filename}`, err);
+            return 'Error generating diff';
+        }
+    }    
+
     async generateStrayEventsHTML() {
         let html = '';
         let idx = 0;
     
-        if (this.strayEvents.length === 0) {
-            return '<li>Your future changes go here.</li>';
-        }
+        // if (this.strayEvents.length === 0) {
+        //     return '<li>Your future changes go here.</li>';
+        // }
     
         // Track the most recent change for each file
         const fileDiffs = {};
@@ -1416,30 +1528,31 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         // Track unique web visits and searches
         const uniqueVisits = new Set();
         const uniqueSearches = new Set();
-    
+        
         for (const event of this.strayEvents) {
             if (event.type === "code") {
-                // Get the latest diff for this file
-                const diffHTMLForStrayChanges = await this.generateDiffHtmlStray(event);
+                // // Get the latest diff for this file
+                // const diffHTMLForStrayChanges = await this.generateDiffHtmlStray(event);
 
-                // Only store the diff if there's content to display
-                if (diffHTMLForStrayChanges.trim()) {
-                    // Store the latest diff for this file, replacing any previous entry
-                    fileDiffs[event.file] = `
-                        <li class="stray-event" id="code-stray-${idx}">
-                            <div class="li-header">
-                                <button type="button" class="collapsible active" id="plusbtn-code-stray-${idx}">-</button>
-                                You made changes to <em>${event.file}</em>
-                                <div class="placeholder"></div>
-                            </div>
-                            <div class="content" id="content-code-stray-${idx}" style="display: flex;">
-                                <div class="full-container">
-                                    ${diffHTMLForStrayChanges}
-                                </div>
-                            </div>
-                        </li>
-                    `;
-                }
+                // // Only store the diff if there's content to display
+                // if (diffHTMLForStrayChanges.trim()) {
+                //     // Store the latest diff for this file, replacing any previous entry
+                //     fileDiffs[event.file] = `
+                //         <li class="stray-event" id="code-stray-${idx}">
+                //             <div class="li-header">
+                //                 <button type="button" class="collapsible active" id="plusbtn-code-stray-${idx}">-</button>
+                //                 You made changes to <em>${event.file}</em>
+                //                 <div class="placeholder"></div>
+                //             </div>
+                //             <div class="content" id="content-code-stray-${idx}" style="display: flex;">
+                //                 <div class="full-container">
+                //                     ${diffHTMLForStrayChanges}
+                //                 </div>
+                //             </div>
+                //         </li>
+                //     `;
+                // }
+                continue;
             } else if (event.type === "search") {
                 // Handle search events and avoid duplicates
                 const searchedTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf("-")).trim();
@@ -1465,6 +1578,28 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             }
     
             idx += 1;  // Increment index for the next item
+        }
+
+        // Iterate over all saves and generate diffs
+        for (const [filename, saves] of Object.entries(this.allSaves)) {
+            const diffHtml = await this.generateDiffHtmlSave(filename);
+
+            if (diffHtml.trim()) {
+                fileDiffs[filename] = `
+                    <li class="stray-event" id="code-stray-${filename}">
+                        <div class="li-header">
+                            <button type="button" class="collapsible active" id="plusbtn-code-stray-${filename}">-</button>
+                            You made changes to <em>${filename}</em>
+                            <div class="placeholder"></div>
+                        </div>
+                        <div class="content" id="content-code-stray-${filename}" style="display: flex;">
+                            <div class="full-container">
+                                ${diffHtml}
+                            </div>
+                        </div>
+                    </li>
+                `;
+            }
         }
     
         // After processing all events, add the stored diffs to the HTML

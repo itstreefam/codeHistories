@@ -131,6 +131,10 @@ function activate(context) {
 		if(usingContentTimelineView){
 			await contentTimelineManager.processEvent(entry); // for content timeline view, process the event immediately
 		}
+
+		if(usingHistoryView){
+			await clusterManager.handleSaveEvent(entry);
+		}
 	});
 
 	if(usingContentTimelineView){
