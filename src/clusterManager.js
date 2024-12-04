@@ -965,6 +965,8 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
     }
 
     async navigateToLine(fileName, lineNumber) {
+        console.log(fileName);
+
         let fileUri;
         if(path.isAbsolute(fileName)){
             fileUri = vscode.Uri.file(fileName);
@@ -1369,6 +1371,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             // );
 
             const filename = anEvent.file;
+            console.log("In stray", filename);
 
             // Retrieve the initial and latest save for the file
             const initialSave = this.initialSaves[filename];
@@ -1497,17 +1500,39 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 { ignoreWhitespace: true } // Ignore whitespace-only changes
             );
     
-            // Check if there are real content changes (e.g., additions or deletions)
-            if (!diffString.includes('@@')) {
-                return ''; // No meaningful changes
-            }
+            // // Check if there are real content changes (e.g., additions or deletions)
+            // if (!diffString.includes('@@')) {
+            //     return ''; // No meaningful changes
+            // }
     
-            return diff2html.html(diffString, {
+            // return diff2html.html(diffString, {
+            //     outputFormat: 'line-by-line',
+            //     drawFileList: false,
+            //     colorScheme: 'light',
+            //     showFiles: false,
+            // });
+
+            // Check if there are real content changes (e.g., additions or deletions)
+            const hasRealChanges = diffString.includes('@@') && (diffString.includes('+') || diffString.includes('-'));
+            if (!hasRealChanges) {
+                // If no real content changes, return an empty string
+                // Indicating we should skip displaying this event in the webview
+                return '';
+            }
+
+            const diffHtml = diff2html.html(diffString, {
                 outputFormat: 'line-by-line',
                 drawFileList: false,
                 colorScheme: 'light',
                 showFiles: false,
             });
+
+            const modifiedHtml = diffHtml.replace(/<div class="line-num2">(.*?)<\/div>/g, (match) => {
+                const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
+                return `<div class="line-num2" data-linenumber="${lineNumber-1}" data-filename="${filename}">${lineNumber}</div>`;
+            });
+
+            return modifiedHtml;
         } catch (err) {
             console.error(`Error generating diff for file: ${filename}`, err);
             return 'Error generating diff';
