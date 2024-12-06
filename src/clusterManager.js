@@ -1331,67 +1331,44 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         return html;
     }
 
+    // Generate the HTML for the diff view of a code activity
+    // This happens after a "test" occurrence (comparing two versions of commit)
     async generateDiffHtmlStray(anEvent) {
         try {
-            // const currentDir = getCurrentDir();
-            // const gitDir = path.join(currentDir, 'codeHistories.git');
-            // const workTree = currentDir;
+            const currentDir = getCurrentDir();
+            const gitDir = path.join(currentDir, 'codeHistories.git');
+            const workTree = currentDir;
     
-            // // Get the second-to-last commit hash
-            // const logCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" log -2 --format="%H"`;
-            // const { stdout: logOutput } = await exec(logCmd, { cwd: workTree });
-            // const commitHashes = logOutput.trim().split('\n');
-            // const previousCommitHash = commitHashes[1];  // HEAD~1 is the second hash
+            // Get the second-to-last commit hash
+            const logCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" log -2 --format="%H"`;
+            const { stdout: logOutput } = await exec(logCmd, { cwd: workTree });
+            const commitHashes = logOutput.trim().split('\n');
+            const previousCommitHash = commitHashes[1];  // HEAD~1 is the second hash
     
-            // // Get the content of the file from the previous commit
-            // const previousFilePath = path.join(currentDir, anEvent.file);
-            // let previousFileContent = '';
+            // Get the content of the file from the previous commit
+            const previousFilePath = path.join(currentDir, anEvent.file);
+            let previousFileContent = '';
     
-            // try {
-            //     // Simulating reading the file content from the previous commit using fs.promises.readFile
-            //     const showCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" show ${previousCommitHash}:${anEvent.file}`;
-            //     const { stdout: previousFileOutput } = await exec(showCmd, { cwd: workTree });
-            //     previousFileContent = previousFileOutput;
-            // } catch (err) {
-            //     // If the file did not exist in the previous commit, treat it as a newly created file
-            //     console.log(`File didn't exist in the previous commit. Treating as a new file: ${anEvent.file}`);
-            //     previousFileContent = '';  // No content in previous commit
-            // }
-    
-            // const currentFileContent = await fs.promises.readFile(previousFilePath, 'utf8')
-    
-            // const diffString = Diff.createTwoFilesPatch(
-            //     `start`,
-            //     `end`,
-            //     previousFileContent,
-            //     currentFileContent,
-            //     anEvent.file,
-            //     anEvent.file,
-            //     { ignoreWhitespace: true } // this is important
-            // );
-
-            const filename = anEvent.file;
-            console.log("In stray", filename);
-
-            // Retrieve the initial and latest save for the file
-            const initialSave = this.initialSaves[filename];
-            const allSavesForFile = this.allSaves[filename] || [];
-            const latestSave = allSavesForFile[allSavesForFile.length - 1];
-
-            if (!initialSave || !latestSave) {
-                return '<p>No sufficient save data for comparison.</p>';
+            try {
+                // Simulating reading the file content from the previous commit using fs.promises.readFile
+                const showCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" show ${previousCommitHash}:${anEvent.file}`;
+                const { stdout: previousFileOutput } = await exec(showCmd, { cwd: workTree });
+                previousFileContent = previousFileOutput;
+            } catch (err) {
+                // If the file did not exist in the previous commit, treat it as a newly created file
+                console.log(`File didn't exist in the previous commit. Treating as a new file: ${anEvent.file}`);
+                previousFileContent = '';  // No content in previous commit
             }
-
-            const initialContent = initialSave.code_text || '';
-            const latestContent = latestSave.code_text || '';
-
+    
+            const currentFileContent = await fs.promises.readFile(previousFilePath, 'utf8')
+    
             const diffString = Diff.createTwoFilesPatch(
-                'Initial Save',
-                'Latest Save',
-                initialContent,
-                latestContent,
-                filename,
-                filename,
+                `start`,
+                `end`,
+                previousFileContent,
+                currentFileContent,
+                anEvent.file,
+                anEvent.file,
                 { ignoreWhitespace: true } // this is important
             );
 
@@ -1410,24 +1387,12 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 showFiles: false,
             });
 
-            // Search for matches with <div class="line-num2">...</div>
-            // const lineNumberMatches = diffHtml.match(/<div class="line-num2">(.*?)<\/div>/g);
-            // if (lineNumberMatches) {
-            //     lineNumberMatches.forEach((match) => {
-            //         const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
-            //         console.log('Found line number:', lineNumber);
-            //     });
-            // } else {
-            //     console.log('No line numbers with class "line-num2" found.');
-            // }
-
             const modifiedHtml = diffHtml.replace(/<div class="line-num2">(.*?)<\/div>/g, (match) => {
                 const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
                 return `<div class="line-num2" data-linenumber="${lineNumber-1}" data-filename="${anEvent.file}">${lineNumber}</div>`;
             });
 
             return modifiedHtml;
-    
         } catch (err) {
             console.error(`Error generating diff for ${anEvent.file}: ${err}`);
             return 'Error generating diff';
@@ -1476,6 +1441,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         return html;
     }
 
+    // This happens after a "save" occurrence (comparing two versions of file save)
     async generateDiffHtmlSave(filename) {
         try {
             const initialSave = this.initialSaves[filename];
@@ -1499,18 +1465,6 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 filename,
                 { ignoreWhitespace: true } // Ignore whitespace-only changes
             );
-    
-            // // Check if there are real content changes (e.g., additions or deletions)
-            // if (!diffString.includes('@@')) {
-            //     return ''; // No meaningful changes
-            // }
-    
-            // return diff2html.html(diffString, {
-            //     outputFormat: 'line-by-line',
-            //     drawFileList: false,
-            //     colorScheme: 'light',
-            //     showFiles: false,
-            // });
 
             // Check if there are real content changes (e.g., additions or deletions)
             const hasRealChanges = diffString.includes('@@') && (diffString.includes('+') || diffString.includes('-'));
@@ -1556,7 +1510,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         
         for (const event of this.strayEvents) {
             if (event.type === "code") {
-                // // Get the latest diff for this file
+                // Uncomment this if comparing code test events
                 // const diffHTMLForStrayChanges = await this.generateDiffHtmlStray(event);
 
                 // // Only store the diff if there's content to display
@@ -1665,14 +1619,19 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         // find div class="line-num2" and add a data-linenumber and data-file attribute
         // <div class="line-num2"> sometimes has number but sometimes doesn't, only add to those that have numbers
 
-        let modifiedHtml = diffHtml.replace(/<div class="line-num2">(\d+)<\/div>/g, (match, p1) => {
-            if (p1) {
-                return `<div class="line-num2" data-linenumber="${p1}" data-file="${codeActivity.file}">${p1}</div>`;
-            } 
-            return match;
+        // let modifiedHtml = diffHtml.replace(/<div class="line-num2">(\d+)<\/div>/g, (match, p1) => {
+        //     if (p1) {
+        //         return `<div class="line-num2" data-linenumber="${p1}" data-file="${codeActivity.file}">${p1}</div>`;
+        //     } 
+        //     return match;
+        // });
+
+        const modifiedHtml = diffHtml.replace(/<div class="line-num2">(.*?)<\/div>/g, (match) => {
+            const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
+            return `<div class="line-num2" data-linenumber="${lineNumber-1}" data-filename="${codeActivity.file}">${lineNumber}</div>`;
         });
 
-        return diffHtml;
+        return modifiedHtml;
     }
       
     async updateTitle(groupKey, title) {
