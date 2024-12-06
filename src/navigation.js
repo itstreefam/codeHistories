@@ -43,6 +43,7 @@ function handleVisibleRangeChange(editor) {
         }
 
         const entry = {
+            type: 'navigation',
             surroundingLines: linesText,
             range: [range.start.line + 1, range.end.line + 1],
             document: documentPath,

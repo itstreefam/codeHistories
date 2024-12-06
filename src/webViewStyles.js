@@ -1,16 +1,98 @@
-const webViewStyles = `
-    /* General body styling for light theme */
-    body {
-        font-family: Arial, sans-serif;
-        background-color: #f5f5f5; /* Light grey background */
-        color: #333333; /* Dark text color */
+// Light theme styles for history view
+const historyStyles = `
+    html {
+        scrollbar-color: var(--vscode-editor-foreground) !important;
     }
 
-    /* Grouped Events styling */
+    body {
+        font-family: Arial, sans-serif;
+        background-color: #ffffff;
+        color: #333333;
+        height: auto;
+        margin: 0px;
+    }
+
+    body, html {
+        margin: 0;
+    }
+
+    .wrapper {
+        display: flex;
+        flex-direction: column;
+        // height: 100vh;
+        width: 100%;
+    }
+
+    .box {
+        flex-grow: 1; 
+        display: flex;
+        flex-direction: column;
+        transition: height 0.05s linear;
+        overflow: auto;
+        background-color: #ffffff;
+    }
+
+    .tooltip {
+        position: relative;
+        display: inline-block;
+        width: fit-content;
+    }
+
+   .tooltiptext {
+        display: none;
+        width: 100px;
+        background-color: black;
+        text-align: center;
+        
+        position: absolute;
+        z-index: 1;
+        top: 65px;
+        left: 50px;
+    }
+
+    .tooltip:hover .tooltiptext {
+        display: inline-block;
+    }
+
+    #upper{
+        height: 50vh;
+    }
+
+    #lower{
+        z-index: 999;
+        position: relative;
+        top: 50%;          / Starts at 50% height of the viewport /
+        left: 0;           / Starts at the left side of the screen /
+    }
+
+    .handler {
+        height: 6px;
+        background-color: #2e2e2e;
+        cursor: ns-resize; 
+        flex-shrink: 0;
+    }
+    
+    h4{
+        top: 25px;
+        margin: 0;
+    }
+
+    .title {
+        font-size: 26px;
+        text-decoration: underline;
+    }
+
+    .li-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        width: 100%;
+    }
+
     h1 {
-        font-size: 24px;
         margin-bottom: 20px;
-        color: #333333; /* Darker color for headers */
+        color: #333333;
     }
 
     ul {
@@ -21,82 +103,89 @@ const webViewStyles = `
     li {
         margin-bottom: 15px;
     }
+    
 
-    /* Editable title input */
     .editable-title {
-        background-color: #ffffff; /* White background */
-        color: #333333; /* Dark text */
-        border: 1px solid #ccc; /* Light grey border */
+        background-color: #ffffff;
+        color: #333333;
+        border: none;
         padding: 5px 10px;
         border-radius: 3px;
-        margin-right: 10px;
+        width: 50vw;
+        border-color: red;
     }
 
-    /* Collapsible button styling */
-    .collapsible {
-        background-color: #e7e7e7; /* Light grey background */
-        color: #333333; /* Dark text */
+    .btn-secondary {
+        background-color: transparent;
+        border: none;
         cursor: pointer;
-        padding: 10px;
-        width: auto;
-        border: 1px solid #ccc; /* Light grey border */
-        text-align: left;
-        outline: none;
+    }
+
+    .collapsible {
+        background-color: transparent;
+        color: #333333;
+        cursor: pointer;
+        border: 1px solid #ccc;
         font-size: 16px;
-        border-radius: 3px;
-        margin-bottom: 5px;
+        border-radius: 50%;
+        margin-right: 10px;
+        height: 32px;
+        width: 32px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
     }
 
     .collapsible.active, .collapsible:hover {
-        background-color: #dcdcdc; /* Darker grey on hover */
+        background-color: #dcdcdc;
     }
 
     .content {
-        padding: 0 18px;
+        width: 95vw; 
+        overflow: hidden; 
         display: none;
+        margin-top: 10px;
+        justify-content: space-between; 
+        align-items: stretch;
+    }
+
+    .diff-container {
+        width: 97%;
+        margin-left: 2%
+    }
+    
+    .container {
+        position: relative;
+        text-align: center;
+        scale: 1.25;
+        margin-right: 2%;
+    }
+        
+    .centered {
+        position: absolute;
+        top: 45%;
+        font-size: 9px;
+        z-index: 1000;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-weight: bold;
+    }
+
+    b {
+        white-space: nowrap;
+        color: #666;
+        font-size: smaller;
+        margin-right: 10px;
+        flex-shrink: 0;
+        /* Prevents the filename from shrinking */
+        width: 150px;
+        /* Keeps a consistent width */
         overflow: hidden;
-        background-color: #ffffff; /* White background for content */
-        border-radius: 3px;
-        margin-top: 5px;
-        border-left: 4px solid #007acc; /* Blue accent border */
+        text-overflow: ellipsis;
     }
 
-    /* diff2html styling */
-    .d2h-wrapper {
-        background-color: #ffffff !important; /* White background */
-        color: #333333 !important; /* Dark text */
-    }
-
-    .d2h-file-header {
-        background-color: #f7f7f7 !important; /* Light grey header */
-        color: #333333 !important; /* Dark text */
-        border: 1px solid #ddd !important; /* Light grey border */
-    }
-
-    .d2h-file-diff {
-        background-color: #ffffff !important; /* White background for diff content */
-        color: #333333 !important; /* Dark text */
-        border-radius: 3px;
-    }
-
-    .d2h-code-side-line {
-        background-color: #f7f7f7 !important; /* Light grey for line numbers */
-        color: #555555 !important; /* Darker text for line numbers */
-    }
-
-    .d2h-del {
-        background-color: #ffdddd !important; /* Light red for deletions */
-        color: #a33a3a !important; /* Dark red text for readability */
-    }
-
-    .d2h-ins {
-        background-color: #ddffdd !important; /* Light green for insertions */
-        color: #3a7a3a !important; /* Dark green text for readability */
-    }
-
-    /* Link styling */
     a {
-        color: #007acc; /* Blue for links */
+        color: #007acc;
         text-decoration: none;
     }
 
@@ -104,6 +193,212 @@ const webViewStyles = `
         text-decoration: underline;
     }
 
+    // reset scroll bar color
+    .scrollbar {
+        scrollbar-color: #ccc #f5f5f5;
+    }
+
+    .d2h-del, .d2h-ins, .dh2-cntx {
+        width: 100%;
+    }
+
+    .d2h-code-side-linenumber{
+        position: relative !important;
+    }
+
+    .d2h-code-linenumber {
+        position: relative !important;
+    }
+
+    .d2h-code-line {
+        position: relative;
+        padding: 0 2em !important;
+    }
+
+    .left-container{
+        width: 70%;
+    }
+
+    .full-container{
+        width: 95%;
+    }
+
+    .resources {
+        width: 30%;
+        margin-left: 10px;
+    }
+
+    .link_list {
+        margin-left: 5px;
+    }
+        
+//     .tooltip {
+//         position: relative;
+//         display: inline-block;
+//     }
+
+// .tooltip .tooltiptext {
+//   background:https://pyxis.nymag.com/v1/imgs/e1e/6b7/e7e202e97398fd64f6f9b6c6d13a526234-tired-spongebob.rsquare.w400.jpg;
+//   visibility: hidden;
+//   width: 120px;
+//   height: 60px;
+//   color: #fff;
+//   text-align: center;
+//   border-radius: 6px;
+//   padding: 5px 0;
+//   position: absolute;
+//   z-index: 1;
+//   top: 200%;
+//   left: 30%;
+//   margin-left: -60px;
+// }
+
+// .tooltip:hover .tooltiptext {
+//   visibility: visible;
+// }
+
+    .placeholder {
+        width: 13.005px;
+        height: 15.360px;
+        margin-right: 24.285px;
+    }
+
+    .thumbnail .tooltiptext {
+        scale: 2;
+    }
+
+    .resources h4 {
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+
+    .resources p {
+        margin: 5px 0 10px;
+        font-size: 14px;
+        color: #333;
+    }
+
+    .resource-list {
+        list-style-type: disc;
+        padding-left: 20px;
+        margin-top: 0;
+    }
+
+    .resource-item {
+        margin-bottom: 8px;
+        position: relative; /* Needed for tooltip positioning */
+    }
+
+    .resource-item a {
+        color: #007bff;
+        text-decoration: none;
+    }
+
+    .resource-item a:hover {
+        text-decoration: underline;
+    }
+
+    .view-controls {
+        display: flex;
+        align-items: center;
+        margin-top: 5px;
+        margin-bottom: 15px;
+    }
+
+    .view-buttons {
+        display: flex;
+        margin-right: 10px; /* Add space between buttons and description */
+    }
+
+    .view-buttons button {
+        background-color: #f0f0f0;
+        border: 1px solid #ccc;
+        color: #333;
+        padding: 5px;
+        margin-right: 5px;
+        font-size: 14px;
+        cursor: pointer;
+        border-radius: 4px;
+        transition: all 0.2s ease;
+    }
+
+    .view-buttons button:hover {
+        background-color: #e0e0e0;
+    }
+
+    .description {
+        font-size: 10px;
+        color: #666;
+        margin: 0;
+    }
 `;
 
-module.exports = webViewStyles;
+// Light theme styles for content timeline
+const contentTimelineStyles = `
+    /* Custom scroll bar styling */
+    html {
+        scrollbar-width: auto;
+        scrollbar-color: #aaa #f0f0f0; 
+    }
+
+    body, .event {
+        scrollbar-width: auto;
+        scrollbar-color: #aaa #f0f0f0; 
+    }
+
+    /* For Webkit-based browsers */
+    ::-webkit-scrollbar {
+        width: 12px;
+        height: 12px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: #f0f0f0;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background-color: #aaa;
+        border: 2px solid #f0f0f0;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background-color: #aaa;
+    }
+
+    body {
+        font-family: Arial, sans-serif;
+        background-color: #f5f5f5;
+        color: #333333;
+    }
+
+    .event {
+        margin: 10px;
+        padding: 10px;
+        border: 1px solid #ccc;
+        background-color: #f9f9f9;
+    }
+
+    .event-content {
+        padding: 5px 0;
+    }
+
+    hr {
+        border: none;
+        border-top: 1px solid #ccc;
+        margin: 20px 0;
+    }
+
+    a {
+        color: #1e90ff;
+        text-decoration: none;
+    }
+
+    a:hover {
+        text-decoration: underline;
+    }
+`;
+
+module.exports = {
+    historyStyles,
+    contentTimelineStyles,
+};
