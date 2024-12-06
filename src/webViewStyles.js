@@ -297,6 +297,40 @@ const historyStyles = `
     .resource-item a:hover {
         text-decoration: underline;
     }
+
+    .view-controls {
+        display: flex;
+        align-items: center;
+        margin-top: 5px;
+        margin-bottom: 15px;
+    }
+
+    .view-buttons {
+        display: flex;
+        margin-right: 10px; /* Add space between buttons and description */
+    }
+
+    .view-buttons button {
+        background-color: #f0f0f0;
+        border: 1px solid #ccc;
+        color: #333;
+        padding: 5px;
+        margin-right: 5px;
+        font-size: 14px;
+        cursor: pointer;
+        border-radius: 4px;
+        transition: all 0.2s ease;
+    }
+
+    .view-buttons button:hover {
+        background-color: #e0e0e0;
+    }
+
+    .description {
+        font-size: 10px;
+        color: #666;
+        margin: 0;
+    }
 `;
 
 // Light theme styles for content timeline

@@ -50,6 +50,7 @@ class ClusterManager {
         this.stayPersistent = stayPersistent;
         this.allSaves = {}; // Stores all save events per file
         this.initialSaves = {}; // Tracks the first save for comparison
+        this.currentDiffView = 'line-by-line'; //default view
     }
 
     initializeTemporaryTest(){
@@ -135,6 +136,11 @@ class ClusterManager {
 
             if (message.command === 'updateCodeTitle') {
                 await this.updateCodeTitle(message.groupKey, message.eventId, message.title);
+            }
+
+            if (message.command === 'changeViewMode') {
+                this.currentDiffView = message.view;
+                await this.updateWebPanel();
             }
         });
     }
@@ -799,13 +805,18 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 </style>
             </head>
             <body>
-             <!-- <h1 class="title">Goal: make a Wordle clone</h1> -->
             <div class="wrapper">
                 <div class="box" id="upper">
                     <div>
                         <h2>Recent Development Highlights </h2>
                     </div>
                     <h4><em>Ordered from least recent to most recent</em></h4>
+                    <div class="view-controls">
+                        <div class="view-buttons">
+                            <button id="toggle-view">Switch to ${this.currentDiffView === 'line-by-line' ? 'Side-by-Side' : 'Line-by-Line'} View</button>
+                        </div>
+                        <p class="description">Click line numbers to jump to code</p>
+                    </div>
                     <ul id="grouped-events">
                         ${groupedEventsHTML}
                     </ul>
@@ -938,7 +949,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 }
             });
 
-            // Add event for line navigation
+            // Add event for line navigation in line-by-line view
             document.querySelectorAll('.line-num2').forEach(lineNumber => {
                 lineNumber.addEventListener('click', function () {
                     const fileName = lineNumber.getAttribute('data-filename');
@@ -949,6 +960,29 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                         line: line
                     });
                 });    
+            });
+
+            // Add event for line navigation in side-by-side view
+            document.querySelectorAll('.clickable-line').forEach(lineNumber => {
+                lineNumber.addEventListener('click', function () {
+                    const fileName = lineNumber.getAttribute('data-filename');
+                    const line = lineNumber.getAttribute('data-linenumber');
+                    vscode.postMessage({
+                        command: 'navigateToLine',
+                        fileName: fileName,
+                        line: line
+                    });
+                });    
+            });
+
+            let currentView = '${this.currentDiffView}';
+
+            document.getElementById('toggle-view').addEventListener('click', () => {
+                currentView = currentView === 'line-by-line' ? 'side-by-side' : 'line-by-line';
+                document.getElementById('toggle-view').innerText = currentView === 'line-by-line' 
+                    ? 'Switch to Side-by-Side View' 
+                    : 'Switch to Line-by-Line View';
+                vscode.postMessage({ command: 'changeViewMode', view: currentView });
             });
         
         })();
@@ -1157,7 +1191,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
 
         console.log('In generateGroupedEventsHTML', this.displayForGroupedEvents);
         if (this.displayForGroupedEvents.length === 0) {
-            return '<li>No grouped events.</li>';
+            return '';
         }
 
         for (const [groupKey, group] of this.displayForGroupedEvents.entries()) {
@@ -1381,16 +1415,27 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             }
 
             const diffHtml = diff2html.html(diffString, {
-                outputFormat: 'line-by-line',
+                outputFormat: this.currentDiffView,
                 drawFileList: false,
                 colorScheme: 'light',
                 showFiles: false,
             });
 
-            const modifiedHtml = diffHtml.replace(/<div class="line-num2">(.*?)<\/div>/g, (match) => {
-                const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
-                return `<div class="line-num2" data-linenumber="${lineNumber-1}" data-filename="${anEvent.file}">${lineNumber}</div>`;
-            });
+            let modifiedHtml = '';
+
+            if(this.currentDiffView === 'line-by-line') {
+                modifiedHtml = diffHtml.replace(/<div class="line-num2">(.*?)<\/div>/g, (match) => {
+                    const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
+                    return `<div class="line-num2" data-linenumber="${lineNumber-1}" data-filename="${anEvent.file}">${lineNumber}</div>`;
+                });
+            }
+
+            if(this.currentDiffView === 'side-by-side') {
+                modifiedHtml = diffHtml.replace(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/g, (match) => {
+                    const lineNumber = match.match(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/)[1];
+                    return `<td class="d2h-code-side-linenumber clickable-line" data-linenumber="${lineNumber - 1}" data-filename="${anEvent.file}">${lineNumber}</td>`;
+                });
+            }
 
             return modifiedHtml;
         } catch (err) {
@@ -1475,16 +1520,27 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             }
 
             const diffHtml = diff2html.html(diffString, {
-                outputFormat: 'line-by-line',
+                outputFormat: this.currentDiffView,
                 drawFileList: false,
                 colorScheme: 'light',
                 showFiles: false,
             });
 
-            const modifiedHtml = diffHtml.replace(/<div class="line-num2">(.*?)<\/div>/g, (match) => {
-                const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
-                return `<div class="line-num2" data-linenumber="${lineNumber-1}" data-filename="${filename}">${lineNumber}</div>`;
-            });
+            let modifiedHtml = '';
+
+            if(this.currentDiffView === 'line-by-line') {
+                modifiedHtml = diffHtml.replace(/<div class="line-num2">(.*?)<\/div>/g, (match) => {
+                    const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
+                    return `<div class="line-num2" data-linenumber="${lineNumber-1}" data-filename="${filename}">${lineNumber}</div>`;
+                });
+            }
+
+            if(this.currentDiffView === 'side-by-side') {
+                modifiedHtml = diffHtml.replace(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/g, (match) => {
+                    const lineNumber = match.match(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/)[1];
+                    return `<td class="d2h-code-side-linenumber clickable-line" data-linenumber="${lineNumber - 1}" data-filename="${filename}">${lineNumber}</td>`;
+                });
+            }
 
             return modifiedHtml;
         } catch (err) {
@@ -1609,27 +1665,27 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
 
         // Render the diff as HTML
         let diffHtml = diff2html.html(diffString, {
-            outputFormat: 'line-by-line',
+            outputFormat: this.currentDiffView,
             drawFileList: false,
             colorScheme: 'light',
             showFiles: false,
         });
 
-        // Add clickable line numbers 
-        // find div class="line-num2" and add a data-linenumber and data-file attribute
-        // <div class="line-num2"> sometimes has number but sometimes doesn't, only add to those that have numbers
+        let modifiedHtml = '';
 
-        // let modifiedHtml = diffHtml.replace(/<div class="line-num2">(\d+)<\/div>/g, (match, p1) => {
-        //     if (p1) {
-        //         return `<div class="line-num2" data-linenumber="${p1}" data-file="${codeActivity.file}">${p1}</div>`;
-        //     } 
-        //     return match;
-        // });
+        if(this.currentDiffView === 'line-by-line') {
+            modifiedHtml = diffHtml.replace(/<div class="line-num2">(.*?)<\/div>/g, (match) => {
+                const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
+                return `<div class="line-num2" data-linenumber="${lineNumber-1}" data-filename="${codeActivity.file}">${lineNumber}</div>`;
+            });
+        }
 
-        const modifiedHtml = diffHtml.replace(/<div class="line-num2">(.*?)<\/div>/g, (match) => {
-            const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
-            return `<div class="line-num2" data-linenumber="${lineNumber-1}" data-filename="${codeActivity.file}">${lineNumber}</div>`;
-        });
+        if(this.currentDiffView === 'side-by-side') {
+            modifiedHtml = diffHtml.replace(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/g, (match) => {
+                const lineNumber = match.match(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/)[1];
+                return `<td class="d2h-code-side-linenumber clickable-line" data-linenumber="${lineNumber - 1}" data-filename="${codeActivity.file}">${lineNumber}</td>`;
+            });
+        }
 
         return modifiedHtml;
     }
