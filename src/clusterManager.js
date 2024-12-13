@@ -623,37 +623,77 @@ class ClusterManager {
         // Temporary storage for the current search event being structured
         let currentSearchEvent = null;
 
-        // Iterate over stray events and structure web events
-        for (const event of webEvents) {
-            // console.log('Processing event', event);
-            if (event.type === "search") {
-                // If there's an existing search event, push it to the structured events
-                if (currentSearchEvent) {
+        // // Iterate over stray events and structure web events
+        // for (const event of webEvents) {
+        //     // console.log('Processing event', event);
+        //     if (event.type === "search") {
+        //         // If there's an existing search event, push it to the structured events
+        //         if (currentSearchEvent) {
+        //             structureWebEvents.push(currentSearchEvent);
+        //         }
+
+        //         // Start a new search event structure
+        //         currentSearchEvent = {
+        //             type: "search",
+        //             query: event.webTitle || "Search query missing",  // Use webTitle instead of notes
+        //             time: event.time,
+        //             actions: [],
+        //         };
+        //     } else if (event.type === "visit" || event.type === "revisit") {
+        //         // If the current event is a visit, add it to the current search event's actions
+        //         if (currentSearchEvent) {
+        //             currentSearchEvent.actions.push({
+        //                 type: event.type,
+        //                 webTitle: event.webTitle || "Visit title missing",  // Use webTitle instead of notes
+        //                 webpage: event.webpage || "URL missing",  // Use webpage instead of timed_url
+        //                 time: event.time,
+        //             });
+        //         } else {
+        //             // If there's no search event, treat it as a stray visit
+        //             structureWebEvents.push({
+        //                 type: event.type,
+        //                 webTitle: event.webTitle || "Visit title missing",  // Use webTitle instead of notes
+        //                 webpage: event.webpage || "URL missing",  // Use webpage instead of timed_url
+        //                 time: event.time,
+        //             });
+        //         }
+        //     }
+        // }
+
+        // Sort stray events by time to
+        const sortedWebEvents = webEvents.sort((a, b) => a.time - b.time);
+
+        for (const event of sortedWebEvents) {
+            if(event.type === "search") {
+                //If there was a previous search event, finalize it
+                if(currentSearchEvent) {
                     structureWebEvents.push(currentSearchEvent);
                 }
 
-                // Start a new search event structure
+                //Start a new search event
                 currentSearchEvent = {
                     type: "search",
-                    query: event.webTitle || "Search query missing",  // Use webTitle instead of notes
+                    query: event.webTitle || "Search query missing",
                     time: event.time,
                     actions: [],
+                    id: (++this.idCounter).toString(),
                 };
             } else if (event.type === "visit" || event.type === "revisit") {
-                // If the current event is a visit, add it to the current search event's actions
-                if (currentSearchEvent) {
-                    currentSearchEvent.actions.push({
-                        type: event.type,
-                        webTitle: event.webTitle || "Visit title missing",  // Use webTitle instead of notes
-                        webpage: event.webpage || "URL missing",  // Use webpage instead of timed_url
-                        time: event.time,
-                    });
-                } else {
-                    // If there's no search event, treat it as a stray visit
+                // If no current search event, treat as stray visit
+                if(!currentSearchEvent) {
                     structureWebEvents.push({
                         type: event.type,
-                        webTitle: event.webTitle || "Visit title missing",  // Use webTitle instead of notes
-                        webpage: event.webpage || "URL missing",  // Use webpage instead of timed_url
+                        webTitle: event.webTitle || "Visit title missing",
+                        webpage: event.webpage || "URL missing",
+                        time: event.time,
+                        id: (++this.idCounter).toString(),
+                    });
+                } else {
+                    // Add visit to current search event
+                    currentSearchEvent.actions.push({
+                        type: event.type,
+                        webTitle: event.webTitle || "Visit title missing",
+                        webpage: event.webpage || "URL missing",
                         time: event.time,
                     });
                 }
@@ -666,7 +706,7 @@ class ClusterManager {
         }
 
         // Combine code and structured non-code events into the group
-        this.currentGroup.actions = [codeActivity, ...structureWebEvents];
+        this.currentGroup.actions = [codeActivity, ...sortedWebEvents];
 
         // Sort the currentGroup actions by time
         this.currentGroup.actions.sort((a, b) => a.time - b.time);
@@ -681,7 +721,7 @@ class ClusterManager {
         this.strayEvents = this.strayEvents.filter(event => event.file !== filename);
 
         // Remove the events from webEvents from this.strayEvents
-        this.strayEvents = this.strayEvents.filter(event => !webEvents.includes(event));
+        this.strayEvents = this.strayEvents.filter(event => !sortedWebEvents.includes(event));
         console.log('Stray events after finalizing group:', this.strayEvents);
 
         // Once the stray events have been processed, reset the currentGroup
@@ -1205,146 +1245,100 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             //             <ul id="group-${groupKey}" data-groupkey="${groupKey}">
             // `;
 
-            // check if there are any related resources (structured web events)
-            let resourcesExist = group.actions.some(action => action.type === 'search' || action.type === 'visit' || action.type === 'revisit');
-            let containerClass = resourcesExist ? 'left-container' : 'full-container';
-    
-            for (const [index, event] of group.actions.entries()) {
+            // Filter and extract web resources
+            let webResources = group.actions.filter(
+                action => action.type === 'search' || 
+                        action.type === 'visit' || 
+                        action.type === 'revisit'
+            );
+
+             // Collect unique URLs
+        const uniqueURLs = new Set();
+        webResources.forEach(event => {
+            if (event.webpage) {
+                uniqueURLs.add(event.webpage);
+            }
+        });
+
+        for (const [index, event] of group.actions.entries()) {
+            if (event.type === 'code') {
+                // Generate diff HTML for code event
+                const diffHTML = this.generateDiffHTMLGroup(event);
+
+                // Determine if resources exist
+                const resourcesExist = webResources.length > 0;
+                const containerClass = resourcesExist ? 'left-container' : 'full-container';
+
+                // Start HTML generation for code event
                 let title = event.title || "Untitled";
-                if (event.type === 'code') {
-                    const diffHTML = this.generateDiffHTMLGroup(event);
-    
-                    if(resourcesExist) {
-                        html += `
-                            <li data-eventid="${index}">
-                                <div class="li-header">
-                                    <button type="button" class="collapsible" id="plusbtn-${groupKey}-${index}">+</button>
-                                    <input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')" size="50">
-                                    <button type="button" class="btn btn-secondary" id="button-${groupKey}-${index}">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
-                                            <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
-                                            <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
-                                        </svg>
-                                    </button>
-                                    <b>in ${event.file} </b>
-                        `;
-                    } else {
-                        html += `
-                            <li data-eventid="${index}">
-                                <div class="li-header">
-                                    <button type="button" class="collapsible" id="plusbtn-${groupKey}-${index}">+</button>
-                                    <input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')" size="50">
-                                    <button type="button" class="btn btn-secondary" id="button-${groupKey}-${index}">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
-                                            <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
-                                            <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
-                                        </svg>
-                                    </button>
-                                    <b>in ${event.file} </b>
-                                    <div class="placeholder"></div>
-                        `;
-                    }
-    
-                    // Check for `search` and `visit` actions separately
-                    const searchAction = group.actions.find(a => a.type === "search");
-                    const visitActions = group.actions.filter(a => a.type === "visit" || a.type === "revisit");
-    
-                    if (resourcesExist) {
-                        const uniqueURLs = new Set();
-                        if (searchAction && searchAction.actions.length > 0) {
-                            for (let visit of searchAction.actions) {
-                                if (!uniqueURLs.has(visit.webpage)) {
-                                    uniqueURLs.add(visit.webpage);
-                                }
-                            }
-                        }
-                        if (searchAction && searchAction.actions.length > 0) {
-                            html += `
-                                <div class="container">
-                                    <i class="bi bi-bookmark"></i>
-                                    <div class="centered">${uniqueURLs.size}</div>
-                                </div>
-                            `;
-                        } else if (visitActions.length > 0) {
-                            html += `
-                                <div class="container">
-                                    <i class="bi bi-bookmark"></i>
-                                    <div class="centered">${uniqueURLs.size}</div>
-                                </div>
-                            `;
-                        }
-                    }
-    
-                    html += `</div>`; // Close li-header div
-    
-                    // Content section with diff and resources
-                    html += `
-                        <div class="content">
-                            <div class="${containerClass}">
-                                ${diffHTML}
-                            </div>
-                    `;
-    
-                    if (resourcesExist) {
-                        html += `<div class="resources"><h4>Helpful Resources</h4><ul class="resources-list">`;
-    
-                        if (searchAction) {
-                            let searchQuery = extractText(searchAction.query, "search:", "- Google Search;");
-                            html += `<p>You searched for "${searchQuery}" and visited the following resources:</p>`;
-                        } else if (visitActions.length > 0) {
-                            html += `<p>You visited the following resources:</p>`;
-                        }
-    
-                        const uniqueURLs = new Set();
-                        
-                        // Handle `search` actions with multiple resources
-                        if (searchAction && searchAction.actions.length > 0) {
-                            for (let visit of searchAction.actions) {
-                                if (!uniqueURLs.has(visit.webpage)) {
-                                    uniqueURLs.add(visit.webpage);
-                                    let visitTitle = extractText(visit.webTitle || "Visit Page", "visit:", ";");
-                                    html += `
-                                        <li>
-                                            <div class="resource-item tooltip">
-                                                <a href="${visit.webpage}" target="_blank">● ${visitTitle}</a>
-                                                <span class="tooltiptext" style="scale: 2">
-                                                    <img class="thumbnail" src="${visit.img || 'default-image.jpg'}" alt="Thumbnail">
-                                                </span>
-                                            </div>
-                                        </li>
-                                    `;
-                                }
-                            }
-                        }
-    
-                        else if (visitActions.length > 0) {
-                            // Handle `visit` and `revisit` actions individually
-                            for (let visit of visitActions) {
-                                if (!uniqueURLs.has(visit.webpage)) {
-                                    uniqueURLs.add(visit.webpage);
-                                    let visitTitle = extractText(visit.webTitle || "Visit Page", "visit:", ";");
-                                    html += `
-                                        <li>
-                                            <div class="resource-item tooltip">
-                                                <a href="${visit.webpage}" target="_blank">● ${visitTitle}</a>
-                                                <span class="tooltiptext" style="scale: 2">
-                                                    <img class="thumbnail" src="${visit.img || 'default-image.jpg'}" alt="Thumbnail">
-                                                </span>
-                                            </div>
-                                        </li>
-                                    `;
-                                }
-                            }
-                        }
-    
-                        html += `</ul></div>`; // Close resources-list and resources div
-                    }
-    
-                    html += `</div></li>`; // Close content and list item
-                }
-    
-                // Add JavaScript for toggle and focus on input, scoped with an Immediately Invoked Function Expression (IIFE)
                 html += `
+                    <li data-eventid="${index}">
+                        <div class="li-header">
+                            <button type="button" class="collapsible" id="plusbtn-${groupKey}-${index}">+</button>
+                            <input class="editable-title" id="code-title-${groupKey}-${index}" 
+                                   value="${title}" 
+                                   onchange="updateCodeTitle('${groupKey}', '${index}')" 
+                                   size="50">
+                            <button type="button" class="btn btn-secondary" id="button-${groupKey}-${index}">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
+                                    <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
+                                    <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
+                                </svg>
+                            </button>
+                            <b>in ${event.file} </b>
+                            ${resourcesExist ? `
+                            <div class="container">
+                                <i class="bi bi-bookmark"></i>
+                                <div class="centered">${uniqueURLs.size}</div>
+                            </div>
+                            ` : ''}
+                        </div>
+
+                        <div class="content">
+                        <div class="${containerClass}">
+                            ${diffHTML}
+                        </div>
+
+                        ${resourcesExist ? `
+                        <div class="resources">
+                            <h4>Helpful Resources</h4>
+
+                            ${webResources.filter(resource => resource.type === "search").length > 0 ? `
+                            <div class="search-resources">
+                                <p>
+                                    You searched for 
+                                    "${webResources
+                                        .filter(resource => resource.type === "search")
+                                        .map(resource => extractText(resource.webTitle, "search:", "- Google Search;"))
+                                        .join(', ')}".
+                                </p>
+                            </div>
+                            ` : ''}
+
+                            ${webResources.filter(resource => resource.type.includes("visit")).length > 0 ? `
+                            <div class="visit-resources">
+                                <p>You visited the following resources:</p>
+                                <ul class="resources-list visit-list">
+                                    ${webResources.filter(resource => resource.type.includes("visit")).map(resource => `
+                                        <li>
+                                            <div class="resource-item tooltip">
+                                                <a href="${resource.webpage}" target="_blank">
+                                                    ● ${extractText(resource.webTitle || "Visit Page", "visit:", ";")}
+                                                </a>
+                                                <span class="tooltiptext">
+                                                    <img class="thumbnail" src="${resource.img || 'default-image.jpg'}" alt="Thumbnail">
+                                                </span>
+                                            </div>
+                                        </li>
+                                    `).join('')}
+                                </ul>
+                            </div>
+                            ` : ''}
+                        </div>
+                        ` : ''}
+                    </div>
+                    </li>
+
                     <script> 
                         (() => {
                             const editButton = document.getElementById('button-${groupKey}-${index}');
@@ -1361,9 +1355,10 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 `;
             }
         }
-    
-        return html;
     }
+
+    return html;
+}
 
     // Generate the HTML for the diff view of a code activity
     // This happens after a "test" occurrence (comparing two versions of commit)
