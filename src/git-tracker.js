@@ -13,7 +13,6 @@ class gitTracker {
         this.git = null;
         this.codeHistoriesGit = null;
         this.isUsingCodeHistoriesGit = true;
-        this.initGitignore();
     }
 
     async initGitignore() {
@@ -26,6 +25,7 @@ class gitTracker {
                     await fs.promises.appendFile(gitignorePath, `${item}\n`);
                 }
             }
+            console.log('Updated .gitignore');
         } catch (error) {
             console.error('Error updating .gitignore:', error);
         }
@@ -118,6 +118,7 @@ class gitTracker {
                 console.log("both .git and codeHistories.git folders do not exist");
                 this.git = simpleGit(this._currentDir);
                 await this.isGitInitialized(this.git);
+                await this.initGitignore();
                 this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': `${this._currentDir}/codeHistories.git`, 'GIT_WORK_TREE': this._currentDir });
                 await this.isGitInitialized(this.codeHistoriesGit);
                 break;
@@ -125,6 +126,7 @@ class gitTracker {
                 console.log(".git folder does not exist");
                 this.git = simpleGit(this._currentDir);
                 await this.isGitInitialized(this.git);
+                await this.initGitignore();
                 this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': `${this._currentDir}/codeHistories.git`, 'GIT_WORK_TREE': this._currentDir });
                 await this.isGitInitialized(this.codeHistoriesGit);
                 break;
@@ -140,17 +142,22 @@ class gitTracker {
             
                     // Checkout the files from the latest commit in .git (not the whole history)
                     await this.git.checkout(latestCommitHash, ['--', '.']);
+
+                    // update gitignore here instead of earlier to avoid reverting changes from checkout
+                    // we want the files to be from the latest commit in .git and they should not include those rules in .gitignore
+                    await this.initGitignore();
             
                     // Initialize codeHistories.git and stage the current files
                     this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': `${this._currentDir}/codeHistories.git`, 'GIT_WORK_TREE': this._currentDir });
                     await this.isGitInitialized(this.codeHistoriesGit);
-                    
+
                     // Stage the current files (which are now at the state of the latest commit in .git)
                     await this.codeHistoriesGit.add('./*');
                     await this.codeHistoriesGit.commit('Initial commit based on the latest commit of .git');
                     
                     console.log("codeHistories.git initialized with the staged files from the latest commit of .git");            
                 } else {
+                    await this.initGitignore();
                     this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': `${this._currentDir}/codeHistories.git`, 'GIT_WORK_TREE': this._currentDir });
                     await this.isGitInitialized(this.codeHistoriesGit);
                 }
@@ -159,9 +166,50 @@ class gitTracker {
                 console.log("both .git and codeHistories.git folders exist");
                 this.git = simpleGit(this._currentDir);
                 await this.isGitInitialized(this.git);
+                await this.initGitignore();
                 this.codeHistoriesGit = simpleGit(this._currentDir).env({ 'GIT_DIR': `${this._currentDir}/codeHistories.git`, 'GIT_WORK_TREE': this._currentDir });
                 await this.isGitInitialized(this.codeHistoriesGit);
                 break;
+        }
+
+        // after handling the git folders, we will check and make sure that the 
+        // "worktree" entry in codeHistories.git/config is set to the current directory with respect to the machine
+        await this.checkAndUpdateWorkTree();
+    }
+
+    async checkAndUpdateWorkTree() {
+        try {
+            if (this.isUsingCodeHistoriesGit) {
+                const gitDir = path.join(this._currentDir, 'codeHistories.git');
+                
+                // Ensure workTree path uses forward slashes
+                const workTree = this._currentDir.replace(/\\/g, '/'); 
+                const configPath = path.join(gitDir, 'config');
+    
+                // Read the config file content
+                let config = await fs.promises.readFile(configPath, 'utf8');
+                
+                // Define regex to match the worktree line under [core]
+                const workTreeRegex = /(\[core\][\s\S]*?)(worktree\s*=\s*.+)/;
+    
+                if (workTreeRegex.test(config)) {
+                    // If there's an existing worktree line, replace it with the correct path
+                    config = config.replace(workTreeRegex, `$1worktree = ${workTree}`);
+                    console.log(`Updated existing worktree path in codeHistories.git/config`);
+                } else {
+                    // If no worktree line is found, add it under the [core] section
+                    const coreSectionRegex = /\[core\]/;
+                    if (coreSectionRegex.test(config)) {
+                        config = config.replace(coreSectionRegex, `[core]\n\tworktree = ${workTree}`);
+                    }
+                    console.log(`Added new worktree entry in codeHistories.git/config`);
+                }
+
+                await fs.promises.writeFile(configPath, config, 'utf8');
+                console.log(`Config file updated successfully.`);
+            }
+        } catch (err) {
+            console.error(`Error checking and updating worktree: ${err}`);
         }
     }
 
@@ -193,11 +241,13 @@ class gitTracker {
             if (this.isUsingCodeHistoriesGit) {
                 const gitDir = path.join(this._currentDir, 'codeHistories.git');
                 const workTree = this._currentDir;
-                const resetCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" reset`;
+                const resetCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" reset HEAD -- .`;
                 await exec(resetCmd, { cwd: workTree });
                 console.log(`Successfully reset all files in codeHistories.git`);
             } else {
-                await this.git.reset(['./*']);
+                console.log(`Resetting all files in .git`);
+                const resetCmd = `git reset HEAD -- .`;
+                await exec(resetCmd, { cwd: this._currentDir });
                 console.log(`Successfully reset all files in .git`);
             }
         } catch (err) {
@@ -341,6 +391,113 @@ class gitTracker {
             return true;
         } catch (err) {
             console.error(`Error checking if output.txt is modified: ${err}`);
+        }
+    }
+
+    // this function should grab the latest commit from codeHistories.git
+    // and see what files were changed in that commit
+    // then it should process those files into a list of events
+    async grabLatestCommitFiles(){
+        try {
+            const gitDir = path.join(this._currentDir, 'codeHistories.git');
+            const workTree = this._currentDir;
+            const logCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" log -1 --name-only --format="%H%n%ct"`;
+            const { stdout } = await exec(logCmd, { cwd: workTree });
+            const outputLines = stdout.trim().split('\n');
+            const commitHash = outputLines[0];
+            const commitTime = parseInt(outputLines[1]);
+            const changedFiles = outputLines.slice(2);
+
+            let filesToConsider = ['output.txt', '.py', '.js', '.html', '.css'];
+            let entries = [];
+
+            for(const file of changedFiles){
+                if(file === 'output.txt'){
+                    let documentText = await fs.promises.readFile(`${this._currentDir}/output.txt`, 'utf8');
+                    let entry = {
+                        type: 'output',
+                        document: 'output.txt',
+                        time: commitTime,
+                        code_text: documentText,
+                        notes: `output: output.txt;`,
+                    };
+                    entries.push(entry);
+                } else if(filesToConsider.some(ext => file.endsWith(ext))){
+                    let documentText = await fs.promises.readFile(`${this._currentDir}/${file}`, 'utf8');
+                    let entry = {
+                        type: 'code',
+                        document: file,
+                        time: commitTime,
+                        code_text: documentText,
+                        notes: `code: ${file};`,
+                    };
+                    entries.push(entry);
+                }
+            }
+            
+            // console.log(`Latest commit hash: ${commitHash}`);
+            // log info about the files changed in the latest commit
+            console.log(`Files changed in the latest commit: ${changedFiles}`);
+            return entries;
+        } catch (err) {
+            console.error(`Error grabbing latest commit from codeHistories.git: ${err}`);
+            return [];
+        }
+    }
+
+    // this function should access the list of all files in the latest commit
+    async grabAllLatestCommitFiles(){
+        try {
+            const gitDir = path.join(this._currentDir, 'codeHistories.git');
+            const workTree = this._currentDir;
+            const lsCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" ls-tree -r --name-only HEAD`;
+            const { stdout } = await exec(lsCmd, { cwd: workTree });
+            const currentCommitTime = await this.getLastCommitTime();
+            const files = stdout.trim().split('\n');
+            let filesToConsider = ['output.txt', '.py', '.js', '.html', '.css'];
+            let entries = [];
+            for (const file of files) {
+                if(file === 'output.txt'){
+                    let documentText = await fs.promises.readFile(`${this._currentDir}/output.txt`, 'utf8');
+                    let entry = {
+                        type: 'output',
+                        document: 'output.txt',
+                        time: currentCommitTime,
+                        code_text: documentText,
+                        notes: `output: output.txt;`,
+                    };
+                    entries.push(entry);
+                } else if(filesToConsider.some(ext => file.endsWith(ext))){
+                    let documentText = await fs.promises.readFile(`${this._currentDir}/${file}`, 'utf8');
+                    let entry = {
+                        type: 'code',
+                        document: file,
+                        time: currentCommitTime,
+                        code_text: documentText,
+                        notes: `code: ${file};`,
+                    };
+                    entries.push(entry);
+                }
+            }
+            return entries;
+        } catch (err) {
+            console.error(`Error grabbing all latest commit files: ${err}`);
+            return [];
+        }
+    }
+
+    // get last commit time in seconds
+    async getLastCommitTime(){
+        try {
+            const gitDir = path.join(this._currentDir, 'codeHistories.git');
+            const workTree = this._currentDir;
+            const logCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" log -1 --format="%ct"`;
+            const { stdout } = await exec(logCmd, { cwd: workTree });
+            return parseInt(stdout.trim());
+        } catch (err) {
+            console.error(`Error getting last commit time: ${err}`);
+            console.log(`Returning current time as last commit time`);
+            return Math.floor(Date.now() / 1000);
         }
     }
 }

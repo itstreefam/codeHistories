@@ -41,8 +41,13 @@ var hostname = os.hostname();
 var terminalList;
 var terminalInstance;
 var eventEntry = {};
-var usingHistoryView = false;
+var usingHistoryView = true;
 var usingContentTimelineView = false;
+var clusterManager = null;
+var contentTimelineManager = null;
+
+// this controls whether one wants to always show webview (even if it is closed) or not
+var persist = true;
 
 function updateContextKeys() {
     vscode.commands.executeCommand('setContext', 'codeHistories.usingContentTimelineView', usingContentTimelineView);
@@ -72,8 +77,8 @@ function activate(context) {
 	// Listen for selection changes with debounced handling
 	context.subscriptions.push(vscode.window.onDidChangeTextEditorSelection(event => {
 		const key = event.textEditor.document.uri.fsPath;
-		const debouncedSelectionChangeHandler = debounce(selection.handleTextEditorSelectionChange, 500, key);
-		console.log('Selection event:', event);
+		const debouncedSelectionChangeHandler = debounce(selection.handleTextEditorSelectionChange, 800, key);
+		// console.log('Selection event:', event);
 		debouncedSelectionChangeHandler(event.textEditor);
 	}));
 
@@ -109,8 +114,11 @@ function activate(context) {
 		}
 	}
 
-	const clusterManager = new ClusterManager(context);
-	const contentTimelineManager = new ContentTimelineManager(context);
+	clusterManager = new ClusterManager(context, tracker, persist);
+	clusterManager.initializeClusterManager();
+
+	contentTimelineManager = new ContentTimelineManager(context, tracker, persist);
+	contentTimelineManager.initializeContentTimelineManager();
 
 	vscode.window.onDidStartTerminalShellExecution(async event => {
 		await onDidExecuteShellCommandHelper(event, clusterManager, contentTimelineManager);
@@ -118,17 +126,21 @@ function activate(context) {
 
 	myCustomEmitter.on('save', async (entry) => {
 		eventEntry = entry; // for history view, just need to save and send this entry to clusterManager later after execution
-		console.log('eventEntry:', eventEntry);
+		// console.log('eventEntry:', eventEntry);
 
 		if(usingContentTimelineView){
-			contentTimelineManager.processEvent(entry); // for content timeline view, process the event immediately
+			await contentTimelineManager.processEvent(entry); // for content timeline view, process the event immediately
+		}
+
+		if(usingHistoryView){
+			await clusterManager.handleSaveEvent(entry);
 		}
 	});
 
 	if(usingContentTimelineView){
 		myCustomEmitter.on('selection', async (entry) => {
 			// console.log('selection:', entry);
-			contentTimelineManager.processEvent(entry);
+			await contentTimelineManager.processEvent(entry);
 		});
 	}
 
@@ -147,11 +159,29 @@ function activate(context) {
 	let testRunPythonScript = vscode.commands.registerCommand('codeHistories.testRunPythonScript', testRunPythonScriptHelper);
 	let testDBConstructor = vscode.commands.registerCommand('codeHistories.testDBConstructor', testDBConstructorHelper);
 	let historyWebview = vscode.commands.registerCommand('codeHistories.historyWebview', function () {
-		clusterManager.initializeWebview();
+		clusterManager.isPanelClosed = !clusterManager.isPanelClosed;
+		if(persist === true){
+			if(clusterManager.isPanelClosed){
+				clusterManager.initializeWebview();
+			} else {
+				clusterManager.disposeWebview(); // close but still remember contents
+			}
+		} else {
+			clusterManager.initializeWebview();
+		}
     });
 
 	let contentTimelineWebview = vscode.commands.registerCommand('codeHistories.contentTimelineWebview', function () {
-		contentTimelineManager.initializeWebview();
+		contentTimelineManager.isPanelClosed = !contentTimelineManager.isPanelClosed;
+		if(persist === true){
+			if(contentTimelineManager.isPanelClosed){
+				contentTimelineManager.initializeWebview();
+			} else {
+				contentTimelineManager.disposeWebview(); //same here (just a convenient way to toggle on and off instead of having to click x)
+			}
+		} else {
+			contentTimelineManager.initializeWebview();
+		}
 	});	
 
 	context.subscriptions.push(activateCodeHistories);
@@ -164,7 +194,7 @@ function activate(context) {
 	context.subscriptions.push(selectTerminalProfile);
 	context.subscriptions.push(testRunPythonScript);
 	context.subscriptions.push(testDBConstructor);
-	
+
 	if(usingHistoryView){
 		context.subscriptions.push(historyWebview);
 		updateContextKeys();
@@ -242,57 +272,62 @@ function activate(context) {
 	const performGitActions = async () => {
 		try {
 			// search between timeSwitchedToChrome and timeSwitchedToCode in webData
+			await new Promise(resolve => setTimeout(resolve, 1000));
 			let webData = fs.readFileSync(path.join(currentDir, 'webData'), 'utf8');
-
+			
 			let webDataArray = JSON.parse(webData);
 
 			let webDataArrayFiltered = [];
+			let nonLocalWebEntries = []; // Collect only non-local URLs for history view
 			let startTime = timeSwitchedToChrome;
 			let endTime = timeSwitchedToCode;
 
-			if (startTime > 0 && endTime > 0) {
+			if(startTime > 0 && endTime > 0){
 				// Traverse the array backwards
 				for (let i = webDataArray.length - 1; i >= 0; i--) {
-					let obj = webDataArray[i];
-					
-					if (obj.time <= endTime && obj.time >= startTime) {
-						webDataArrayFiltered.unshift(obj);  // Prepend to maintain order
-					} else if (obj.time < startTime) {
-						break;  // Early exit, no need to check earlier events
+					let entry = webDataArray[i];
+					if (entry.time >= startTime && entry.time <= endTime) {
+						webDataArrayFiltered.unshift(entry); // Prepend to maintain order
+
+						// Collect only non-local URLs for history view
+						if (!helpers.isLocalUrl(entry.curUrl)) {
+							nonLocalWebEntries.unshift(entry);
+						}
+
+					} else if (entry.time < startTime) {
+						break; // Early exit, no need to check earlier entries
 					}
 				}
 			} else {
-				if (startTime <= 0) {
-					console.error('Invalid start time:', startTime);
+				if(startTime <= 0){
+					console.error('Invalid startTime:', startTime);
 				}
-				if (endTime <= 0) {
-					console.error('Invalid end time:', endTime);
+				if(endTime <= 0){
+					console.error('Invalid endTime:', endTime);
 				}
 			}
 
-			console.log('webDataArrayFiltered: ', webDataArrayFiltered);
+			// console.log('webDataArrayFiltered:', webDataArrayFiltered);
 			if(webDataArrayFiltered.length > 0){
-				if(usingHistoryView){
-					let dataForHistory = processWebData(webDataArrayFiltered);
-					console.log('dataForHistory: ', dataForHistory);
+				console.log('webDataArrayFiltered: ', webDataArrayFiltered);
 
-					if (dataForHistory.length > 0) {
-						for (let i = 0; i < dataForHistory.length; i++) {
-							let entry = dataForHistory[i];
-							clusterManager.processEvent(entry);
-						}
-					}
+				if(usingHistoryView && nonLocalWebEntries.length > 0){
+					let webEntriesForHistory = processWebData(nonLocalWebEntries);
+					console.log('webEntriesForHistory: ', webEntriesForHistory);
+					await clusterManager.processWebEvents(webEntriesForHistory);
 				}
 
 				// check if webDataArrayFiltered contains a visit to localhost or 127.0.0.1
-				let webDataArrayFilteredContainsLocalhost = webDataArrayFiltered.filter(obj => obj.curUrl.includes('localhost') || containsIPAddresses(obj.curUrl));
+				let webDataArrayFilteredContainsLocalhost = webDataArrayFiltered.some(entry => helpers.isLocalUrl(entry.curUrl));
 				
-				if(webDataArrayFilteredContainsLocalhost.length > 0){
+				if(webDataArrayFilteredContainsLocalhost){
 					await tracker.gitAdd();
 					await tracker.checkWebData();
 					await tracker.gitCommit();
-					if(usingHistoryView && eventEntry){ // for test event of web app (similar to execution event, save needed to happen first)
-						await clusterManager.processEvent(eventEntry);
+					if(usingHistoryView){
+						let entriesForClusterManager = await tracker.grabLatestCommitFiles();
+						let codeEntries = [...entriesForClusterManager]; // Collect code events
+						await clusterManager.processCodeEvents(codeEntries);
 					}
 					// let currentTime = Math.floor(Date.now() / 1000);
 					// console.log('currentTime: ', currentTime);
@@ -464,7 +499,7 @@ async function onDidExecuteShellCommandHelper(event, clusterManager, contentTime
 			const ndjsonString = JSON.stringify(executionInfo) + '\n'; // Convert to JSON string and add newline
 			const outputPath = path.join(currentDir, 'CH_cfg_and_logs', 'CH_terminal_data.ndjson');
 			await fs.promises.appendFile(outputPath, ndjsonString);
-	
+
 			await tracker.gitAdd();
 	
 			// if command contains "codehistories" then we should commit
@@ -475,11 +510,10 @@ async function onDidExecuteShellCommandHelper(event, clusterManager, contentTime
 				await tracker.checkWebData();
 				if(usingHistoryView) {
 					await tracker.gitCommit();
-					if(eventEntry){
-						await clusterManager.processEvent(eventEntry);
-					}
+					let codeEntries = await tracker.grabLatestCommitFiles();
+					await clusterManager.processCodeEvents(codeEntries);
 				} else if(usingContentTimelineView) {
-					await tracker.gitCommit();
+					// await tracker.gitCommit();
 					await contentTimelineManager.processEvent(executionInfo);
 				} else {
 					await tracker.gitCommit();
@@ -585,7 +619,7 @@ async function showTerminalProfileQuickPick() {
 
 		let profileName = selectedProfile.name;
 
-		if (!profileName) {
+		if (!selectedProfile || !profileName) {
 			vscode.window.showErrorMessage("No terminal profile selected. Selecting the default terminal profile.");
 			return;
 		}
@@ -678,6 +712,7 @@ async function showTerminalProfileQuickPick() {
 
 		await handleTerminal(terminalName, currentDir);
 	} catch (error) {
+		console.error('Error selecting terminal profile:', error);
 		vscode.window.showErrorMessage("No terminal profile selected. Selecting the default terminal profile.");
 		return;
 	}
@@ -765,6 +800,14 @@ async function quickAutoCommitHelper() {
 	await tracker.gitAdd();
 	await tracker.checkWebData();
 	await tracker.gitCommit();
+	if(usingHistoryView){
+		let codeEntries = await tracker.grabLatestCommitFiles();
+		await clusterManager.processCodeEvents(codeEntries);
+	}
+
+	if(usingContentTimelineView){
+		await contentTimelineManager.processEvent(eventEntry);
+	}
 }
 
 async function checkExtensionActivation() {
@@ -775,15 +818,6 @@ async function checkExtensionActivation() {
 	return true;
 }
 
-function containsIPAddresses(url) {
-	// Define regex patterns for matching IPv4 and IPv6 addresses
-	const ipv4Pattern = /\b(?:\d{1,3}\.){3}\d{1,3}\b/;
-	const ipv6Pattern = /\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b/;
-
-	// Use the regex `test` method to check if the URL contains an IPv4 or IPv6 address
-	return ipv4Pattern.test(url) || ipv6Pattern.test(url);
-}
-
 function deactivate() {
 	console.log('Thank you for trying out "codeHistories"!');
 
@@ -792,6 +826,44 @@ function deactivate() {
 	allTerminalsDirCount = new Object();
 	terminalDimChanged = new Object();
 	terminalOpenedFirstTime = new Object();
+
+	try{
+		if(usingHistoryView){
+			// save webview inside CH_cfg_and_logs
+			const currentDir = getCurrentDir();
+
+			let date = new Date();
+			let dateStr = date.toISOString().split('T')[0];
+			let epochTimeInSeconds = Math.floor(date.getTime() / 1000);  // Get the current time in seconds
+
+			const webviewPath = path.join(currentDir, 'CH_cfg_and_logs', `history_webview_${dateStr}_${epochTimeInSeconds}.html`);
+			// console.log('webviewPath:', webviewPath);
+
+			let webviewContent = clusterManager.getWebviewContent();
+			// webviewContent = clusterManager.commentOutVSCodeApi(webviewContent); // Comment out the VS Code API script so html can run as standalone in browser
+			// // console.log('webviewContent:', webviewContent);
+
+			fs.writeFileSync(webviewPath, webviewContent);			
+		} 
+		
+		if(usingContentTimelineView){
+			// save webview inside CH_cfg_and_logs
+			const currentDir = getCurrentDir();
+
+			let date = new Date();
+			let dateStr = date.toISOString().split('T')[0];
+			let epochTimeInSeconds = Math.floor(date.getTime() / 1000);  // Get the current time in seconds
+
+			const webviewPath = path.join(currentDir, 'CH_cfg_and_logs', `content_timeline_webview_${dateStr}_${epochTimeInSeconds}.html`);
+			// console.log('webviewPath:', webviewPath);
+
+			let webviewContent = contentTimelineManager.getWebviewContent();
+
+			fs.writeFileSync(webviewPath, webviewContent);
+		}
+	} catch (error) {
+		console.error('Error saving webview:', error);
+	}
 }
 
 module.exports = {

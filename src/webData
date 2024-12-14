@@ -1,0 +1,121 @@
+[
+    {
+        "action": "add opened tab that is not in storage",
+        "curTabId": 632146853,
+        "curTitle": "keypress - Detecting arrow key presses in JavaScript - Stack Overflow",
+        "curUrl": "https://stackoverflow.com/questions/5597060/detecting-arrow-key-presses-in-javascript",
+        "prevTabId": 632146853,
+        "prevUrl": "",
+        "time": 1730251415
+    },
+    {
+        "action": "navigate between urls in the same tab (reload)",
+        "curTabId": 632146853,
+        "curTitle": "keypress - Detecting arrow key presses in JavaScript - Stack Overflow",
+        "curUrl": "https://stackoverflow.com/questions/5597060/detecting-arrow-key-presses-in-javascript",
+        "img": "screencapture-n632146853_1730251724.png",
+        "prevTabId": 632146853,
+        "prevUrl": "https://stackoverflow.com/questions/5597060/detecting-arrow-key-presses-in-javascript",
+        "time": 1730251724
+    },
+    {
+        "action": "navigate between urls in the same tab (reload)",
+        "curTabId": 632146853,
+        "curTitle": "keypress - Detecting arrow key presses in JavaScript - Stack Overflow",
+        "curUrl": "https://stackoverflow.com/questions/5597060/detecting-arrow-key-presses-in-javascript",
+        "img": "screencapture-n632146853_1730251801.png",
+        "prevTabId": 632146853,
+        "prevUrl": "https://stackoverflow.com/questions/5597060/detecting-arrow-key-presses-in-javascript",
+        "time": 1730251801
+    },
+    {
+        "action": "navigate between urls in the same tab (reload)",
+        "curTabId": 632146853,
+        "curTitle": "keypress - Detecting arrow key presses in JavaScript - Stack Overflow",
+        "curUrl": "https://stackoverflow.com/questions/5597060/detecting-arrow-key-presses-in-javascript",
+        "img": "screencapture-n632146853_1730251985.png",
+        "prevTabId": 632146853,
+        "prevUrl": "https://stackoverflow.com/questions/5597060/detecting-arrow-key-presses-in-javascript",
+        "time": 1730251985
+    },
+    {
+        "action": "navigate between urls in the same tab (reload)",
+        "curTabId": 632146853,
+        "curTitle": "keypress - Detecting arrow key presses in JavaScript - Stack Overflow",
+        "curUrl": "https://stackoverflow.com/questions/5597060/detecting-arrow-key-presses-in-javascript",
+        "img": "",
+        "prevTabId": 632146853,
+        "prevUrl": "https://stackoverflow.com/questions/5597060/detecting-arrow-key-presses-in-javascript",
+        "time": 1730252078
+    },
+    {
+        "action": "navigate between urls in the same tab (reload)",
+        "curTabId": 632146853,
+        "curTitle": "keypress - Detecting arrow key presses in JavaScript - Stack Overflow",
+        "curUrl": "https://stackoverflow.com/questions/5597060/detecting-arrow-key-presses-in-javascript",
+        "img": "screencapture-n632146853_1730252182.png",
+        "prevTabId": 632146853,
+        "prevUrl": "https://stackoverflow.com/questions/5597060/detecting-arrow-key-presses-in-javascript",
+        "time": 1730252182
+    },
+    {
+        "action": "navigate between urls in the same tab (reload)",
+        "curTabId": 632146853,
+        "curTitle": "keypress - Detecting arrow key presses in JavaScript - Stack Overflow",
+        "curUrl": "https://stackoverflow.com/questions/5597060/detecting-arrow-key-presses-in-javascript",
+        "img": "screencapture-n632146853_1730252483.png",
+        "prevTabId": 632146853,
+        "prevUrl": "https://stackoverflow.com/questions/5597060/detecting-arrow-key-presses-in-javascript",
+        "time": 1730252483
+    },
+    {
+        "action": "navigate between urls in the same tab (link)",
+        "curTabId": 632146855,
+        "curTitle": "How to Detect Keypress using JavaScript ? - GeeksforGeeks",
+        "curUrl": "https://www.geeksforgeeks.org/how-to-detect-keypress-using-javascript/",
+        "img": "",
+        "prevTabId": 632146855,
+        "prevUrl": "chrome://newtab/",
+        "time": 1730252854
+    },
+    {
+        "action": "navigate between urls in the same tab (reload)",
+        "curTabId": 632146855,
+        "curTitle": "How to Detect Keypress using JavaScript ? - GeeksforGeeks",
+        "curUrl": "https://www.geeksforgeeks.org/how-to-detect-keypress-using-javascript/",
+        "img": "screencapture-n632146855_1730252907.png",
+        "prevTabId": 632146855,
+        "prevUrl": "https://www.geeksforgeeks.org/how-to-detect-keypress-using-javascript/",
+        "time": 1730252907
+    },
+    {
+        "action": "navigate between urls in the same tab (reload)",
+        "curTabId": 632146855,
+        "curTitle": "How to Detect Keypress using JavaScript ? - GeeksforGeeks",
+        "curUrl": "https://www.geeksforgeeks.org/how-to-detect-keypress-using-javascript/",
+        "img": "screencapture-n632146855_1730252938.png",
+        "prevTabId": 632146855,
+        "prevUrl": "https://www.geeksforgeeks.org/how-to-detect-keypress-using-javascript/",
+        "time": 1730252938
+    },
+    {
+        "action": "navigate between urls in the same tab (reload)",
+        "curTabId": 632146855,
+        "curTitle": "How to Detect Keypress using JavaScript ? - GeeksforGeeks",
+        "curUrl": "https://www.geeksforgeeks.org/how-to-detect-keypress-using-javascript/",
+        "img": "screencapture-n632146855_1730252987.png",
+        "prevTabId": 632146855,
+        "prevUrl": "https://www.geeksforgeeks.org/how-to-detect-keypress-using-javascript/",
+        "time": 1730252987
+    },
+    {
+        "action": "navigate between urls in the same tab (reload)",
+        "curTabId": 632146855,
+        "curTitle": "How to Detect Keypress using JavaScript ? - GeeksforGeeks",
+        "curUrl": "https://www.geeksforgeeks.org/how-to-detect-keypress-using-javascript/",
+        "img": "screencapture-n632146855_1730253025.png",
+        "prevTabId": 632146855,
+        "prevUrl": "https://www.geeksforgeeks.org/how-to-detect-keypress-using-javascript/",
+        "time": 1730253025
+    }
+]
