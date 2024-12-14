@@ -1246,119 +1246,130 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             // `;
 
             // Filter and extract web resources
-            let webResources = group.actions.filter(
-                action => action.type === 'search' || 
-                        action.type === 'visit' || 
-                        action.type === 'revisit'
+            const webResources = group.actions.filter(
+                action => action.type === 'search' || action.type.includes('visit')
             );
 
-             // Collect unique URLs
-        const uniqueURLs = new Set();
-        webResources.forEach(event => {
-            if (event.webpage) {
-                uniqueURLs.add(event.webpage);
-            }
-        });
+            // Track unique web visits and searches
+            const uniqueSearches = new Set();
+            const uniqueVisits = new Set();
 
-        for (const [index, event] of group.actions.entries()) {
-            if (event.type === 'code') {
-                // Generate diff HTML for code event
-                const diffHTML = this.generateDiffHTMLGroup(event);
+            webResources.forEach(resource => {
+                if (resource.type === 'search') {
+                    const searchQuery = extractText(resource.webTitle, "search:", "- Google Search;");
+                    uniqueSearches.add(searchQuery);
+                } else if (resource.type.includes('visit')) {
+                    // Skip visits that are just Google Search revisits
+                    if (!resource.webTitle.toLowerCase().includes("search")) {
+                        uniqueVisits.add(JSON.stringify({
+                            webpage: resource.webpage,
+                            webTitle: extractText(resource.webTitle, "visit:", ";"),
+                            img: resource.img || 'default-image.jpg'
+                        }));
+                    }
+                }
+            });
 
-                // Determine if resources exist
-                const resourcesExist = webResources.length > 0;
-                const containerClass = resourcesExist ? 'left-container' : 'full-container';
+            // Convert unique sets to arrays
+            const searchQueries = Array.from(uniqueSearches);
+            const visitResources = Array.from(uniqueVisits).map(item => JSON.parse(item));
 
-                // Start HTML generation for code event
-                let title = event.title || "Untitled";
-                html += `
-                    <li data-eventid="${index}">
-                        <div class="li-header">
-                            <button type="button" class="collapsible" id="plusbtn-${groupKey}-${index}">+</button>
-                            <input class="editable-title" id="code-title-${groupKey}-${index}" 
-                                   value="${title}" 
-                                   onchange="updateCodeTitle('${groupKey}', '${index}')" 
-                                   size="50">
-                            <button type="button" class="btn btn-secondary" id="button-${groupKey}-${index}">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
-                                    <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
-                                    <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
-                                </svg>
-                            </button>
-                            <b>in ${event.file} </b>
-                            ${resourcesExist ? `
-                            <div class="container">
-                                <i class="bi bi-bookmark"></i>
-                                <div class="centered">${uniqueURLs.size}</div>
+            for (const [index, event] of group.actions.entries()) {
+                if (event.type === 'code') {
+                    // Generate diff HTML for code event
+                    const diffHTML = this.generateDiffHTMLGroup(event);
+
+                    // Determine if resources exist
+                    const resourcesExist = webResources.length > 0;
+                    const containerClass = resourcesExist ? 'left-container' : 'full-container';
+
+                    // Start HTML generation for code event
+                    const title = event.title || "Untitled";
+                    html += `
+                        <li data-eventid="${index}">
+                            <div class="li-header">
+                                <button type="button" class="collapsible" id="plusbtn-${groupKey}-${index}">+</button>
+                                <input class="editable-title" id="code-title-${groupKey}-${index}" 
+                                    value="${title}" 
+                                    onchange="updateCodeTitle('${groupKey}', '${index}')" 
+                                    size="50">
+                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${index}">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
+                                        <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
+                                        <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
+                                    </svg>
+                                </button>
+                                <b>in ${event.file} </b>
+                                ${resourcesExist ? `
+                                <div class="container">
+                                    <i class="bi bi-bookmark"></i>
+                                    <div class="centered">${visitResources.length}</div>
+                                </div>
+                                ` : ''}
                             </div>
-                            ` : ''}
-                        </div>
 
-                        <div class="content">
-                        <div class="${containerClass}">
-                            ${diffHTML}
-                        </div>
+                            <div class="content">
+                                <div class="${containerClass}">
+                                    ${diffHTML}
+                                </div>
 
-                        ${resourcesExist ? `
-                        <div class="resources">
-                            <h4>Helpful Resources</h4>
+                                ${resourcesExist ? `
+                                <div class="resources">
+                                    <h4>Helpful Resources</h4>
 
-                            ${webResources.filter(resource => resource.type === "search").length > 0 ? `
-                            <div class="search-resources">
-                                <p>
-                                    You searched for 
-                                    "${webResources
-                                        .filter(resource => resource.type === "search")
-                                        .map(resource => extractText(resource.webTitle, "search:", "- Google Search;"))
-                                        .join(', ')}".
-                                </p>
+                                    ${searchQueries.length > 0 ? `
+                                    <div class="search-resources">
+                                        <p>
+                                            You searched for 
+                                            ${searchQueries.map(query => `<i>${query}</i>`).join(', ')}.
+                                        </p>
+                                    </div>
+                                    ` : ''}
+
+                                    ${visitResources.length > 0 ? `
+                                    <div class="visit-resources">
+                                        <p>You visited the following resources:</p>
+                                        <ul class="resource-list">
+                                            ${visitResources.map(resource => `
+                                                <li>
+                                                    <div class="resource-item tooltip">
+                                                        <a href="${resource.webpage}" target="_blank">
+                                                            ${resource.webTitle}
+                                                        </a>
+                                                        <!-- <span class="tooltiptext">
+                                                            <img class="thumbnail" src="${resource.img}" alt="Thumbnail">
+                                                        </span> -->
+                                                    </div>
+                                                </li>
+                                            `).join('')}
+                                        </ul>
+                                    </div>
+                                    ` : ''}
+                                </div>
+                                ` : ''}
                             </div>
-                            ` : ''}
+                        </li>
 
-                            ${webResources.filter(resource => resource.type.includes("visit")).length > 0 ? `
-                            <div class="visit-resources">
-                                <p>You visited the following resources:</p>
-                                <ul class="resources-list visit-list">
-                                    ${webResources.filter(resource => resource.type.includes("visit")).map(resource => `
-                                        <li>
-                                            <div class="resource-item tooltip">
-                                                <a href="${resource.webpage}" target="_blank">
-                                                    ● ${extractText(resource.webTitle || "Visit Page", "visit:", ";")}
-                                                </a>
-                                                <span class="tooltiptext">
-                                                    <img class="thumbnail" src="${resource.img || 'default-image.jpg'}" alt="Thumbnail">
-                                                </span>
-                                            </div>
-                                        </li>
-                                    `).join('')}
-                                </ul>
-                            </div>
-                            ` : ''}
-                        </div>
-                        ` : ''}
-                    </div>
-                    </li>
-
-                    <script> 
-                        (() => {
-                            const editButton = document.getElementById('button-${groupKey}-${index}');
-                            if (editButton) {
-                                editButton.addEventListener('click', function() {
-                                    const titleInput = document.getElementById('code-title-${groupKey}-${index}');
-                                    if (titleInput) {
-                                        titleInput.focus();
-                                    }
-                                });  
-                            }
-                        })();
-                    </script>
-                `;
+                        <script> 
+                            (() => {
+                                const editButton = document.getElementById('button-${groupKey}-${index}');
+                                if (editButton) {
+                                    editButton.addEventListener('click', function() {
+                                        const titleInput = document.getElementById('code-title-${groupKey}-${index}');
+                                        if (titleInput) {
+                                            titleInput.focus();
+                                        }
+                                    });  
+                                }
+                            })();
+                        </script>
+                    `;
+                }
             }
         }
-    }
 
-    return html;
-}
+        return html;
+    }
 
     // Generate the HTML for the diff view of a code activity
     // This happens after a "test" occurrence (comparing two versions of commit)
@@ -1597,6 +1608,12 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             } else if (event.type === "visit" || event.type === "revisit") {
                 // Handle visit or revisit events and avoid duplicates
                 const pageTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf(";")).trim();
+
+                // if pageTitle contains "search", skip this visit
+                if (pageTitle.toLowerCase().includes("search")) {
+                    continue;
+                }
+
                 if (!uniqueVisits.has(event.webpage)) {
                     uniqueVisits.add(event.webpage);
                     html += `
