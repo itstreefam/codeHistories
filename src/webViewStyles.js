@@ -305,6 +305,70 @@ const historyStyles = `
         color: #666;
         margin: 0;
     }
+
+    #open-button {
+        background-color: #edffff;
+        color: black;
+        padding: 16px 20px;
+        border: none;
+        cursor: pointer;
+        opacity: 0.8;
+        position: fixed;
+        bottom: 23px;
+        right: 28px;
+        // width: 280px;
+        border: 2px black solid;
+        border-radius: 10px;
+    }
+
+    .chat-area {
+        display: none;
+        position: fixed;
+        bottom: 0;
+        right: 15px;
+        z-index: 100000;
+        background-color: #fff6ed;
+        border: 2px black solid;
+        border-radius: 10px 10px 0px 0px;
+    }
+
+    .form-container {
+        width: 300px;
+        padding: 10px;
+        // background-color: white;
+        background-color: #fff6ed;
+        border-radius: 10px 10px 0px 0px;
+    }
+
+    #response_area {
+        width: 94%;
+        min-height: 200px;
+        height: 250px;
+        background-color: white;
+        overflow: scroll;
+        padding: 10px;
+    }
+
+    .chat-response {
+        background-color: #e1f0d8;
+        padding: 5px;
+        border-radius: 3px;
+    }
+
+    .user-question {
+        background-color: #f0d8d8;
+        padding: 5px;
+        border-radius: 3px;
+        margin-bottom: 5px;
+    }
+
+    .user-question-area {
+        margin: 1px;
+    }
+
+    #question {
+        width: 59%;
+    }
 `;
 
 // Light theme styles for content timeline

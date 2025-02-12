@@ -51,6 +51,7 @@ class ClusterManager {
         this.allSaves = {}; // Stores all save events per file
         this.initialSaves = {}; // Tracks the first save for comparison
         this.currentDiffView = 'line-by-line'; //default view
+        
     }
 
     initializeTemporaryTest(){
@@ -141,6 +142,11 @@ class ClusterManager {
             if (message.command === 'changeViewMode') {
                 this.currentDiffView = message.view;
                 await this.updateWebPanel();
+            }
+
+            if (message.command === "askChatGPT") {
+                console.log("Received askChatGPT message:", message);
+                await this.handleChatGPTRequest(message.question);
             }
         });
     }
@@ -781,6 +787,38 @@ class ClusterManager {
         }
     }
 
+    async generateAnswer(question) {
+        try {
+            console.log("User Question:", question);
+            let prompt = 'If there your answer has a code snipet section, please put code in string style text so that it is one paragraph. The format of the code snipet should show up like this <p>" *code snipet* " </p>. The code snipet should show up as a string rather than getting interpretted as html code. Here is the question: ' + question;
+            const completions = await openai.chat.completions.create({
+                model: 'gpt-3.5-turbo',
+                max_tokens: 400,
+                messages: [
+                    {
+                        role: "system",
+                        content: "you are a coding debug helper. The users will copy and paste in their code and ask you to debug their code."
+                    },
+                    { role: "user", content: prompt }
+                ]
+            });
+            console.log('API Response:', completions);
+
+            let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
+            console.log('Summary:', summary);
+
+            // if summary contains double quotes, make them single quotes
+            summary = summary.replace(/"/g, "'");
+            return `${summary}`;
+
+
+        } catch (error) {
+            console.error("Error generating title:", error.message);
+            return `response generation failed`;
+        }
+    }
+
+
     async generateResources(activity) {
         try { 
 
@@ -826,8 +864,25 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             );
         }
 
+        if (!this.webviewPanel) {
+            this.webviewPanel = vscode.window.createWebviewPanel(
+                "chatPanel",
+                "Chat Panel",
+                vscode.ViewColumn.One,
+                { enableScripts: true }
+            );
+
+            this.webviewPanel.onDidDispose(() => {
+                this.webviewPanel = null;
+            });
+        }
+        
+
         const groupedEventsHTML = await this.generateGroupedEventsHTML();
         const strayEventsHTML = await this.generateStrayEventsHTML();
+
+        console.log("line 864");
+        const chatboxHTML = await this.generateChatGPTResponseHTML('');
         // const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
         // const strayEventsHTML = await this.generateStrayEventsHTMLTest();
 
@@ -870,6 +925,23 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                         ${strayEventsHTML}
                     </ul>
                 </div>
+                
+                <button id="open-button">Chat with ChatGPT</button>
+                <div class="chat-area" id="myForm"> 
+                    <form id="chat-form" class="form-container">
+                        <h1 for="msg">Chat with ChatGPT</h1>
+                        <div id="response_area">
+                            ${chatboxHTML}
+                        </div>
+                        <label>Ask ChatGPT a question!</label><br>
+                        <div class="question-area">
+                            <input type="text" id="question" name="user_question" placeholder="How do I do this...">
+                            <button type="submit" class="btn">Submit</button>
+                            <button type="button" class="btn" id="cancel">Close</button>
+                        </div>
+                    </form>
+                    <div id="answer"></div>
+                <div>
             </div>
 
         <script>
@@ -947,6 +1019,67 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             var wrapper = handler.closest('.wrapper');
             var boxA = wrapper.querySelector('.box');
             var isHandlerDragging = false;
+           
+            var openChat = document.getElementById("open-button");
+            var closeChat = document.getElementById("cancel");
+            const responseArea = document.getElementById("response_area");
+            const questionInput = document.getElementById("question");
+            const chatForm = document.getElementById("chat-form");
+
+            function openForm() {
+                console.log("clicked open");
+                document.getElementById("myForm").style.display = "block";
+            }
+
+            openChat.addEventListener("click", openForm);
+
+            function closeForm() {
+                document.getElementById("myForm").style.display = "none";
+            }
+
+            closeChat.addEventListener("click", closeForm);
+
+            // chatForm.addEventListener("submit", async function(event) {
+            //         event.preventDefault();
+            //         responseArea.innerHTML = "<p>Loading...</p>"; // Display loading message
+
+            //         const userQuestion = questionInput.value.trim();
+            //         if (!userQuestion) return;
+
+            //         try {
+            //             // Generate and display the chat response
+            //             console.log("line 1028");
+            //             const chatResponse = await this.generateChatGPTResponseHTML(userQuestion);
+            //             responseArea.innerHTML = chatResponse; // Insert response into the chat area
+            //         } catch (error) {
+            //             console.error("Error generating response:", error);
+            //             responseArea.innerHTML = '<p style="color:red;">Error: Could not generate response</p>';
+            //         }
+            //     });
+
+            chatForm.addEventListener("submit", async function(event) {
+                    event.preventDefault();
+                    console.log("Submit button clicked!");
+
+                    const userQuestion = questionInput.value.trim();
+                    if (!userQuestion) return;
+                    
+                    responseArea.innerHTML = "<p>Loading...</p>";
+                    
+                    vscode.postMessage({
+                        command: "askChatGPT",
+                        question: userQuestion
+                    });
+
+            });
+
+            window.addEventListener("message", (event) => {
+                console.log("Received message:", event.data);
+                if (event.data.command === "updateChatResponse") {
+                    const response = event.data.response;
+                    responseArea.innerHTML = response; // Update the response
+                }
+            });
 
             function handleMouseMove(e) {
                 if (!isHandlerDragging) {
@@ -1031,12 +1164,60 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             </html>
         `;
 
+        // vscode.window.onDidReceiveMessage((message) => {
+        //     console.log("Received message from webview:", message);
+        
+        //     if (message.command === "askChatGPT") {
+        //         this.handleChatGPTRequest(message.question);
+        //     }
+        // });
+
         this.webviewPanel.webview.onDidReceiveMessage(async (message) => {
             if (message.command === 'navigateToLine') {
                 await this.navigateToLine(message.fileName, message.line);
             }
         });
+
+        this.webviewPanel.webview.onDidReceiveMessage(async (message) => {
+            if (message.command === "generateChatResponse") {
+                try {
+                    const chatResponse = await this.generateChatGPTResponseHTML(message.question);
+                    this.webviewPanel.webview.postMessage({
+                        command: "updateChatResponse",
+                        response: chatResponse
+                    });
+                } catch (error) {
+                    console.error("Error generating response:", error);
+                    this.webviewPanel.webview.postMessage({
+                        command: "updateChatResponse",
+                        response: '<p style="color:red;">Error: Could not generate response</p>'
+                    });
+                }
+            }
+        });
+        
     }
+
+    async handleChatGPTRequest(question) {
+        console.log("Handling ChatGPT request:", question);
+    
+        if (!this.webviewPanel) {
+            console.error("Webview panel is not initialized!");
+            return;
+        }
+    
+        const response = await this.generateChatGPTResponseHTML(question);
+    
+        if (this.webviewPanel.webview) {
+            this.webviewPanel.webview.postMessage({
+                command: "updateChatResponse",
+                response: response
+            });
+        } else {
+            console.error("Webview is not available.");
+        }
+    }
+    
 
     async navigateToLine(fileName, lineNumber) {
         console.log(fileName);
@@ -1657,6 +1838,61 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         return html;  // Return the generated HTML
     }    
     
+    async generateChatGPTResponseHTML(question) {
+        try {
+            const response = await this.generateAnswer(question);
+            console.log(response);
+    
+            if (!response) {
+                return `<p style="color:red;">Error: No response received.</p>`;
+            }
+    
+            let html = '';
+
+            if(question === '') {
+                html+= 
+                `<div class="chat-response">
+                    <strong>ChatGPT:</strong>
+                    <p>${response}</p>
+                </div>`;
+            } else {
+                html +=
+                `
+                <div class="user-question">
+                    <p class="user-question-area">${question}</p>
+                </div>
+                <div class="chat-response">
+                    <strong>ChatGPT:</strong>
+                    <p>${response}</p>
+                </div>
+            `;
+            }
+
+            return html;
+        } catch (err) {
+            console.error("Error generating response:", err);
+            return `<p style="color:red;">Error: ${err.message}</p>`;
+        }
+    }
+
+    // async initialize() {
+    //     console.log("line 1793");
+    //     const chatboxHTML = await generateChatGPTResponseHTML();
+    //     this.responseArea.innerHTML = chatboxHTML;
+    // }
+
+    async initialize() {
+        console.log("line 1793");
+    
+        const userQuestion = document.getElementById('question').value.trim();
+    
+        if (userQuestion) {
+            const chatboxHTML = await this.generateChatGPTResponseHTML(userQuestion);
+            this.responseArea.innerHTML = chatboxHTML;
+        } else {
+            console.log("No question provided.");
+        }
+    }
 
     generateDiffHTMLGroup(codeActivity) {
         // Get the event at startTime
