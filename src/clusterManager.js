@@ -41,8 +41,8 @@ class ClusterManager {
         this.currentWebEvent = null;
         this.idCounter = 0;
         this.styles = historyStyles;
-        // this.initializeTemporaryTest();
-        // this.initializeResourcesTemporaryTest();
+        this.initializeTemporaryTest();
+        this.initializeResourcesTemporaryTest();
         this.debugging = true;
         this.prevCommittedEvents = [];
         this.isInitialized = false;
@@ -60,8 +60,11 @@ class ClusterManager {
         // the focus atm would be code changes array which contains smaller codeActivity objects
         // for eg, to access before_code, we would do this.codeActivities[0].codeChanges[0].before_code
         this.codeActivities = testData.processSubgoals(testData.data);
+        this.documentedHistory = testData.processHistories(testData.data);
+        
         console.log("initialization test");
         console.log(this.codeActivities);
+        // console.log("why doesn't it work im so confused: " + this.documentedHistory);
     }
 
     initializeResourcesTemporaryTest(){
@@ -790,15 +793,24 @@ class ClusterManager {
     async generateAnswer(question) {
         try {
             console.log("User Question:", question);
-            let prompt = 'If there your answer has a code snipet section, please put code in string style text so that it is one paragraph. The format of the code snipet should show up like this <p>" *code snipet* " </p>. The code snipet should show up as a string rather than getting interpretted as html code. Here is the question: ' + question;
+            // 'Here if the context for you if the user are to ask you any questions regarding the data I have provided. Here is the data: ' + 
+            // let context = "you are a coding debug helper. The users will copy and paste in their code and ask you to debug their code. Here is the context: " + JSON.stringify(this.codeActivities, null, 2);
+            console.log('In generateAnswer, codeActivities', this.codeActivities);
+
+            let prompt = 'The user will ask you base on the context of this code history I provided: "' + JSON.stringify(this.codeActivities, null, 2) + '" and here is the question: ' + question;
+            console.log("Context:", prompt);
             const completions = await openai.chat.completions.create({
-                model: 'gpt-3.5-turbo',
+                model: 'gpt-4o-mini',
                 max_tokens: 400,
                 messages: [
                     {
                         role: "system",
-                        content: "you are a coding debug helper. The users will copy and paste in their code and ask you to debug their code."
+                        content: "you are a code history reviewer. The user will provide a json file like info to you and expect you to find information base on the json file. "
+                        // content: context
+
                     },
+                    // { role: "user", content: context},
+                    // { role: "assistant", content: "got it, I will use this information to answer whatever questions that you ask."},
                     { role: "user", content: prompt }
                 ]
             });
@@ -878,13 +890,13 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         }
         
 
-        const groupedEventsHTML = await this.generateGroupedEventsHTML();
-        const strayEventsHTML = await this.generateStrayEventsHTML();
+        // const groupedEventsHTML = await this.generateGroupedEventsHTML();
+        // const strayEventsHTML = await this.generateStrayEventsHTML();
 
         console.log("line 864");
         const chatboxHTML = await this.generateChatGPTResponseHTML('');
-        // const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
-        // const strayEventsHTML = await this.generateStrayEventsHTMLTest();
+        const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
+        const strayEventsHTML = await this.generateStrayEventsHTMLTest();
 
         this.webviewPanel.webview.html = `
             <!DOCTYPE html>
@@ -1636,39 +1648,39 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         // console.log('In generateStrayEventsHTML', this.strayEvents);
         let html = '';
 
-        if (this.strayEvents.length === 0) {
+        // if (this.strayEvents.length === 0) {
             return '<li>Your future changes goes here.</li>';
-        }
+        // }
 
         // the events in strayEvents are in processed form
-        for (const event of this.strayEvents) {
-            // all info is in event.notes
-            const humanReadableTime = new Date(event.time * 1000).toLocaleString();
+        // for (const event of this.strayEvents) {
+        //     // all info is in event.notes
+        //     const humanReadableTime = new Date(event.time * 1000).toLocaleString();
             
-            if(event.type === "code") {
-                html += `
-                    <li class="stray-event">
-                        <p><strong><em>${event.file}</em></strong></p>
-                    </li>
-                `;
-            } else {
-                if(event.type === "search") {
-                    html += `
-                        <li class="stray-event">
-                            <p><strong>${humanReadableTime}</strong> - <em>${event.webTitle}</em></p>
-                        </li>
-                    `;
-                } else {
-                    // visit or revisit
-                    // same thing but also including the url link
-                    html += `
-                        <li class="stray-event">
-                            <p><strong>${humanReadableTime}</strong> - <a href="${event.webpage}"<em>${event.webTitle}</em></a></p>
-                        </li>
-                        `;
-                }
-            }
-        }
+        //     if(event.type === "code") {
+        //         html += `
+        //             <li class="stray-event">
+        //                 <p><strong><em>${event.file}</em></strong></p>
+        //             </li>
+        //         `;
+        //     } else {
+        //         if(event.type === "search") {
+        //             html += `
+        //                 <li class="stray-event">
+        //                     <p><strong>${humanReadableTime}</strong> - <em>${event.webTitle}</em></p>
+        //                 </li>
+        //             `;
+        //         } else {
+        //             // visit or revisit
+        //             // same thing but also including the url link
+        //             html += `
+        //                 <li class="stray-event">
+        //                     <p><strong>${humanReadableTime}</strong> - <a href="${event.webpage}"<em>${event.webTitle}</em></a></p>
+        //                 </li>
+        //                 `;
+        //         }
+        //     }
+        // }
 
         return html;
     }

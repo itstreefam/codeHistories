@@ -16,39 +16,6 @@ class temporaryTest {
         }
     }
 
-    // processGoalData(data) {
-    //     const goal = {
-    //         title: data.title,
-    //         subgoals: []
-    //     };
-    
-    //     data.subgoals.forEach(subgoal => {
-    //         const subgoalData = {
-    //             id: subgoal.id,
-    //             title: subgoal.title,
-    //             actions: []
-    //         };
-    
-    //         subgoal.actions.forEach(action => {
-    //             const actionData = {
-    //                 id: action.id,
-    //                 title: action.title,
-    //                 file: action.file,
-    //                 time: action.time,
-    //                 before_code: action.before_code,
-    //                 after_code: action.after_code,
-    //                 code_regions: action.code_regions
-    //             };
-    
-    //             subgoalData.actions.push(actionData);
-    //         });
-    
-    //         goal.subgoals.push(subgoalData);
-    //     });
-    
-    //     return goal;
-    // }
-
     // Function to process and extract the subgoal details
     processSubgoals(data) {
         if (!data || !data.subgoals) {
@@ -101,6 +68,30 @@ class temporaryTest {
         return resourceList;
     }
     
+    processHistories(data) {
+        if (!data || !data.subgoals) {
+            console.log('No subgoals found in the data.');
+            return;
+        }
+
+        let historyList = [];
+
+        data.subgoals.forEach(subgoal => {
+            const codeChanges = this.constructCodeChangeArray(subgoal);
+            const searchHistory = this.constructSearchHistoryArrary(subgoal);
+
+            const codeActivity = {
+                title: subgoal.title,
+                time: subgoal.time, 
+                resources: searchHistory
+            };
+
+            historyList.push(codeActivity);
+        });
+
+        return historyList;
+    }
+
     // Function to construct the codeChange array from subgoal actions
     constructCodeChangeArray(subgoal) {
         let codeChanges = [];
