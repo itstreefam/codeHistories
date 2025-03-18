@@ -51,6 +51,8 @@ class ClusterManager {
         this.allSaves = {}; // Stores all save events per file
         this.initialSaves = {}; // Tracks the first save for comparison
         this.currentDiffView = 'line-by-line'; //default view
+        this.generateJSON = [];
+        this.chatGPTInvoked = false;
         
     }
 
@@ -792,20 +794,25 @@ class ClusterManager {
 
     async generateAnswer(question) {
         try {
+            // this.getHighlightedCode();
+            // question = 'show me all the edits in fonts.scss';
             console.log("User Question:", question);
             // 'Here if the context for you if the user are to ask you any questions regarding the data I have provided. Here is the data: ' + 
             // let context = "you are a coding debug helper. The users will copy and paste in their code and ask you to debug their code. Here is the context: " + JSON.stringify(this.codeActivities, null, 2);
             console.log('In generateAnswer, codeActivities', this.codeActivities);
 
-            let prompt = 'The user will ask you base on the context of this code history I provided: "' + JSON.stringify(this.codeActivities, null, 2) + '" and here is the question: ' + question;
+            if (!question.trim()) {
+                return "no question";
+            }
+            let prompt = 'The user will ask you to sort the data base on the context of this code history I provided: "' + JSON.stringify(this.codeActivities, null, 2) + '" and here is the question: "' + question + '". If the user question is just "", simple say no question, doesnt have to be in json. If there are questions, please just provide me a json return with the information you sorted, make sure to keep the same format as the json passed in, dont say anything else.';
             console.log("Context:", prompt);
             const completions = await openai.chat.completions.create({
                 model: 'gpt-4o-mini',
-                max_tokens: 400,
+                max_tokens: 4000,
                 messages: [
                     {
                         role: "system",
-                        content: "you are a code history reviewer. The user will provide a json file like info to you and expect you to find information base on the json file. "
+                        content: "you are a code history reviewer. The user will provide a json file like info to you and expect you to find information base on the json file. Give me a JSON response with no extra formatting. The new JSON you provided should have the same structure as the JSON file such as'{\"id\":\"\",\"title\":\"\",\"codeChanges\":[{\"type\":\"code\",\"id\":\"\",\"file\":\"\",\"time\":0,\"before_code\":\"\",\"after_code\":\"\"},{\"type\":\"code\",\"id\":\"\",\"file\":\"\",\"time\":0,\"before_code\":\"\",\"after_code\":\"\"}]}' You are basically a smart filter for code history documentation. "
                         // content: context
 
                     },
@@ -815,13 +822,15 @@ class ClusterManager {
                 ]
             });
             console.log('API Response:', completions);
-
             let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
-            console.log('Summary:', summary);
-
+  
             // if summary contains double quotes, make them single quotes
-            summary = summary.replace(/"/g, "'");
-            return `${summary}`;
+            // summary = summary.replace(/"/g, "'");            
+            // let replacedString = summary.replace(/'([^']+)'/g, '"$1"');
+            // console.log('Summary:', replacedString);
+            let replacedString = JSON.parse(summary);
+            console.log('Summary:', replacedString);
+            return replacedString; 
 
 
         } catch (error) {
@@ -867,6 +876,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
     }
 
     async updateWebPanel() {
+        // this.getHighlightedCode();
         if (!this.webviewPanel) {
             this.webviewPanel = vscode.window.createWebviewPanel(
                 'historyWebview',
@@ -1851,9 +1861,21 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
     }    
     
     async generateChatGPTResponseHTML(question) {
+        question = 'in what situation was LettersPattern been called? what is the function of LettersPattern?';
         try {
             const response = await this.generateAnswer(question);
             console.log(response);
+            if(response === 'no question') {
+                console.log("there are no questions")
+
+            }else {
+                console.log("generateChatGPTResponseHTML: ", response);
+                // this.generateJSON = JSON.parse(response);
+                this.generateJSON = response;
+                console.log("generateJSON set!!!");
+                console.log("print out generateJSON here", this.generateJSON)
+            }
+           
     
             if (!response) {
                 return `<p style="color:red;">Error: No response received.</p>`;
@@ -1865,7 +1887,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 html+= 
                 `<div class="chat-response">
                     <strong>ChatGPT:</strong>
-                    <p>${response}</p>
+                    <p>No question provided.</p>
                 </div>`;
             } else {
                 html +=
@@ -1959,6 +1981,17 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         this.displayForGroupedEvents[groupKey].actions[eventId].title = title;
         await this.updateWebPanel();
     }
+
+    // getHighlightedCode () {
+    //     const editor = vscode.window.activeTextEditor;
+    //     const selection = editor.selection;
+    //     if (selection && !selection.isEmpty) {
+    //         const selectionRange = new vscode.Range(selection.start.line, selection.start.character, selection.end.line, selection.end.character);
+    //         const highlighted = editor.document.getText(selectionRange);
+    //         console.log(highlighted);
+    //         return highlighted;
+    //     }
+    // }
 
     best_match(target, lines) {
         if (target.length > 0) {
