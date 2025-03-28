@@ -334,9 +334,9 @@ const historyStyles = `
 
     .form-container {
         width: 300px;
-        padding: 10px;
+        // padding: 10px;
         // background-color: white;
-        background-color: #fff6ed;
+        // background-color: #fff6ed;
         border-radius: 10px 10px 0px 0px;
     }
 
@@ -368,6 +368,13 @@ const historyStyles = `
 
     #question {
         width: 59%;
+    }
+
+    .forms{
+        display: flex;
+        justify-content: space-between;
+        margin-right: 20vw;
+        text-align: center;
     }
 `;
 
