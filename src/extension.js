@@ -843,7 +843,12 @@ function deactivate() {
 			// webviewContent = clusterManager.commentOutVSCodeApi(webviewContent); // Comment out the VS Code API script so html can run as standalone in browser
 			// // console.log('webviewContent:', webviewContent);
 
-			fs.writeFileSync(webviewPath, webviewContent);			
+			fs.writeFileSync(webviewPath, webviewContent);
+			
+			// save groupedEvents to a file
+			const groupedEventsPath = path.join(currentDir, 'CH_cfg_and_logs', `grouped_events_${dateStr}_${epochTimeInSeconds}.json`);
+			const groupedEvents = clusterManager.displayForGroupedEvents;
+			fs.writeFileSync(groupedEventsPath, JSON.stringify(groupedEvents, null, 4));
 		} 
 		
 		if(usingContentTimelineView){
