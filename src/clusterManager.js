@@ -25,10 +25,21 @@ const openai = new OpenAI({
 });
 
 const genAI = new GoogleGenerativeAI("AIzaSyBL3cGrLOsDI7VPqROjXY590qasaeOXe54");
-const model = genAI.getGenerativeModel({ 
-    model: "gemini-1.5-flash", 
+const model = genAI.getGenerativeModel({
+    model: "gemini-1.5-flash",
     system_instruction: "you are like a middle man for user and openAI, determine whether the user questions need further processing for OpenAI to answer user questions. There you are to differentiate between two types: implicit and explicit questions. If it is explicit, it needs no further processing and can be passed to OpenAI direct. If it is implicit, you need to come up with a question that makes it explicit. If it is explicit, just say yes, dont further explain it. if not, just simply state the new generate question. "
 });
+
+const model_unanswered = genAI.getGenerativeModel({
+    model: "gemini-1.5-flash",
+    system_instruction: "you are here to help determine whether the given JSON answers the given question. Determine whether there are unanswered part of the question, if so, please state what it is. If not, say no, all the questions are answered."
+});
+
+const model_history_or_resources = genAI.getGenerativeModel({
+    model: "gemini-1.5-flash",
+    system_instruction: "you are here to help determine whether the given question is focusing on the code or online resources. please do as the prompt says. "
+});
+
 
 class ClusterManager {
     constructor(context, gitTracker, stayPersistent) {
@@ -60,23 +71,23 @@ class ClusterManager {
         this.currentDiffView = 'line-by-line'; //default view
         this.generateJSON = [];
         this.chatGPTInvoked = false;
-        
+
     }
 
-    initializeTemporaryTest(){
+    initializeTemporaryTest() {
         const testData = new temporaryTest(String.raw`C:\users\zhouh\Downloads\wordleStory.json`); // change path of test data here
         // codeActivities has id, title, and code changes
         // the focus atm would be code changes array which contains smaller codeActivity objects
         // for eg, to access before_code, we would do this.codeActivities[0].codeChanges[0].before_code
         this.codeActivities = testData.processSubgoals(testData.data);
-        this.documentedHistory = testData.processHistories(testData.data);
-        
+        // this.documentedHistory = testData.processHistories(testData.data);
+
         console.log("initialization test");
         console.log(this.codeActivities);
         // console.log("why doesn't it work im so confused: " + this.documentedHistory);
     }
 
-    initializeResourcesTemporaryTest(){
+    initializeResourcesTemporaryTest() {
         const testData = new temporaryTest(String.raw`C:\users\zhouh\Downloads\wordleStory.json`); // change path of test data here
         this.codeResources = testData.processResources(testData.data);
         console.log("Resources", this.codeResources);
@@ -90,7 +101,7 @@ class ClusterManager {
     }
 
     async initializeWebview() {
-        if(this.isPanelClosed && this.stayPersistent === false){
+        if (this.isPanelClosed && this.stayPersistent === false) {
             return;
         }
 
@@ -124,7 +135,7 @@ class ClusterManager {
 
         // Save the state when the webview is closed
         this.webviewPanel.onDidDispose(() => {
-            if(this.stayPersistent === false) this.isPanelClosed = true;
+            if (this.stayPersistent === false) this.isPanelClosed = true;
             this.webviewPanel = null; // Clean up the reference
         });
 
@@ -135,7 +146,7 @@ class ClusterManager {
 
             // Set a small timeout to ensure the state is sent before we consider it disposed
             setTimeout(() => {
-                if(this.stayPersistent === false) this.isPanelClosed = true;
+                if (this.stayPersistent === false) this.isPanelClosed = true;
                 this.webviewPanel = null;
             }, 1000); // Adjust timeout if necessary
         });
@@ -153,13 +164,13 @@ class ClusterManager {
 
             if (message.command === 'changeViewMode') {
                 this.currentDiffView = message.view;
-                await this.updateWebPanel();
+                await this.updateWebPanel('');
             }
 
             if (message.command === "askChatGPT") {
                 console.log("Received askChatGPT message:", message);
                 await this.handleChatGPTRequest(message.question);
-                await this.updateWebPanel();
+                // await this.updateWebPanel(message);
             }
         });
     }
@@ -173,10 +184,10 @@ class ClusterManager {
         console.log('In processCodeEvents', codeEventsList);
         let previousEventList = this.prevCommittedEvents || [];
 
-        for (const entry of codeEventsList){
+        for (const entry of codeEventsList) {
             const eventType = this.getEventType(entry);
 
-            if(!this.currentGroup) {
+            if (!this.currentGroup) {
                 this.startNewGroup();
             }
 
@@ -191,14 +202,14 @@ class ClusterManager {
                 };
 
                 await this.handleCodeEvent(entry, previousEventList); // this takes in raw event
-                
+
                 await this.handleSaveEvent(entry);
             }
         }
-        
+
         this.prevCommittedEvents = codeEventsList;
 
-        if(!this.isInitialized){
+        if (!this.isInitialized) {
             return;
         }
 
@@ -211,17 +222,17 @@ class ClusterManager {
         }
     }
 
-    async processWebEvents(webEventsList){
+    async processWebEvents(webEventsList) {
         if (!webEventsList || webEventsList.length === 0) {
             return;
         }
 
         console.log('In processWebEvents', webEventsList);
 
-        for (const entry of webEventsList){
+        for (const entry of webEventsList) {
             const eventType = this.getEventType(entry);
 
-            if(!this.currentGroup) {
+            if (!this.currentGroup) {
                 this.startNewGroup();
             }
 
@@ -235,7 +246,7 @@ class ClusterManager {
             this.strayEvents.push(this.currentWebEvent); // this is processed event
         }
 
-        if(!this.isInitialized){
+        if (!this.isInitialized) {
             return;
         }
 
@@ -280,28 +291,28 @@ class ClusterManager {
     }
 
     async handleSaveEvent(event) {
-        console.log('In handleSaveEvent', event);
+        // console.log('In handleSaveEvent', event);
 
         const documentPath = event.document;
         const newContent = event.code_text;
-        
+
         // Extract the filename from the document path
         const filename = path.basename(documentPath);
-    
+
         // Initialize save tracking for the file if not already done
         if (!this.allSaves[filename]) {
             this.allSaves[filename] = [];
         }
-    
+
         // Add the current save event to allSaves
-        this.allSaves[filename].push({file: filename, time: event.time, code_text: newContent});
-    
+        this.allSaves[filename].push({ file: filename, time: event.time, code_text: newContent });
+
         // Set the initial save if not already set
         if (!this.initialSaves[filename]) {
-            this.initialSaves[filename] = {file: filename, time: event.time, code_text: newContent};
+            this.initialSaves[filename] = { file: filename, time: event.time, code_text: newContent };
         }
 
-        if(!this.isInitialized){
+        if (!this.isInitialized) {
             return;
         }
 
@@ -312,7 +323,7 @@ class ClusterManager {
             // If webview is already opened, just update the content
             await this.updateWebPanel();
         }
-    }    
+    }
 
     // event: code event of a file in the current commit
     // previousEventList: list of code events in the previous commit
@@ -328,11 +339,11 @@ class ClusterManager {
         this.allPastEvents = this.allPastEvents || {};
         this.pastEvents = this.pastEvents || {};
 
-        console.log('In handleCodeEvent', filename, event);
+        // console.log('In handleCodeEvent', filename, event);
 
         // case 1: no events in the previous commit, treat as new addition
         // no files -> commit 1: file 1
-        if(previousEventList.length === 0){
+        if (previousEventList.length === 0) {
             this.strayEvents.push(this.currentCodeEvent);
 
             // Initialize the cluster for this file
@@ -341,13 +352,13 @@ class ClusterManager {
                 this.clusterStartTime[filename] = event.time;
             }
 
-            if(!this.allPastEvents[filename]){
+            if (!this.allPastEvents[filename]) {
                 this.allPastEvents[filename] = [event];
             } else {
                 this.allPastEvents[filename].push(event);
             }
 
-            if(this.debug) {
+            if (this.debug) {
                 console.log('No previous events, treating as new addition');
             }
             return;
@@ -358,7 +369,7 @@ class ClusterManager {
 
         // case 2: event exists in the previous commit, compare the code changes
         // commit 1: file 1 -> commit 2: file 1
-        if(eventIsInPrevCommit){
+        if (eventIsInPrevCommit) {
             // get the past event from the previous commit
             const pastEvent = previousEventList.find(event => this.getFilename(event.notes) === filename);
 
@@ -368,17 +379,17 @@ class ClusterManager {
             // update the pastEvent with the current event after processing
             this.pastEvents[filename] = event;
 
-            if(this.debug) {
+            if (this.debug) {
                 console.log('Event exists in previous commit, comparing code changes');
                 console.log('Current event:', event);
                 console.log('Previous events:', previousEventList);
                 console.log('All past events:', this.allPastEvents);
             }
-        } 
+        }
 
         // case 3: event does not exist in the previous commit and does not exist in this.allPastEvents
         // commit 1: file 1 -> commit 2: file 2
-        else if(!eventIsInPrevCommit && !this.allPastEvents[filename]){
+        else if (!eventIsInPrevCommit && !this.allPastEvents[filename]) {
             // should finalize the cluster for file 1 (and any other file) and treat the current event (file 2) as a stray
             for (const otherFile of previousEventList) {
                 const otherFilename = this.getFilename(otherFile.notes);
@@ -394,7 +405,7 @@ class ClusterManager {
                 this.clusterStartTime[filename] = event.time;
             }
 
-            if(this.debug) {
+            if (this.debug) {
                 console.log('Event does not exist in previous commit and allPastEvents, treating as new addition');
                 console.log('Current event:', event);
                 console.log('Previous events:', previousEventList);
@@ -404,7 +415,7 @@ class ClusterManager {
 
         // case 4: event does not exist in the previous commit but exists in this.allPastEvents
         // commit 1: file 1, file 2 -> commit 2: file 1 -> commit 3: file 2
-        else if(!eventIsInPrevCommit && this.allPastEvents[filename]){
+        else if (!eventIsInPrevCommit && this.allPastEvents[filename]) {
             // get the past event from the allPastEvents
             const pastEvent = this.allPastEvents[filename].slice(-1)[0]; // last known event for this file
 
@@ -412,7 +423,7 @@ class ClusterManager {
 
             this.pastEvents[filename] = event;
 
-            if(this.debug) {
+            if (this.debug) {
                 console.log('Event does not exist in previous commit but exists in allPastEvents');
                 console.log('Current event:', event);
                 console.log('Previous events:', previousEventList);
@@ -421,7 +432,7 @@ class ClusterManager {
         }
 
         // update the allPastEvents with the current event
-        if(this.allPastEvents[filename]){
+        if (this.allPastEvents[filename]) {
             this.allPastEvents[filename].push(event);
         } else {
             this.allPastEvents[filename] = [event];
@@ -460,8 +471,8 @@ class ClusterManager {
         // echo decision making info
         if (this.debugging) {
             console.log(`\tDEBUG ${pastEvt.time}-${currEvt.time} (${filename}): partialMatches=${partialMatches} perfectMatches=${perfectMatches.length} newLines=${newLines.length} currLineLength=${currentLines.length} pastLineLength=${pastLines.length}`);
-            
-            if (pastEvt.time ==  currEvt.time) {
+
+            if (pastEvt.time == currEvt.time) {
                 console.log(`\tPAST ${pastEvt}\n`);
                 console.log(`\tCURR ${currEvt}\n`);
             }
@@ -538,7 +549,7 @@ class ClusterManager {
                 this.inCluster[filename] = true;
                 this.clusterStartTime[filename] = pastEvt.time;
                 this.startNewGroup();
-            } 
+            }
 
             // if there's a big clump that's come in, then we should start another cluster immediately
             // const pastEvtFile = this.getFilename(pastEvt.notes);
@@ -590,13 +601,13 @@ class ClusterManager {
             };
         }
 
-        console.log('Finalizing group:', filename, startCodeEvent, endCodeEvent);
+        // console.log('Finalizing group:', filename, startCodeEvent, endCodeEvent);
 
         let codeActivity = {};
 
         if (startCodeEvent.code_text !== endCodeEvent.code_text) {
-        // grab any stray code events that's not the filename
-        // const strayCodeEvents = this.strayEvents.filter(event => event.type === "code" && event.file !== filename);
+            // grab any stray code events that's not the filename
+            // const strayCodeEvents = this.strayEvents.filter(event => event.type === "code" && event.file !== filename);
 
             codeActivity = {
                 type: "code",
@@ -608,7 +619,7 @@ class ClusterManager {
                 after_code: endCodeEvent.code_text,
                 // title: `Code changes in ${filename}`
             };
-            
+
             codeActivity.title = await this.generateSubGoalTitle(codeActivity);
         }
 
@@ -683,9 +694,9 @@ class ClusterManager {
         const sortedWebEvents = webEvents.sort((a, b) => a.time - b.time);
 
         for (const event of sortedWebEvents) {
-            if(event.type === "search") {
+            if (event.type === "search") {
                 //If there was a previous search event, finalize it
-                if(currentSearchEvent) {
+                if (currentSearchEvent) {
                     structureWebEvents.push(currentSearchEvent);
                 }
 
@@ -699,7 +710,7 @@ class ClusterManager {
                 };
             } else if (event.type === "visit" || event.type === "revisit") {
                 // If no current search event, treat as stray visit
-                if(!currentSearchEvent) {
+                if (!currentSearchEvent) {
                     structureWebEvents.push({
                         type: event.type,
                         webTitle: event.webTitle || "Visit title missing",
@@ -730,7 +741,7 @@ class ClusterManager {
         // Sort the currentGroup actions by time
         this.currentGroup.actions.sort((a, b) => a.time - b.time);
 
-        console.log('Finalized group:', this.currentGroup);
+        // console.log('Finalized group:', this.currentGroup);
 
         // Set the title and add the group to display
         // this.currentGroup.title = this.generateSubGoalTitle(this.currentGroup);
@@ -765,7 +776,7 @@ class ClusterManager {
     Start out with a verb and no need to end with a period.
     Make sure it sound like a natural conversation.`;
 
-            console.log('Prompt:', prompt);
+            // console.log('Prompt:', prompt);
 
             const completions = await openai.chat.completions.create({
                 model: 'gpt-3.5-turbo',
@@ -781,7 +792,7 @@ class ClusterManager {
             console.log('API Response:', completions);
 
             let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
-            console.log('Summary:', summary);
+            // console.log('Summary:', summary);
 
             // if summary contains double quotes, make them single quotes
             summary = summary.replace(/"/g, "'");
@@ -800,36 +811,9 @@ class ClusterManager {
         }
     }
 
-    // async generateAnswerGEMINI(question) {
-    //     try {
-    //         console.log("User Question:", question);
-    //         if (!question.trim()) {
-    //             return "no question";
-    //         }
-    //         let prompt = 'The user will ask you to sort the data base on the context of this code history I provided: "' + JSON.stringify(this.codeActivities, null, 2) + '" I will also provide you with resources that the user have accessed and you should also consider this info if user question is related to the resources: "' + JSON.stringify(this.documentedHistory, null, 2) + '", and here is the question: "' + question + '". If the user question is just "", simple say no question, doesnt have to be in json. If there are questions, please just provide me a json return with the information you sorted, make sure to keep the same format as the json passed in, dont say anything else.';
-    //         // const result = await model.generateContent(question);
-    //         const request = {
-    //             contents: [{role: 'user', parts: [{text: prompt}]}],
-    //           };
-            
-    //         const result = await model.generateContent(request);
-    //         let summary = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text || "Summary not available";
-    //         console.log('GEMINI Response: ', summary);
-    //         let replacedString = JSON.parse(summary);
-    //         console.log('GEMINI Summary:', replacedString);
-
-    //         // console.log("THIS IS THE RESPONSE GENERATED BY GEMINI: ", result.response.text());
-
-    //     } catch (error) {
-    //         console.error("Error generating title:", error.message);
-    //         return `response generation failed`;
-    //     }  
-
-    // }
-
     async generateAnswerGEMINI(question) {
         try {
-            console.log("User Question:", question);
+            // console.log("User Question:", question);
             if (!question.trim()) {
                 return "no question";
             }
@@ -837,57 +821,121 @@ class ClusterManager {
             let prompt = 'Here is the question: "' + question + '". If the user question is just "", simple say no question. If there are questions, please help me determine whether it is a implicit or explicit question (explicit meaning it can be answered by providing the history itself, implicit meaning it cannot be answered directly), if it is explicity, simply say yes; else, please come up with a question that changes the user question to an explicit question that also answers their question. ';
             // const result = await model.generateContent(question);
             const request = {
-                contents: [{role: 'user', parts: [{text: prompt}]}],
-              };
-            
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            };
+
             const result = await model.generateContent(request);
             let summary = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text || "Summary not available";
-            console.log('GEMINI Response: ', summary);
+            // console.log('GEMINI Response: ', summary);
             return summary;
             // console.log("THIS IS THE RESPONSE GENERATED BY GEMINI: ", result.response.text());
 
         } catch (error) {
             console.error("Error generating questions:", error.message);
             return `response generation failed`;
-        }  
+        }
 
     }
 
-
-    async generateAnswer(question) {
+    async isHistoryOrResource(question) {
         try {
-            // this.getHighlightedCode();
-            // question = 'show me all the edits in fonts.scss';
-            console.log("User Question:", question);
-            // 'Here if the context for you if the user are to ask you any questions regarding the data I have provided. Here is the data: ' + 
-            // console.log("new generate question: ", newQuestion)
-            // console.log('In generateAnswer, codeActivities', this.codeActivities);
 
             if (!question.trim()) {
                 return "no question";
             }
-            // let prompt = 'The user will ask you to sort the data base on the context of this code history I provided: "' + JSON.stringify(this.codeActivities, null, 2) + '" and here is the question: "' + question + '". If the user question is just "", simple say no question, doesnt have to be in json. If there are questions, please just provide me a json return with the information you sorted, make sure to keep the same format as the json passed in, dont say anything else.';
-            let prompt = 'The user will ask you to sort the data base on the context of this code history I provided: "' + JSON.stringify(this.codeActivities, null, 2) + '" I will also provide you with resources that the user have accessed and you should also consider this info if user question is related to the resources: "' + JSON.stringify(this.documentedHistory, null, 2) + '", and here is the question: "' + question + '". If the user question is just "", simple say no question, doesnt have to be in json. If there are questions, please just provide me a json return with the information you sorted, make sure to keep the same format as the json passed in, dont say anything else. If the user asked for the code change histories, you should include the entire subgoal, ie. all of the codeChanges under the subgoal, for context for the users, including the corresponding links as well. Similarly, if the user is asking for resources they have visited, please include the whole subgoal section (include all the codeChanges as well) as well as the corresponding histories.';
 
-            // console.log("Context:", prompt);
+            let prompt = 'Here is the question: "' + question + '". Please help me determine whether the quesion needs user accessed resource list or user code editing list. If the question focues on the resources, just simply say "resources"; if the question focuses on the history of the code, just simply say "history". ';
+            const request = {
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            };
+
+            const result = await model_history_or_resources.generateContent(request);
+            let summary = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text || "Summary not available";
+            console.log("in isHistoryOrResource: ", summary)
+            return summary.trim().toLowerCase();
+
+        } catch (error) {
+            console.error("Error generating questions:", error.message);
+            return `response generation failed`;
+        }
+
+    }
+
+    // async allQuestionsAnswered(question) {
+    //     try {
+    //         // console.log("User Question:", question);
+    //         if (!question.trim()) {
+    //             return "no question";
+    //         }
+    //         // whether it provide insight rather than if it "answers" it. 
+    //         let prompt = 'Here is the question: "' + question + '". If the user question is just "", simple say no question. If there are questions, please help me determine whether the JSON file: ' + JSON.stringify(this.generateJSON, null, 2) + ' answered the question fully. If yes, simply say yes; if not, please state which part of the question left unanswered. ';
+    //         const request = {
+    //             contents: [{role: 'user', parts: [{text: prompt}]}],
+    //           };
+
+    //         const result = await model.generateContent(request);
+    //         let summary = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text || "Summary not available";
+    //         // console.log('GEMINI Response: ', summary);
+    //         return summary;
+    //     } catch (error) {
+    //         onsole.error("Error generating questions:", error.message);
+    //         return `response generation failed`;
+    //     }
+    // }
+
+    async generateAnswer(question, whichOne) {
+
+        const startTime = performance.now()
+
+        // cashe response to have htem ready when the user asks questions. 
+
+
+        try {
+            // this.getHighlightedCode();
+            // question = 'show me all the edits in fonts.scss';
+            console.log("User Question:", question);
+
+            if (!question.trim()) {
+                return "no question";
+            }
+            const filteredArray = this.codeActivities.map(({ id, title }) => ({ id, title }));
+            console.log("FILTERED ARRAY: ", filteredArray);
+
+            let prompt = '';
+            if (whichOne === "history") {
+                prompt = `The user will ask you to filter the database based on the context of this code history I provided: "${JSON.stringify(filteredArray)}", and here is the question: "${question}". If the user question is just "", simply say no question.`;
+            } else {
+                prompt = `The user will ask you to filter the database based on the history the user has accessed: "${JSON.stringify(this.codeResources, null, 2)}", and here is the question: "${question}". If the user question is just "", simply say no question.`;
+
+            }
+
+            console.log("PROMPT: ", prompt);
             const completions = await openai.chat.completions.create({
                 model: 'gpt-4o-mini',
-                max_tokens: 8000,
+                max_tokens: 2000,
                 messages: [
                     {
                         role: "system",
-                        content: "you are a code history reviewer. The user will provide a json file like info to you and expect you to find information base on the json file. Give me a JSON response with no extra formatting. The new JSON you provided should have the same structure as the JSON file such as'[{\"id\":\"\",\"title\":\"\",\"codeChanges\":[{\"type\":\"code\",\"id\":\"\",\"file\":\"\",\"time\":0,\"before_code\":\"\",\"after_code\":\"\"},{\"type\":\"code\",\"id\":\"\",\"file\":\"\",\"time\":0,\"before_code\":\"\",\"after_code\":\"\"}]}]' You are basically a smart filter for code history documentation and do not change the content of the JSON. "
+                        content: `You are a code history reviewer. The user will provide JSON-like info and expects you to find information based on it.
+                        A JSON object entry should have keys: 'id' and 'title'
+                        Return me an array of 5 most relevant {id: entry.id} based on the question asked by the user.`
+                        // "you are a code history reviewer. The user will provide a json file like info to you and expect you to find information base on the json file. Give me a JSON response with no extra formatting. The new JSON you provided should have the same structure as the JSON file such as'[{\"id\":\"\",\"title\":\"\",\"codeChanges\":[{\"type\":\"code\",\"id\":\"\",\"file\":\"\",\"time\":0,\"before_code\":\"\",\"after_code\":\"\"},{\"type\":\"code\",\"id\":\"\",\"file\":\"\",\"time\":0,\"before_code\":\"\",\"after_code\":\"\"}]}]' You are basically a smart filter for code history documentation and do not change the content of the JSON. "
                     },
                     { role: "user", content: prompt }
                 ]
             });
-            
+
             let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
             this.chatGPTInvoked = true;
             console.log("string version of JSON: ", summary);
             let replacedString = JSON.parse(summary);
             console.log('Summary:', replacedString);
-            return replacedString; 
+
+            const endTime = performance.now()
+
+            console.log(`Call to generateAnswer() took ${endTime - startTime} milliseconds`)
+
+            return replacedString;
 
 
         } catch (error) {
@@ -896,25 +944,86 @@ class ClusterManager {
         }
     }
 
+    async *generateAnswerStream(question, whichOne) {
+        const startTime = performance.now();
+
+        try {
+            console.log("User Question:", question);
+
+            if (!question.trim()) {
+                yield "no question";
+                return;
+            }
+
+            // Map to create a new array with only id and title for each object
+            // const originalArray = JSON.stringify(this.codeActivities);
+            // const filteredArray = this.codeActivities.map(({ id, title }) => ({ id, title }));
+            const filteredArray = this.codeActivities.map(({ id, title, codeChanges }) => ({
+                id,
+                title,
+                codeChanges: codeChanges.map(({ id, title }) => ({ id, title })) // Keep only id and title
+            }));
+            console.log("FILTERED ARRAY: ", filteredArray);
+
+            let prompt = whichOne === "history"
+                ? `The user will ask you to filter the database based on the context of this code history I provided: "${JSON.stringify(filteredArray)}", and here is the question: "${question}". If the user question is just "", simply say no question.`//, doesn't have to be in JSON. If there are questions, please provide a JSON return with the information you sorted, maintaining the same format as the JSON passed in. Don't say anything else. If the user asked for the code change histories, include the entire subgoal, including all codeChanges and corresponding links. If the user is asking for visited resources, include the whole subgoal section with all codeChanges and histories.`
+                : `The user will ask you to filter the database based on the history the user has accessed: "${JSON.stringify(this.codeResources, null, 2)}", and here is the question: "${question}". If the user question is just "", simply say no question.`; //, doesn't have to be in JSON. If there are questions, please provide a JSON return with the information you sorted, maintaining the same format as the JSON passed in. Don't say anything else. If the user asked for the code change histories, include the entire subgoal, including all codeChanges and corresponding links. If the user is asking for visited resources, include the whole subgoal section with all codeChanges and histories.;
+
+            console.log("in generateAnswerStream, prompt: ", prompt);
+            const stream = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                max_tokens: 2000,
+                stream: true, // Enable streaming
+                messages: [
+                    {
+                        role: "system",
+                        content: `You are a code history reviewer. The user will provide JSON-like info and expects you to find information based on it.
+                        A JSON object entry should have keys: 'id' and 'title'
+                        Return me an array of 5 most relevant {id: entry.id} based on the question asked by the user.
+                        The array you have returned to me should not have extra formatting and should be ready to parse. `
+                    },
+                    { role: "user", content: prompt }
+                ]
+            });
+
+            let responseText = "";
+
+            for await (const chunk of stream) {
+                const content = chunk.choices[0]?.delta?.content || "";
+                responseText += content;
+                console.log("response text here: ", responseText);
+                yield content;
+            }
+
+            const endTime = performance.now();
+            console.log(`Call to generateAnswerStream() took ${endTime - startTime} milliseconds`);
+
+            this.chatGPTInvoked = true;
+
+        } catch (error) {
+            console.error("Error generating answer:", error.message);
+            yield "response generation failed";
+        }
+    }
+
 
     async generateResources(activity) {
-        try { 
+        try {
 
             const prompt = `You have this list of links "${activity}":
 
 go through each link and see if theres any repetition, explain in natural language, how each links can be useful for the user's programming process. 
 Omit those repeating links and have a paragraph corresponding to each link. Be really brief in each paragraph so the text doesn't take too much space`;
 
-            // console.log('Prompt:', prompt);
 
             const completions = await openai.chat.completions.create({
                 model: 'gpt-3.5-turbo',
                 max_tokens: 400,
                 messages: [
-                    { 
-                        role: "system", 
-                        content: "You are a resource provider where you will write several small paragraphs explaining why each link is helpful in natural langauage, the paragraphs will be easy to read and understand" 
-                    }, 
+                    {
+                        role: "system",
+                        content: "You are a resource provider where you will write several small paragraphs explaining why each link is helpful in natural langauage, the paragraphs will be easy to read and understand"
+                    },
                     { role: "user", content: prompt }
                 ]
             });
@@ -932,7 +1041,10 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         }
     }
 
-    async updateWebPanel() {
+    async updateWebPanel(question) {
+
+        const startTime = performance.now()
+
         // this.getHighlightedCode();
         if (!this.webviewPanel) {
             this.webviewPanel = vscode.window.createWebviewPanel(
@@ -955,42 +1067,26 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 this.webviewPanel = null;
             });
         }
-        
+
 
         // const groupedEventsHTML = await this.generateGroupedEventsHTML();
         // const strayEventsHTML = await this.generateStrayEventsHTML();
 
-        let chatboxHTML;
-        if(!this.chatGPTInvoked){
-            chatboxHTML = await this.generateChatGPTResponseHTML('');
-        } else {
-            chatboxHTML = this.generateJSON;
-            console.log("printing chatboxHTML", chatboxHTML);
-        }
-        
+        // let chatboxHTML;
+        // if(!this.chatGPTInvoked){
+        //     chatboxHTML = await this.generateChatGPTResponseHTML('');
+        // } else {
+        //     chatboxHTML = this.generateJSON;
+        //     console.log("printing chatboxHTML", chatboxHTML);
+        // }
+
         let groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
-        if(this.chatGPTInvoked){
+        if (this.chatGPTInvoked) {
             console.log("chatGPT invoked!!!!!!!!!!!!!!!!!")
-            groupedEventsHTML = await this.generateChatGPTResponseHTML('');
+            groupedEventsHTML = await this.generateChatGPTResponseHTML(question);
+            this.chatGPTInvoked = false;
         }
         const strayEventsHTML = await this.generateStrayEventsHTMLTest();
-
-        // <button id="open-button">Chat with ChatGPT</button>
-        // <div class="chat-area" id="myForm"> 
-        //     <form id="chat-form" class="form-container">
-        //         <h1 for="msg">Chat with ChatGPT</h1>
-        //         <div id="response_area">
-        //             ${chatboxHTML}
-        //         </div>
-        //         <label>Ask ChatGPT a question!</label><br>
-        //         <div class="question-area">
-        //             <input type="text" id="question" name="user_question" placeholder="How do I do this...">
-        //             <button type="submit" class="btn">Submit</button>
-        //             <button type="button" class="btn" id="cancel">Close</button>
-        //         </div>
-        //     </form>
-        //     <div id="answer"></div>
-        // <div>
 
         this.webviewPanel.webview.html = `
             <!DOCTYPE html>
@@ -1101,6 +1197,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                     button.addEventListener('click', function () {
                         this.classList.toggle('active');
                         const content = this.parentElement.nextElementSibling;
+                        console.log('clicked!!!!!!');
                         if (content) {
                             content.style.display = content.style.display === 'flex' ? 'none' : 'flex';
                             this.textContent = this.textContent === '+' ? '-' : '+';
@@ -1123,18 +1220,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             const questionInput = document.getElementById("question");
             const chatForm = document.getElementById("chat-form");
 
-            // function openForm() {
-            //     console.log("clicked open");
-            //     document.getElementById("myForm").style.display = "block";
-            // }
 
-            // openChat.addEventListener("click", openForm);
-
-            // function closeForm() {
-            //     document.getElementById("myForm").style.display = "none";
-            // }
-
-            // closeChat.addEventListener("click", closeForm);
 
             chatForm.addEventListener("submit", async function(event) {
                     event.preventDefault();
@@ -1157,6 +1243,25 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 if (event.data.command === "updateChatResponse") {
                     const response = event.data.response;
                     responseArea.innerHTML = response; // Update the response
+                }
+            });
+
+            window.addEventListener("message", (event) => {
+                console.log("Received message:", event.data);
+
+                if (event.data.command === 'setupCollapsibleButtons') {
+                    console.log('Setting up collapsible buttons'); // Check if this log appears
+                    document.querySelectorAll('.collapsible').forEach(button => {
+                        button.addEventListener('click', function() {
+                            this.classList.toggle('active');
+                            const content = this.parentElement.nextElementSibling;
+                            console.log('clicked!!!!!!');
+                            if (content) {
+                                content.style.display = content.style.display === 'flex' ? 'none' : 'flex';
+                                this.textContent = this.textContent === '+' ? '-' : '+';
+                            }
+                        });
+                    });
                 }
             });
 
@@ -1249,57 +1354,68 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             }
         });
 
-        this.webviewPanel.webview.onDidReceiveMessage(async (message) => {
-            if (message.command === "generateChatResponse") {
-                try {
-                    const chatResponse = await this.generateChatGPTResponseHTML(message.question);
-                    this.webviewPanel.webview.postMessage({
-                        command: "updateChatResponse",
-                        response: chatResponse
-                    });
-                } catch (error) {
-                    console.error("Error generating response:", error);
-                    this.webviewPanel.webview.postMessage({
-                        command: "updateChatResponse",
-                        response: '<p style="color:red;">Error: Could not generate response</p>'
-                    });
-                }
-            }
-        });
-        
+        // this.webviewPanel.webview.onDidReceiveMessage(async (message) => {
+        //     if (message.command === "generateChatResponse") {
+        //         try {
+        //             const chatResponse = await this.generateChatGPTResponseHTML(message.question);
+        //             this.webviewPanel.webview.postMessage({
+        //                 command: "updateChatResponse",
+        //                 response: chatResponse
+        //             });
+
+        //             await this.updateWebPanel(message.question);
+
+        //         } catch (error) {
+        //             console.error("Error generating response:", error);
+        //             this.webviewPanel.webview.postMessage({
+        //                 command: "updateChatResponse",
+        //                 response: '<p style="color:red;">Error: Could not generate response</p>'
+        //             });
+        //         }
+        //     }
+        // });
+
+        const endTime = performance.now()
+
+        console.log(`Call to updateWebPanel took ${endTime - startTime} milliseconds`)
+
     }
 
+
     async handleChatGPTRequest(question) {
-        console.log("Handling ChatGPT request:", question);
-    
-        if (!this.webviewPanel) {
+        if (!this.webviewPanel || !this.webviewPanel.webview) {
             console.error("Webview panel is not initialized!");
             return;
         }
-    
-        const response = await this.generateChatGPTResponseHTML(question);
-    
-        if (this.webviewPanel.webview) {
+
+        try {
+            const response = await this.generateChatGPTResponseHTML(question);
+
+            // Once the HTML content is injected, update the webview
             this.webviewPanel.webview.postMessage({
-                command: "updateChatResponse",
+                // command: "updateChatResponse",
                 response: response
             });
-        } else {
-            console.error("Webview is not available.");
+        } catch (error) {
+            console.error("Error generating response:", error);
+            this.webviewPanel.webview.postMessage({
+                command: "updateChatResponse",
+                response: '<p style="color:red;">Error: Could not generate response</p>'
+            });
         }
     }
-    
+
 
     async navigateToLine(fileName, lineNumber) {
         // console.log(fileName);
 
         let fileUri;
-        if(path.isAbsolute(fileName)){
+        if (path.isAbsolute(fileName)) {
             fileUri = vscode.Uri.file(fileName);
         } else {
             // resolve the filename relative to the workspace
             const workspaceFolder = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0];
-            if(workspaceFolder){
+            if (workspaceFolder) {
                 const resolvedPath = path.join(workspaceFolder.uri.fsPath, fileName);
                 fileUri = vscode.Uri.file(resolvedPath);
             } else {
@@ -1307,7 +1423,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 return;
             }
         }
-    
+
         try {
             // Check if the file is already opened in any visible editor
             const openedEditor = vscode.window.visibleTextEditors.find(editor => {
@@ -1352,7 +1468,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             vscode.window.showErrorMessage(`Unable to open or navigate to file: ${fileName}. Error: ${error.message}`);
         }
     }
-  
+
     async generateGroupedEventsHTMLTest() {
         let html = '';
 
@@ -1360,24 +1476,24 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             console.error("codeResources is undefined or empty");
             return '<li>No resources for you :(.</li>';
         }
-    
+
         console.log('In generateGroupedEventsHTML, codeActivities', this.codeActivities);
-        console.log('In generateGroupedEventsHTML, codeActivities in string version: ', JSON.stringify(this.codeActivities));
+        // console.log('In generateGroupedEventsHTML, codeActivities in string version: ', JSON.stringify(this.codeActivities));
 
 
-    
+
         for (let groupKey = 0; groupKey <= 8; groupKey++) {
             const group = this.codeActivities[groupKey];
             const links = this.codeResources[groupKey];
-            
-            let count = 0; 
+
+            let count = 0;
             for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
                 const subgoal = group.codeChanges[subgoalKey];
 
                 const diffHTML = this.generateDiffHTMLGroup(subgoal);
 
-                    if(links.resources.length != 0 && count < links.resources.length) {
-                        html += `
+                if (links.resources.length != 0 && count < links.resources.length) {
+                    html += `
                         <li data-eventid="${subgoalKey}">
                             <!-- Editable title for the code activity -->
                             <div class="li-header">
@@ -1391,15 +1507,15 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                                     </svg>
                                 </button>
                                 <b>in ${subgoal.file} </b> `
-                        const link = links.resources[count];
-                        // console.log(link.actions.length);
-                        html += `
+                    const link = links.resources[count];
+                    // console.log(link.actions.length);
+                    html += `
                         <div class="container">
                             <i class="bi bi-bookmark"></i>
                             <div class="centered">${link.actions.length}</div>
                         </div>`
-                        
-                        html += `
+
+                    html += `
                         </div>
                         <div class="content">
                             <div class="left-container">
@@ -1407,13 +1523,13 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                             </div>
                             <div class="resources">
                         `
-                        
-                            if (count < links.resources.length) {
-                                const link = links.resources[count];
-                                // html += `<ul class="link_list">`
-                                for(let i = 0; i < link.actions.length; i++) {
-                                    const eachLink = links.resources[count].actions[i];
-                                    html += `   
+
+                    if (count < links.resources.length) {
+                        const link = links.resources[count];
+                        // html += `<ul class="link_list">`
+                        for (let i = 0; i < link.actions.length; i++) {
+                            const eachLink = links.resources[count].actions[i];
+                            html += `   
                                         <div class="tooltip">
                                             <a href="${eachLink.webpage}">${eachLink.webTitle}</a><br>
                                             
@@ -1421,17 +1537,17 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                                         </div>
                                         <br>
                                     `
-                                }
-                                //  </ul> 
-                                // <span class="tooltiptext"  style="scale: 2"><img class="thumbnail" src="${eachLink.img}" alt="Thumbnail"></span>
-                                html += `
+                        }
+                        //  </ul> 
+                        // <span class="tooltiptext"  style="scale: 2"><img class="thumbnail" src="${eachLink.img}" alt="Thumbnail"></span>
+                        html += `
                                    
                                 </div>`
-                            } else {
-                                html += `</div>`
-                            }
-                        } else {
-                        html += `
+                    } else {
+                        html += `</div>`
+                    }
+                } else {
+                    html += `
                         <li data-eventid="${subgoalKey}">
                             <!-- Editable title for the code activity -->
                             <div class="li-header">
@@ -1453,11 +1569,11 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                                     ${diffHTML}
                                 </div>
                             </div>`
-                    }
-                    
-                    count ++;
+                }
 
-                    html += `
+                count++;
+
+                html += `
                         </li>
                         <script> 
                             document.addEventListener('DOMContentLoaded', () => {
@@ -1477,7 +1593,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         }
         return html;
     }
-    
+
 
     async generateGroupedEventsHTML() {
         // this.displayForGroupedEvents is an array of objects, each object is a group
@@ -1633,17 +1749,17 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             const currentDir = getCurrentDir();
             const gitDir = path.join(currentDir, 'codeHistories.git');
             const workTree = currentDir;
-    
+
             // Get the second-to-last commit hash
             const logCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" log -2 --format="%H"`;
             const { stdout: logOutput } = await exec(logCmd, { cwd: workTree });
             const commitHashes = logOutput.trim().split('\n');
             const previousCommitHash = commitHashes[1];  // HEAD~1 is the second hash
-    
+
             // Get the content of the file from the previous commit
             const previousFilePath = path.join(currentDir, anEvent.file);
             let previousFileContent = '';
-    
+
             try {
                 // Simulating reading the file content from the previous commit using fs.promises.readFile
                 const showCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" show ${previousCommitHash}:${anEvent.file}`;
@@ -1654,9 +1770,9 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 console.log(`File didn't exist in the previous commit. Treating as a new file: ${anEvent.file}`);
                 previousFileContent = '';  // No content in previous commit
             }
-    
+
             const currentFileContent = await fs.promises.readFile(previousFilePath, 'utf8')
-    
+
             const diffString = Diff.createTwoFilesPatch(
                 `start`,
                 `end`,
@@ -1684,14 +1800,14 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
 
             let modifiedHtml = '';
 
-            if(this.currentDiffView === 'line-by-line') {
+            if (this.currentDiffView === 'line-by-line') {
                 modifiedHtml = diffHtml.replace(/<div class="line-num2">(.*?)<\/div>/g, (match) => {
                     const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
-                    return `<div class="line-num2" data-linenumber="${lineNumber-1}" data-filename="${anEvent.file}">${lineNumber}</div>`;
+                    return `<div class="line-num2" data-linenumber="${lineNumber - 1}" data-filename="${anEvent.file}">${lineNumber}</div>`;
                 });
             }
 
-            if(this.currentDiffView === 'side-by-side') {
+            if (this.currentDiffView === 'side-by-side') {
                 modifiedHtml = diffHtml.replace(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/g, (match) => {
                     const lineNumber = match.match(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/)[1];
                     return `<td class="d2h-code-side-linenumber clickable-line" data-linenumber="${lineNumber - 1}" data-filename="${anEvent.file}">${lineNumber}</td>`;
@@ -1704,21 +1820,21 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             return 'Error generating diff';
         }
     }
-    
 
-  async generateStrayEventsHTMLTest() {
+
+    async generateStrayEventsHTMLTest() {
         // console.log('In generateStrayEventsHTML', this.strayEvents);
         let html = '';
 
         // if (this.strayEvents.length === 0) {
-            return '<li>Your future changes goes here.</li>';
+        return '<li>Your future changes goes here.</li>';
         // }
 
         // the events in strayEvents are in processed form
         // for (const event of this.strayEvents) {
         //     // all info is in event.notes
         //     const humanReadableTime = new Date(event.time * 1000).toLocaleString();
-            
+
         //     if(event.type === "code") {
         //         html += `
         //             <li class="stray-event">
@@ -1753,15 +1869,15 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             const initialSave = this.initialSaves[filename];
             const allSavesForFile = this.allSaves[filename] || [];
             const latestSave = allSavesForFile[allSavesForFile.length - 1];
-    
+
             // If no initial or latest save exists, return an empty string
             if (!initialSave || !latestSave) {
                 return '';
             }
-    
+
             const initialContent = initialSave.code_text || '';
             const latestContent = latestSave.code_text || '';
-    
+
             const diffString = Diff.createTwoFilesPatch(
                 'Initial Save',
                 'Latest Save',
@@ -1789,14 +1905,14 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
 
             let modifiedHtml = '';
 
-            if(this.currentDiffView === 'line-by-line') {
+            if (this.currentDiffView === 'line-by-line') {
                 modifiedHtml = diffHtml.replace(/<div class="line-num2">(.*?)<\/div>/g, (match) => {
                     const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
-                    return `<div class="line-num2" data-linenumber="${lineNumber-1}" data-filename="${filename}">${lineNumber}</div>`;
+                    return `<div class="line-num2" data-linenumber="${lineNumber - 1}" data-filename="${filename}">${lineNumber}</div>`;
                 });
             }
 
-            if(this.currentDiffView === 'side-by-side') {
+            if (this.currentDiffView === 'side-by-side') {
                 modifiedHtml = diffHtml.replace(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/g, (match) => {
                     const lineNumber = match.match(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/)[1];
                     return `<td class="d2h-code-side-linenumber clickable-line" data-linenumber="${lineNumber - 1}" data-filename="${filename}">${lineNumber}</td>`;
@@ -1808,23 +1924,23 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             console.error(`Error generating diff for file: ${filename}`, err);
             return 'Error generating diff';
         }
-    }    
+    }
 
     async generateStrayEventsHTML() {
         let html = '';
         let idx = 0;
-    
+
         // if (this.strayEvents.length === 0) {
         //     return '<li>Your future changes go here.</li>';
         // }
-    
+
         // Track the most recent change for each file
         const fileDiffs = {};
-        
+
         // Track unique web visits and searches
         const uniqueVisits = new Set();
         const uniqueSearches = new Set();
-        
+
         for (const event of this.strayEvents) {
             if (event.type === "code") {
                 // Uncomment this if comparing code test events
@@ -1878,7 +1994,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                     `;
                 }
             }
-    
+
             idx += 1;  // Increment index for the next item
         }
 
@@ -1903,73 +2019,130 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                 `;
             }
         }
-    
+
         // After processing all events, add the stored diffs to the HTML
         Object.values(fileDiffs).forEach(diff => {
             html += diff;
         });
-    
+
         return html;  // Return the generated HTML
-    }    
-    
-    async generateChatGPTResponseHTML(question) {
-        question = 'why wasnt body css written any other ways?';
-        try {
-            const response = await this.generateAnswer(question);
-            if(response === 'no question') {
-                console.log("there are no questions")
-
-            }else {
-                console.log("generateChatGPTResponseHTML RESPONSE: ", response);
-                this.generateJSON = response;
-                console.log("generateJSON set!!!");
-                console.log("print out generateJSON here", this.generateJSON)
-            }
-           
-    
-            if (!response) {
-                return `<p style="color:red;">Error: No response received.</p>`;
-            }
-    
-            let html = '';
-
-            if(question === '') {
-                html+= await this.generateGroupedEventsHTMLTest();
-            } else {
-                html += await this.chatGPTFitleredHTML();
-            }
-
-            return html;
-        } catch (err) {
-            console.error("Error generating response:", err);
-            return `<p style="color:red;">Error: ${err.message}</p>`;
-        }
     }
 
+    // const startTime = performance.now();
 
-    async chatGPTFitleredHTML() {
-        let html = '';
-        if (!this.generateJSON === 0) {
-            console.error("codeResources is undefined or empty");
-            return '<li>No resources for you :(.</li>';
-        }
-    
-        console.log('In generateChatGPTResponseHTML, generateJSON', this.generateJSON);
-        console.log('In generateChatGPTResponseHTML, this.generateJSON length', this.generateJSON.length);
+    // try {
+    //     const reduceLoad = await this.isHistoryOrResource(question);
+    //     console.log("line 1956: history or resources? ", reduceLoad);
 
-        for (let groupKey = 0; groupKey < this.generateJSON.length; groupKey++) {
-            const group = this.generateJSON[groupKey];
-            const links = this.codeResources[groupKey];
-            
-            let count = 0; 
-            console.log("group in chatGPTFilteredHTML: ", group);
-            for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
-                const subgoal = group.codeChanges[subgoalKey];
+    //     const generator = this.generateAnswerStream(question, reduceLoad);
+    //     console.log("generator: ", generator);
+    //     let streamedResponse = "";
 
-                const diffHTML = this.generateDiffHTMLGroup(subgoal);
+    //     for await (const chunk of generator) {
+    //         let chunkStr = typeof chunk === "string" ? chunk : JSON.stringify(chunk);
+    //         streamedResponse += chunkStr;
+    //     }
 
-                    if(links.resources.length != 0 && count < links.resources.length) {
-                        html += `
+    //     if (streamedResponse.trim() === "no question") {
+    //         // console.log("there are no questions");
+    //         return `<p>No question detected.</p>`;
+    //     }
+
+    //     console.log("generateChatGPTResponseHTML RESPONSE: ", streamedResponse);
+
+    //     try {
+    //         this.generateJSON = JSON.parse(streamedResponse);
+    //         console.log("generateJSON set!!!");
+    //     } catch (parseError) {
+    //         console.error("Error parsing JSON response:", parseError);
+    //         return `<p style="color:red;">Error parsing response.</p>`;
+    //     }
+
+    //     // const isItAnswered = await this.allQuestionsAnswered(question);
+    //     // console.log("line 1969: is the question being answered fully? ", isItAnswered);
+
+    //     let html = "";
+
+    //     if (question === "") {
+    //         html += await this.generateGroupedEventsHTMLTest();
+    //     } else {
+    //         html += await this.chatGPTFitleredHTML();
+    //     }
+
+    //     const endTime = performance.now();
+    //     console.log(`Call to generateChatGPTResponseHTML took ${endTime - startTime} milliseconds`);
+
+    //     return html;
+    // } catch (err) {
+    //     console.error("Error generating response:", err);
+    //     return `<p style="color:red;">Error: ${err.message}</p>`;
+    // }
+
+    async generateChatGPTResponseHTML(question) {
+
+
+        const startTime = performance.now();
+
+        try {
+            const reduceLoad = await this.isHistoryOrResource(question);
+            console.log("line 1956: history or resources? ", reduceLoad);
+
+            const generator = this.generateAnswerStream(question, reduceLoad);
+            let streamedResponse = "";
+
+            for await (const chunk of generator) {
+                let chunkStr = typeof chunk === "string" ? chunk : JSON.stringify(chunk);
+                streamedResponse += chunkStr;
+            }
+
+            if (streamedResponse.trim() === "no question") {
+                return `<p>No question detected.</p>`;
+            }
+
+            console.log("generateChatGPTResponseHTML RESPONSE: ", streamedResponse);
+
+            let parsed = JSON.parse(streamedResponse);
+            console.log("generateChatGPTResponseHTML PARSED: ", parsed);
+
+            parsed = parsed.map(entry => ({
+                ...entry,
+                id: parseInt(entry.id, 10) // or: id: +entry.id
+            }));
+            console.log("generateChatGPTResponseHTML PARSED: ", parsed);
+            let html = '';
+
+            if (!this.codeResources || this.codeResources.length === 0) {
+                console.error("codeResources is undefined or empty");
+                return '<li>No resources for you :(.</li>';
+            }
+
+            console.log('In generateGroupedEventsHTML, codeActivities', this.codeActivities);
+            // console.log('In generateGroupedEventsHTML, codeActivities in string version: ', JSON.stringify(this.codeActivities));
+
+            for (let groupKey = 0; groupKey <= 8; groupKey++) {
+
+
+                const group = this.codeActivities[groupKey];
+                const links = this.codeResources[groupKey];
+                let contains = parsed.some(entry => entry.id == group.id);
+                console.log(group.id);
+                // parsed.forEach(entry => {
+                //     console.log("Comparing:", entry.id, "vs", group.id);
+                //     console.log(contains);
+                // });
+                console.log(contains);
+                if (!contains) {
+                    continue;
+                }
+                else {
+                    let count = 0;
+                    for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
+                        const subgoal = group.codeChanges[subgoalKey];
+
+                        const diffHTML = this.generateDiffHTMLGroup(subgoal);
+
+                        if (links.resources.length != 0 && count < links.resources.length) {
+                            html += `
                         <li data-eventid="${subgoalKey}">
                             <!-- Editable title for the code activity -->
                             <div class="li-header">
@@ -1983,15 +2156,15 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                                     </svg>
                                 </button>
                                 <b>in ${subgoal.file} </b> `
-                        const link = links.resources[count];
-                        // console.log(link.actions.length);
-                        html += `
+                            const link = links.resources[count];
+                            // console.log(link.actions.length);
+                            html += `
                         <div class="container">
                             <i class="bi bi-bookmark"></i>
                             <div class="centered">${link.actions.length}</div>
                         </div>`
-                        
-                        html += `
+
+                            html += `
                         </div>
                         <div class="content">
                             <div class="left-container">
@@ -1999,11 +2172,11 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                             </div>
                             <div class="resources">
                         `
-                        
+
                             if (count < links.resources.length) {
                                 const link = links.resources[count];
                                 // html += `<ul class="link_list">`
-                                for(let i = 0; i < link.actions.length; i++) {
+                                for (let i = 0; i < link.actions.length; i++) {
                                     const eachLink = links.resources[count].actions[i];
                                     html += `   
                                         <div class="tooltip">
@@ -2023,7 +2196,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                                 html += `</div>`
                             }
                         } else {
-                        html += `
+                            html += `
                         <li data-eventid="${subgoalKey}">
                             <!-- Editable title for the code activity -->
                             <div class="li-header">
@@ -2045,11 +2218,158 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                                     ${diffHTML}
                                 </div>
                             </div>`
+                        }
+
+                        count++;
+
+                        html += `
+                        </li>
+                        <script> 
+                            document.addEventListener('DOMContentLoaded', () => {
+                                const button = document.getElementById('plusbtn-${groupKey}-${subgoalKey}');
+
+                                button.addEventListener('click', () => {
+                                    button.textContent = button.textContent === '+' ? '-' : '+';
+                                });
+                            });
+
+                            document.getElementById('button-${groupKey}-${subgoalKey}').addEventListener('click', function() {
+                                document.getElementById('code-title-${groupKey}-${subgoalKey}').focus();
+                            });  
+                        </script>
+                    `;
                     }
-                    
-                    count ++;
+                }
+            }
+            this.webviewPanel.webview.postMessage({
+                command: 'updateChatResponse',
+                response: html
+            });
+
+            console.log('Sending setupCollapsibleButtons message');
+
+            // Attach collapsible functionality via JS within the webview
+            this.webviewPanel.webview.postMessage({
+                command: 'setupCollapsibleButtons'
+            });
+
+            return html;
+        } catch (err) {
+            console.error("Error generating response:", err);
+            return `<p style="color:red;">Error: ${err.message}</p>`;
+        }
+    }
+
+
+    async chatGPTFitleredHTML() {
+        const startTime = performance.now()
+
+        let html = '';
+        if (!this.generateJSON === 0) {
+            console.error("codeResources is undefined or empty");
+            return '<li>No resources for you :(.</li>';
+        }
+
+        console.log('In chatGPTFitleredHTML, generateJSON', this.generateJSON);
+        // console.log('In chatGPTFitleredHTML, this.generateJSON length', this.generateJSON.length);
+
+        for (let groupKey = 0; groupKey < this.generateJSON.length; groupKey++) {
+            const group = this.generateJSON[groupKey];
+            const links = this.codeResources[groupKey];
+
+            let count = 0;
+
+            console.log("group in chatGPTFilteredHTML: ", group);
+
+            for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
+                const subgoal = group.codeChanges[subgoalKey];
+
+                console.log("subgoal in chatGPTFilteredHTML: \n", subgoal);
+
+                const diffHTML = this.generateDiffHTMLGroup(subgoal);
+
+                if (links.resources.length != 0 && count < links.resources.length) {
+                    html += `
+                        <li data-eventid="${subgoalKey}">
+                            <!-- Editable title for the code activity -->
+                            <div class="li-header">
+                                <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
+                                <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
+                                <!-- <i class="bi bi-pencil-square"></i> -->
+                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
+                                    <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
+                                    <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
+                                    </svg>
+                                </button>
+                                <b>in ${subgoal.file} </b> `
+                    const link = links.resources[count];
+                    // console.log(link.actions.length);
+                    html += `
+                        <div class="container">
+                            <i class="bi bi-bookmark"></i>
+                            <div class="centered">${link.actions.length}</div>
+                        </div>`
 
                     html += `
+                        </div>
+                        <div class="content">
+                            <div class="left-container">
+                                ${diffHTML}
+                            </div>
+                            <div class="resources">
+                        `
+
+                    if (count < links.resources.length) {
+                        const link = links.resources[count];
+                        // html += `<ul class="link_list">`
+                        for (let i = 0; i < link.actions.length; i++) {
+                            const eachLink = links.resources[count].actions[i];
+                            html += `   
+                                        <div class="tooltip">
+                                            <a href="${eachLink.webpage}">${eachLink.webTitle}</a><br>
+                                            
+                                            <br>
+                                        </div>
+                                        <br>
+                                    `
+                        }
+                        //  </ul> 
+                        // <span class="tooltiptext"  style="scale: 2"><img class="thumbnail" src="${eachLink.img}" alt="Thumbnail"></span>
+                        html += `
+                                   
+                                </div>`
+                    } else {
+                        html += `</div>`
+                    }
+                } else {
+                    html += `
+                        <li data-eventid="${subgoalKey}">
+                            <!-- Editable title for the code activity -->
+                            <div class="li-header">
+                                <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
+                                <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
+                                <!-- <i class="bi bi-pencil-square"></i> -->
+                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
+                                    <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
+                                    <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
+                                    </svg>
+                                </button>
+                                <b>in ${subgoal.file} </b>
+                                <div class="placeholder">
+                                </div>
+                            </div>
+                            <div class="content">
+                                <div class="full-container">
+                                    ${diffHTML}
+                                </div>
+                            </div>`
+                }
+
+                count++;
+
+                html += `
                         </li>
                         <script> 
                             document.addEventListener('DOMContentLoaded', () => {
@@ -2068,22 +2388,15 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             }
         }
 
-        console.log('In generateChatGPTResponseHTML, html: ', html);
+        // console.log('In chatGPTFitleredHTML, html: ', html);
+
+
+        const endTime = performance.now()
+
+        console.log(`Call to chatGPTFitleredHTML took ${endTime - startTime} milliseconds`)
+
         return html;
     }
-
-    // async initialize() {
-    //     console.log("line 1793");
-    
-    //     const userQuestion = document.getElementById('question').value.trim();
-    
-    //     if (userQuestion) {
-    //         const chatboxHTML = await this.generateChatGPTResponseHTML(userQuestion);
-    //         this.responseArea.innerHTML = chatboxHTML;
-    //     } else {
-    //         console.log("No question provided.");
-    //     }
-    // }
 
     generateDiffHTMLGroup(codeActivity) {
         // Get the event at startTime
@@ -2112,14 +2425,14 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
 
         let modifiedHtml = '';
 
-        if(this.currentDiffView === 'line-by-line') {
+        if (this.currentDiffView === 'line-by-line') {
             modifiedHtml = diffHtml.replace(/<div class="line-num2">(.*?)<\/div>/g, (match) => {
                 const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
-                return `<div class="line-num2" data-linenumber="${lineNumber-1}" data-filename="${codeActivity.file}">${lineNumber}</div>`;
+                return `<div class="line-num2" data-linenumber="${lineNumber - 1}" data-filename="${codeActivity.file}">${lineNumber}</div>`;
             });
         }
 
-        if(this.currentDiffView === 'side-by-side') {
+        if (this.currentDiffView === 'side-by-side') {
             modifiedHtml = diffHtml.replace(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/g, (match) => {
                 const lineNumber = match.match(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/)[1];
                 return `<td class="d2h-code-side-linenumber clickable-line" data-linenumber="${lineNumber - 1}" data-filename="${codeActivity.file}">${lineNumber}</td>`;
@@ -2128,7 +2441,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
 
         return modifiedHtml;
     }
-      
+
     async updateTitle(groupKey, title) {
         this.displayForGroupedEvents[groupKey].title = title;
         await this.updateWebPanel();
@@ -2190,7 +2503,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             this.webviewPanel.dispose();
         }
     }
-    
+
     // Function to comment out VS Code API calls before saving the HTML
     commentOutVSCodeApi(htmlContent) {
         // Comment out 'const vscode = acquireVsCodeApi();'
@@ -2198,7 +2511,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
 
         // Comment out 'vscode.postMessage({...})' related to 'updateTitle'
         htmlContent = htmlContent.replace(
-            /vscode\.postMessage\(\s*\{\s*command:\s*'updateTitle'[\s\S]*?\}\s*\);/g, 
+            /vscode\.postMessage\(\s*\{\s*command:\s*'updateTitle'[\s\S]*?\}\s*\);/g,
             `// vscode.postMessage({ 
                 // command: 'updateTitle', 
                 // groupKey: groupKey, 
@@ -2208,7 +2521,7 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
 
         // Comment out 'vscode.postMessage({...})' related to 'updateCodeTitle'
         htmlContent = htmlContent.replace(
-            /vscode\.postMessage\(\s*\{\s*command:\s*'updateCodeTitle'[\s\S]*?\}\s*\);/g, 
+            /vscode\.postMessage\(\s*\{\s*command:\s*'updateCodeTitle'[\s\S]*?\}\s*\);/g,
             `// vscode.postMessage({ 
                 // command: 'updateCodeTitle', 
                 // groupKey: groupKey, 
