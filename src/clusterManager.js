@@ -961,25 +961,37 @@ class ClusterManager {
             const filteredArray = this.codeActivities.map(({ id, title, codeChanges }) => ({
                 id,
                 title,
-                codeChanges: codeChanges.map(({ id, title }) => ({ id, title })) // Keep only id and title
+                codeChanges: codeChanges.map(({ title }) => ({ title })) // Keep only id and title
             }));
             console.log("FILTERED ARRAY: ", filteredArray);
 
+            const filteredArrayResources = this.codeResources.map(({ id, title, resources }) => ({
+                id,
+                title,
+                webTitles: resources.flatMap(resource =>
+                    (resource.actions || [])
+                        .filter(action => action.webTitle)
+                        .map(action => action.webTitle)
+                )
+            }));
+
             let prompt = whichOne === "history"
                 ? `The user will ask you to filter the database based on the context of this code history I provided: "${JSON.stringify(filteredArray)}", and here is the question: "${question}". If the user question is just "", simply say no question.`//, doesn't have to be in JSON. If there are questions, please provide a JSON return with the information you sorted, maintaining the same format as the JSON passed in. Don't say anything else. If the user asked for the code change histories, include the entire subgoal, including all codeChanges and corresponding links. If the user is asking for visited resources, include the whole subgoal section with all codeChanges and histories.`
-                : `The user will ask you to filter the database based on the history the user has accessed: "${JSON.stringify(this.codeResources, null, 2)}", and here is the question: "${question}". If the user question is just "", simply say no question.`; //, doesn't have to be in JSON. If there are questions, please provide a JSON return with the information you sorted, maintaining the same format as the JSON passed in. Don't say anything else. If the user asked for the code change histories, include the entire subgoal, including all codeChanges and corresponding links. If the user is asking for visited resources, include the whole subgoal section with all codeChanges and histories.;
+                : `The user will ask you to filter the database based on the history the user has accessed: "${JSON.stringify(filteredArrayResources)}", and here is the question: "${question}". If the user question is just "", simply say no question.`; //, doesn't have to be in JSON. If there are questions, please provide a JSON return with the information you sorted, maintaining the same format as the JSON passed in. Don't say anything else. If the user asked for the code change histories, include the entire subgoal, including all codeChanges and corresponding links. If the user is asking for visited resources, include the whole subgoal section with all codeChanges and histories.;
 
             console.log("in generateAnswerStream, prompt: ", prompt);
             const stream = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
-                max_tokens: 2000,
+                max_tokens: 1000,
                 stream: true, // Enable streaming
                 messages: [
                     {
                         role: "system",
                         content: `You are a code history reviewer. The user will provide JSON-like info and expects you to find information based on it.
-                        A JSON object entry should have keys: 'id' and 'title'
-                        Return me an array of 5 most relevant {id: entry.id} based on the question asked by the user.
+                        A JSON object entry should either have keys: 'id', 'title', and 'codeChanges' or 'id', 'title', and 'webTitles. 
+                        Under 'codeChanges', there should be 'id' and 'title'.
+                        Under 'webTitles', there should be a list of webTitles.
+                        Return me an array of at most 5 most relevant {id: entry.id} based on the question asked by the user. if you cannot find 5, just return however many you found. 
                         The array you have returned to me should not have extra formatting and should be ready to parse. `
                     },
                     { role: "user", content: prompt }
