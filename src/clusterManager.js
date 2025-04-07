@@ -24,7 +24,9 @@ const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
 
-const genAI = new GoogleGenerativeAI("AIzaSyBL3cGrLOsDI7VPqROjXY590qasaeOXe54");
+const geminiAPIKey = process.env.GEMINI_API_KEY;
+const genAI = new GoogleGenerativeAI(geminiAPIKey);
+
 const model = genAI.getGenerativeModel({
     model: "gemini-1.5-flash",
     system_instruction: "you are like a middle man for user and openAI, determine whether the user questions need further processing for OpenAI to answer user questions. There you are to differentiate between two types: implicit and explicit questions. If it is explicit, it needs no further processing and can be passed to OpenAI direct. If it is implicit, you need to come up with a question that makes it explicit. If it is explicit, just say yes, dont further explain it. if not, just simply state the new generate question. "
@@ -171,6 +173,11 @@ class ClusterManager {
                 console.log("Received askChatGPT message:", message);
                 await this.handleChatGPTRequest(message.question);
                 // await this.updateWebPanel(message);
+            }
+
+            if(message.command === "resetPanel") {
+                await this.updateWebPanel("");
+                await this.updateWebPanel("");
             }
         });
     }
@@ -1081,17 +1088,6 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
         }
 
 
-        // const groupedEventsHTML = await this.generateGroupedEventsHTML();
-        // const strayEventsHTML = await this.generateStrayEventsHTML();
-
-        // let chatboxHTML;
-        // if(!this.chatGPTInvoked){
-        //     chatboxHTML = await this.generateChatGPTResponseHTML('');
-        // } else {
-        //     chatboxHTML = this.generateJSON;
-        //     console.log("printing chatboxHTML", chatboxHTML);
-        // }
-
         let groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
         if (this.chatGPTInvoked) {
             console.log("chatGPT invoked!!!!!!!!!!!!!!!!!")
@@ -1125,7 +1121,9 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                             <div class="question-area">
                                 <input type="text" id="question" name="user_question" placeholder="How do I do this...">
                                 <button type="submit" class="btn">Submit</button>
+                                <button type="button" id="reset-button" class="btn">Reset</button>
                             </div>
+                            
                         </form>
                     </div>
                     <div class="view-controls">
@@ -1352,6 +1350,12 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
                     ? 'Switch to Side-by-Side View' 
                     : 'Switch to Line-by-Line View';
                 vscode.postMessage({ command: 'changeViewMode', view: currentView });
+            });
+
+            document.getElementById("reset-button").addEventListener("click", function () {
+                vscode.postMessage({
+                    command: "resetPanel"
+                });
             });
         
         })();

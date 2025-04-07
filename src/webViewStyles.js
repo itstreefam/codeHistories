@@ -362,8 +362,9 @@ const historyStyles = `
         margin-bottom: 5px;
     }
 
-    .user-question-area {
+    .question-area {
         margin: 1px;
+        display: flex;
     }
 
     #question {
