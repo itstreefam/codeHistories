@@ -19,7 +19,7 @@ class gitTracker {
         const gitignorePath = `${this._currentDir}/.gitignore`;
         try {
             let data = await fs.promises.readFile(gitignorePath, 'utf8').catch(() => '');
-            const itemsToAdd = ['codeHistories.git', '.vscode', 'venv', 'node_modules', 'CH_cfg_and_logs', 'screencaptures', '.venv', '__pycache__'];
+            const itemsToAdd = ['codeHistories.git', '.vscode', 'venv', 'node_modules', 'CH_cfg_and_logs', 'screencaptures', '.venv', '__pycache__', 'dist'];
             for(const item of itemsToAdd){
                 if(!data.includes(item)){
                     await fs.promises.appendFile(gitignorePath, `${item}\n`);
@@ -468,6 +468,8 @@ class gitTracker {
                     };
                     entries.push(entry);
                 } else if(filesToConsider.some(ext => file.endsWith(ext))){
+                    if(file.includes("dist")) continue;
+
                     let documentText = await fs.promises.readFile(`${this._currentDir}/${file}`, 'utf8');
                     let entry = {
                         type: 'code',
