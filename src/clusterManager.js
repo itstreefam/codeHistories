@@ -660,43 +660,6 @@ class ClusterManager {
         // Temporary storage for the current search event being structured
         let currentSearchEvent = null;
 
-        // // Iterate over stray events and structure web events
-        // for (const event of webEvents) {
-        //     // console.log('Processing event', event);
-        //     if (event.type === "search") {
-        //         // If there's an existing search event, push it to the structured events
-        //         if (currentSearchEvent) {
-        //             structureWebEvents.push(currentSearchEvent);
-        //         }
-
-        //         // Start a new search event structure
-        //         currentSearchEvent = {
-        //             type: "search",
-        //             query: event.webTitle || "Search query missing",  // Use webTitle instead of notes
-        //             time: event.time,
-        //             actions: [],
-        //         };
-        //     } else if (event.type === "visit" || event.type === "revisit") {
-        //         // If the current event is a visit, add it to the current search event's actions
-        //         if (currentSearchEvent) {
-        //             currentSearchEvent.actions.push({
-        //                 type: event.type,
-        //                 webTitle: event.webTitle || "Visit title missing",  // Use webTitle instead of notes
-        //                 webpage: event.webpage || "URL missing",  // Use webpage instead of timed_url
-        //                 time: event.time,
-        //             });
-        //         } else {
-        //             // If there's no search event, treat it as a stray visit
-        //             structureWebEvents.push({
-        //                 type: event.type,
-        //                 webTitle: event.webTitle || "Visit title missing",  // Use webTitle instead of notes
-        //                 webpage: event.webpage || "URL missing",  // Use webpage instead of timed_url
-        //                 time: event.time,
-        //             });
-        //         }
-        //     }
-        // }
-
         // Sort stray events by time to
         const sortedWebEvents = webEvents.sort((a, b) => a.time - b.time);
 
@@ -1025,6 +988,76 @@ class ClusterManager {
         }
     }
 
+    async *generatePastAnswerStream(question, whichOne) {
+        const startTime = performance.now();
+
+        try {
+            console.log("User Question:", question);
+
+            if (!question.trim()) {
+                yield "no question";
+                return;
+            }
+
+            const filteredArray = this.codeActivities.map(({ id, title, codeChanges }) => ({
+                id,
+                title,
+                codeChanges: codeChanges.map(({ title }) => ({ title }))
+            }));
+            console.log("FILTERED ARRAY: ", filteredArray);
+
+            const filteredArrayResources = this.codeResources.map(({ id, title, resources }) => ({
+                id,
+                title,
+                webTitles: resources.flatMap(resource =>
+                    (resource.actions || [])
+                        .filter(action => action.webTitle)
+                        .map(action => action.webTitle)
+                )
+            }));
+
+            let prompt = whichOne === "history"
+                ? `The user will ask you to filter the database based on the context of this code history I provided: "${JSON.stringify(filteredArray)}", and here is the question: "${question}". If the user question is just "", simply say no question.`//, doesn't have to be in JSON. If there are questions, please provide a JSON return with the information you sorted, maintaining the same format as the JSON passed in. Don't say anything else. If the user asked for the code change histories, include the entire subgoal, including all codeChanges and corresponding links. If the user is asking for visited resources, include the whole subgoal section with all codeChanges and histories.`
+                : `The user will ask you to filter the database based on the history the user has accessed: "${JSON.stringify(filteredArrayResources)}", and here is the question: "${question}". If the user question is just "", simply say no question.`; //, doesn't have to be in JSON. If there are questions, please provide a JSON return with the information you sorted, maintaining the same format as the JSON passed in. Don't say anything else. If the user asked for the code change histories, include the entire subgoal, including all codeChanges and corresponding links. If the user is asking for visited resources, include the whole subgoal section with all codeChanges and histories.;
+
+            console.log("in generateAnswerStream, prompt: ", prompt);
+            const stream = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                max_tokens: 1000,
+                stream: true, // Enable streaming
+                messages: [
+                    {
+                        role: "system",
+                        content: `You are a code history reviewer. The user will provide JSON-like info and expects you to find information based on it.
+                        A JSON object entry should either have keys: 'id', 'title', and 'codeChanges' or 'id', 'title', and 'webTitles. 
+                        Under 'codeChanges', there should be 'id' and 'title'.
+                        Under 'webTitles', there should be a list of webTitles.
+                        Return me an array of at most 5 most relevant {id: entry.id} based on the question asked by the user. if you cannot find 5, just return however many you found. 
+                        The array you have returned to me should not have extra formatting and should be ready to parse. `
+                    },
+                    { role: "user", content: prompt }
+                ]
+            });
+
+            let responseText = "";
+
+            for await (const chunk of stream) {
+                const content = chunk.choices[0]?.delta?.content || "";
+                responseText += content;
+                console.log("response text here: ", responseText);
+                yield content;
+            }
+
+            const endTime = performance.now();
+            console.log(`Call to generateAnswerStream() took ${endTime - startTime} milliseconds`);
+
+            this.chatGPTInvoked = true;
+
+        } catch (error) {
+            console.error("Error generating answer:", error.message);
+            yield "response generation failed";
+        }
+    }
 
     //     async generateResources(activity) {
     //         try {
@@ -1088,10 +1121,12 @@ class ClusterManager {
         }
 
 
-        let groupedEventsHTML = await this.generateGroupedEventsHTML();
+        let editHistoryHTML = await this.generateGroupedEventsHTMLTest();
+
+        let groupedEventsHTML = await this.generateGroupedEventsHTMLTest() + await this.generateGroupedEventsHTML();
         if (this.chatGPTInvoked) {
             console.log("chatGPT invoked!!!!!!!!!!!!!!!!!")
-            groupedEventsHTML = await this.generateChatGPTResponseHTML(question);
+            groupedEventsHTML = await this.generateHistoryChatGPTResponseHTML(question) + await this.generateChatGPTResponseHTML(question);
             this.chatGPTInvoked = false;
         }
         const strayEventsHTML = await this.generateStrayEventsHTML();
@@ -1406,11 +1441,14 @@ class ClusterManager {
 
         try {
             const response = await this.generateChatGPTResponseHTML(question);
+            const historyResponse = await this.generateHistoryChatGPTResponseHTML(question);
+
+            const combined = response + historyResponse;
 
             // Once the HTML content is injected, update the webview
             this.webviewPanel.webview.postMessage({
                 // command: "updateChatResponse",
-                response: response
+                response: historyResponse
             });
         } catch (error) {
             console.error("Error generating response:", error);
@@ -1622,15 +1660,6 @@ class ClusterManager {
         }
 
         for (const [groupKey, group] of this.displayForGroupedEvents.entries()) {
-            // this is for subgoal-level grouping
-            // html += `
-            //     <li>
-            //         <!-- Editable title for the subgoal (group) -->
-            //         <input class="editable-title" id="title-${groupKey}" value="${group.title}" onchange="updateTitle('${groupKey}')">
-            //         <button type="button" class="collapsible">Subgoal ${groupKey}</button>
-            //         <div class="content">
-            //             <ul id="group-${groupKey}" data-groupkey="${groupKey}">
-            // `;
 
             // Filter and extract web resources
             const webResources = group.actions.filter(
@@ -1839,44 +1868,7 @@ class ClusterManager {
 
 
     async generateStrayEventsHTMLTest() {
-        // console.log('In generateStrayEventsHTML', this.strayEvents);
-        let html = '';
-
-        // if (this.strayEvents.length === 0) {
         return '<li>Your future changes goes here.</li>';
-        // }
-
-        // the events in strayEvents are in processed form
-        // for (const event of this.strayEvents) {
-        //     // all info is in event.notes
-        //     const humanReadableTime = new Date(event.time * 1000).toLocaleString();
-
-        //     if(event.type === "code") {
-        //         html += `
-        //             <li class="stray-event">
-        //                 <p><strong><em>${event.file}</em></strong></p>
-        //             </li>
-        //         `;
-        //     } else {
-        //         if(event.type === "search") {
-        //             html += `
-        //                 <li class="stray-event">
-        //                     <p><strong>${humanReadableTime}</strong> - <em>${event.webTitle}</em></p>
-        //                 </li>
-        //             `;
-        //         } else {
-        //             // visit or revisit
-        //             // same thing but also including the url link
-        //             html += `
-        //                 <li class="stray-event">
-        //                     <p><strong>${humanReadableTime}</strong> - <a href="${event.webpage}"<em>${event.webTitle}</em></a></p>
-        //                 </li>
-        //                 `;
-        //         }
-        //     }
-        // }
-
-        return html;
     }
 
     // This happens after a "save" occurrence (comparing two versions of file save)
@@ -2102,11 +2094,11 @@ class ClusterManager {
         try {
             const filteredArray = [];
             const filteredArrayResources = [];
-            
+
             for (const group of this.displayForGroupedEvents) {
                 const groupId = group.id;
                 const groupTitle = group.title;
-            
+
                 // Filter code events (you can adjust to push all instead of just the first)
                 const codeEvent = group.actions.find(action => action.type === 'code');
                 if (codeEvent) {
@@ -2116,10 +2108,10 @@ class ClusterManager {
                         file: codeEvent.file
                     });
                 }
-            
+
                 // Collect web resources
                 const uniqueVisitsSet = new Set();
-            
+
                 for (const action of group.actions) {
                     if (action.type && action.type.includes('visit') && !action.webTitle?.toLowerCase().includes("search")) {
                         uniqueVisitsSet.add(JSON.stringify({
@@ -2128,9 +2120,9 @@ class ClusterManager {
                         }));
                     }
                 }
-            
+
                 const visitResources = Array.from(uniqueVisitsSet).map(item => JSON.parse(item));
-            
+
                 if (visitResources.length > 0) {
                     filteredArrayResources.push({
                         id: groupId,
@@ -2331,278 +2323,317 @@ class ClusterManager {
         }
     }
 
-
-    // async chatGPTFitleredHTML() {
-    //     const startTime = performance.now()
-
-    //     let html = '';
-    //     if (!this.generateJSON === 0) {
-    //         console.error("codeResources is undefined or empty");
-    //         return '<li>No resources for you :(.</li>';
-    //     }
-
-    //     console.log('In chatGPTFitleredHTML, generateJSON', this.generateJSON);
-    //     // console.log('In chatGPTFitleredHTML, this.generateJSON length', this.generateJSON.length);
-
-    //     for (let groupKey = 0; groupKey < this.generateJSON.length; groupKey++) {
-    //         const group = this.generateJSON[groupKey];
-    //         const links = this.codeResources[groupKey];
-
-    //         let count = 0;
-
-    //         console.log("group in chatGPTFilteredHTML: ", group);
-
-    //         for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
-    //             const subgoal = group.codeChanges[subgoalKey];
-
-    //             console.log("subgoal in chatGPTFilteredHTML: \n", subgoal);
-
-    //             const diffHTML = this.generateDiffHTMLGroup(subgoal);
-
-    //             if (links.resources.length != 0 && count < links.resources.length) {
-    //                 html += `
-    //                     <li data-eventid="${subgoalKey}">
-    //                         <!-- Editable title for the code activity -->
-    //                         <div class="li-header">
-    //                             <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
-    //                             <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
-    //                             <!-- <i class="bi bi-pencil-square"></i> -->
-    //                             <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
-    //                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
-    //                                 <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
-    //                                 <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
-    //                                 </svg>
-    //                             </button>
-    //                             <b>in ${subgoal.file} </b> `
-    //                 const link = links.resources[count];
-    //                 // console.log(link.actions.length);
-    //                 html += `
-    //                     <div class="container">
-    //                         <i class="bi bi-bookmark"></i>
-    //                         <div class="centered">${link.actions.length}</div>
-    //                     </div>`
-
-    //                 html += `
-    //                     </div>
-    //                     <div class="content">
-    //                         <div class="left-container">
-    //                             ${diffHTML}
-    //                         </div>
-    //                         <div class="resources">
-    //                     `
-
-    //                 if (count < links.resources.length) {
-    //                     const link = links.resources[count];
-    //                     // html += `<ul class="link_list">`
-    //                     for (let i = 0; i < link.actions.length; i++) {
-    //                         const eachLink = links.resources[count].actions[i];
-    //                         html += `   
-    //                                     <div class="tooltip">
-    //                                         <a href="${eachLink.webpage}">${eachLink.webTitle}</a><br>
-
-    //                                         <br>
-    //                                     </div>
-    //                                     <br>
-    //                                 `
-    //                     }
-    //                     //  </ul> 
-    //                     // <span class="tooltiptext"  style="scale: 2"><img class="thumbnail" src="${eachLink.img}" alt="Thumbnail"></span>
-    //                     html += `
-
-    //                             </div>`
-    //                 } else {
-    //                     html += `</div>`
-    //                 }
-    //             } else {
-    //                 html += `
-    //                     <li data-eventid="${subgoalKey}">
-    //                         <!-- Editable title for the code activity -->
-    //                         <div class="li-header">
-    //                             <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
-    //                             <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
-    //                             <!-- <i class="bi bi-pencil-square"></i> -->
-    //                             <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
-    //                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
-    //                                 <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
-    //                                 <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
-    //                                 </svg>
-    //                             </button>
-    //                             <b>in ${subgoal.file} </b>
-    //                             <div class="placeholder">
-    //                             </div>
-    //                         </div>
-    //                         <div class="content">
-    //                             <div class="full-container">
-    //                                 ${diffHTML}
-    //                             </div>
-    //                         </div>`
-    //             }
-
-    //             count++;
-
-    //             html += `
-    //                     </li>
-    //                     <script> 
-    //                         document.addEventListener('DOMContentLoaded', () => {
-    //                             const button = document.getElementById('plusbtn-${groupKey}-${subgoalKey}');
-
-    //                             button.addEventListener('click', () => {
-    //                                 button.textContent = button.textContent === '+' ? '-' : '+';
-    //                             });
-    //                         });
-
-    //                         document.getElementById('button-${groupKey}-${subgoalKey}').addEventListener('click', function() {
-    //                             document.getElementById('code-title-${groupKey}-${subgoalKey}').focus();
-    //                         });  
-    //                     </script>
-    //                 `;
-    //         }
-    //     }
-
-    //     // console.log('In chatGPTFitleredHTML, html: ', html);
+    async generateHistoryChatGPTResponseHTML(question) {
 
 
-    //     const endTime = performance.now()
+        const startTime = performance.now();
 
-    //     console.log(`Call to chatGPTFitleredHTML took ${endTime - startTime} milliseconds`)
+        try {
+            const reduceLoad = await this.isHistoryOrResource(question);
+            console.log("history or resources? ", reduceLoad);
 
-    //     return html;
-    // }
+            const generator = this.generatePastAnswerStream(question, reduceLoad);
+            let streamedResponse = "";
 
-    generateDiffHTMLGroup(codeActivity) {
-        // Get the event at startTime
-        let startCodeEventLines = this.get_code_lines(codeActivity.before_code);
+            for await (const chunk of generator) {
+                let chunkStr = typeof chunk === "string" ? chunk : JSON.stringify(chunk);
+                streamedResponse += chunkStr;
+            }
 
-        // Get the event at endTime
-        let endCodeEventLines = this.get_code_lines(codeActivity.after_code);
+            if (streamedResponse.trim() === "no question") {
+                return `<p>No question detected.</p>`;
+            }
 
-        let diffString = Diff.createTwoFilesPatch(
-            'start',
-            'end',
-            codeActivity.before_code,
-            codeActivity.after_code,
-            codeActivity.file,
-            codeActivity.file,
-            { ignoreWhitespace: true } // this is important
-        );
+            console.log("generateChatGPTResponseHTML RESPONSE: ", streamedResponse);
 
-        // Render the diff as HTML
-        let diffHtml = diff2html.html(diffString, {
-            outputFormat: this.currentDiffView,
-            drawFileList: false,
-            colorScheme: 'light',
-            showFiles: false,
-        });
+            let parsed = JSON.parse(streamedResponse);
+            console.log("generateChatGPTResponseHTML PARSED: ", parsed);
 
-        let modifiedHtml = '';
+            parsed = parsed.map(entry => ({
+                ...entry,
+                id: parseInt(entry.id, 10) // or: id: +entry.id
+            }));
+            console.log("generateChatGPTResponseHTML PARSED: ", parsed);
+            let html = '';
 
-        if (this.currentDiffView === 'line-by-line') {
-            modifiedHtml = diffHtml.replace(/<div class="line-num2">(.*?)<\/div>/g, (match) => {
-                const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
-                return `<div class="line-num2" data-linenumber="${lineNumber - 1}" data-filename="${codeActivity.file}">${lineNumber}</div>`;
-            });
-        }
+            if (!this.codeResources || this.codeResources.length === 0) {
+                console.error("codeResources is undefined or empty");
+                return '<li>No resources for you :(.</li>';
+            }
 
-        if (this.currentDiffView === 'side-by-side') {
-            modifiedHtml = diffHtml.replace(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/g, (match) => {
-                const lineNumber = match.match(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/)[1];
-                return `<td class="d2h-code-side-linenumber clickable-line" data-linenumber="${lineNumber - 1}" data-filename="${codeActivity.file}">${lineNumber}</td>`;
-            });
-        }
+            console.log("generateChatGPTResponseHTML: ", this.displayForGroupedEvents);
+            for (let groupKey = 0; groupKey <= 8; groupKey++) {
 
-        return modifiedHtml;
-    }
+                const group = this.codeActivities[groupKey];
+                const links = this.codeResources[groupKey];
+                let contains = parsed.some(entry => entry.id == group.id);
+                console.log(group.id);
 
-    async updateTitle(groupKey, title) {
-        this.displayForGroupedEvents[groupKey].title = title;
-        await this.updateWebPanel();
-    }
+                console.log(contains);
+                if (!contains) {
+                    continue;
+                }
+                else {
+                    let count = 0;
+                    for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
+                        const subgoal = group.codeChanges[subgoalKey];
 
-    async updateCodeTitle(groupKey, eventId, title) {
-        this.displayForGroupedEvents[groupKey].actions[eventId].title = title;
-        await this.updateWebPanel();
-    }
+                        const diffHTML = this.generateDiffHTMLGroup(subgoal);
+                        if (links.resources.length != 0 && count < links.resources.length) {
+                            html += `
+                        <li data-eventid="${subgoalKey}">
+                            <!-- Editable title for the code activity -->
+                                    <div class="li-header">
+                                <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
+                                <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
+                                <!-- <i class="bi bi-pencil-square"></i> -->
+                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
+                                                <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
+                                                <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
+                                            </svg>
+                                        </button>
+                                <b>in ${subgoal.file} </b> `
+                            const link = links.resources[count];
+                            // console.log(link.actions.length);
+                            html += `
+                                        <div class="container">
+                                            <i class="bi bi-bookmark"></i>
+                            <div class="centered">${link.actions.length}</div>
+                        </div>`
+                            html += `
+                                    </div>
 
-    // getHighlightedCode () {
-    //     const editor = vscode.window.activeTextEditor;
-    //     const selection = editor.selection;
-    //     if (selection && !selection.isEmpty) {
-    //         const selectionRange = new vscode.Range(selection.start.line, selection.start.character, selection.end.line, selection.end.character);
-    //         const highlighted = editor.document.getText(selectionRange);
-    //         console.log(highlighted);
-    //         return highlighted;
-    //     }
-    // }
+                                    <div class="content">
+                            <div class="left-container">
+                                            ${diffHTML}
+                                        </div>
+                            <div class="resources">
+                        `
+                            if (count < links.resources.length) {
+                                const link = links.resources[count];
+                                // html += `<ul class="link_list">`
+                                for (let i = 0; i < link.actions.length; i++) {
+                                    const eachLink = links.resources[count].actions[i];
+                                    html += `   
+                                        <div class="tooltip">
+                                            <a href="${eachLink.webpage}">${eachLink.webTitle}</a><br>
+        
+                                            <br>
 
-    best_match(target, lines) {
-        if (target.length > 0) {
-            let match = null;
-            let maxRatio = 0.0;
-            for (const line of lines) {
-                if (line.length > 0) {
-                    const ratio = fuzzball.ratio(target, line);
-                    if (ratio > maxRatio) {
-                        maxRatio = ratio;
-                        match = line;
+
+
+
+
+                                            </div>
+                                        <br>
+                                    `
+                                }
+                                //  </ul> 
+                                // <span class="tooltiptext"  style="scale: 2"><img class="thumbnail" src="${eachLink.img}" alt="Thumbnail"></span>
+                                html += `
+        
+                                </div>`
+                            } else {
+                                html += `</div>`
+                            }
+                        } else {
+                            html += `
+                        <li data-eventid="${subgoalKey}">
+                            <!-- Editable title for the code activity -->
+                            <div class="li-header">
+                                <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
+                                <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
+                                <!-- <i class="bi bi-pencil-square"></i> -->
+                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
+                                    <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
+                                    <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
+                                    </svg>
+                                </button>
+                                <b>in ${subgoal.file} </b>
+                                <div class="placeholder">
+                                                            </div>
+                                            </div>
+                            <div class="content">
+                                <div class="full-container">
+                                    ${diffHTML}
+                                    </div>
+                            </div>`
+                        }
+                        count++;
+                        html += `
+                                </li>
+                        <script> 
+                            document.addEventListener('DOMContentLoaded', () => {
+                                const button = document.getElementById('plusbtn-${groupKey}-${subgoalKey}');
+
+                                button.addEventListener('click', () => {
+                                    button.textContent = button.textContent === '+' ? '-' : '+';
+                                });
+                            });
+                            document.getElementById('button-${groupKey}-${subgoalKey}').addEventListener('click', function() {
+                                document.getElementById('code-title-${groupKey}-${subgoalKey}').focus();
+                                            });  
+                                </script>
+                            `;
                     }
                 }
+
             }
-            return { target: target, match: match, ratio: maxRatio };
-        } else {
-            return { target: target, match: null, ratio: 0.0 };
+            this.webviewPanel.webview.postMessage({
+            command: 'updateChatResponse',
+            response: html
+        });
+
+        console.log('Sending setupCollapsibleButtons message');
+
+        // Attach collapsible functionality via JS within the webview
+        this.webviewPanel.webview.postMessage({
+            command: 'setupCollapsibleButtons'
+        });
+
+        return html;
+    } catch(err) {
+        console.error("Error generating response:", err);
+        return `<p style="color:red;">Error: ${err.message}</p>`;
+    }
+}
+
+generateDiffHTMLGroup(codeActivity) {
+    // Get the event at startTime
+    let startCodeEventLines = this.get_code_lines(codeActivity.before_code);
+
+    // Get the event at endTime
+    let endCodeEventLines = this.get_code_lines(codeActivity.after_code);
+
+    let diffString = Diff.createTwoFilesPatch(
+        'start',
+        'end',
+        codeActivity.before_code,
+        codeActivity.after_code,
+        codeActivity.file,
+        codeActivity.file,
+        { ignoreWhitespace: true } // this is important
+    );
+
+    // Render the diff as HTML
+    let diffHtml = diff2html.html(diffString, {
+        outputFormat: this.currentDiffView,
+        drawFileList: false,
+        colorScheme: 'light',
+        showFiles: false,
+    });
+
+    let modifiedHtml = '';
+
+    if (this.currentDiffView === 'line-by-line') {
+        modifiedHtml = diffHtml.replace(/<div class="line-num2">(.*?)<\/div>/g, (match) => {
+            const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
+            return `<div class="line-num2" data-linenumber="${lineNumber - 1}" data-filename="${codeActivity.file}">${lineNumber}</div>`;
+        });
+    }
+
+    if (this.currentDiffView === 'side-by-side') {
+        modifiedHtml = diffHtml.replace(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/g, (match) => {
+            const lineNumber = match.match(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/)[1];
+            return `<td class="d2h-code-side-linenumber clickable-line" data-linenumber="${lineNumber - 1}" data-filename="${codeActivity.file}">${lineNumber}</td>`;
+        });
+    }
+
+    return modifiedHtml;
+}
+
+    async updateTitle(groupKey, title) {
+    this.displayForGroupedEvents[groupKey].title = title;
+    await this.updateWebPanel();
+}
+
+    async updateCodeTitle(groupKey, eventId, title) {
+    this.displayForGroupedEvents[groupKey].actions[eventId].title = title;
+    await this.updateWebPanel();
+}
+
+// getHighlightedCode () {
+//     const editor = vscode.window.activeTextEditor;
+//     const selection = editor.selection;
+//     if (selection && !selection.isEmpty) {
+//         const selectionRange = new vscode.Range(selection.start.line, selection.start.character, selection.end.line, selection.end.character);
+//         const highlighted = editor.document.getText(selectionRange);
+//         console.log(highlighted);
+//         return highlighted;
+//     }
+// }
+
+best_match(target, lines) {
+    if (target.length > 0) {
+        let match = null;
+        let maxRatio = 0.0;
+        for (const line of lines) {
+            if (line.length > 0) {
+                const ratio = fuzzball.ratio(target, line);
+                if (ratio > maxRatio) {
+                    maxRatio = ratio;
+                    match = line;
+                }
+            }
         }
+        return { target: target, match: match, ratio: maxRatio };
+    } else {
+        return { target: target, match: null, ratio: 0.0 };
     }
+}
 
-    get_code_lines(code_text) {
-        return code_text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+get_code_lines(code_text) {
+    return code_text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+}
+
+getFilename(notes) {
+    let filename = notes.substring(6);
+    if (filename.includes(';')) {
+        filename = filename.split(';')[0];
     }
+    return filename;
+}
 
-    getFilename(notes) {
-        let filename = notes.substring(6);
-        if (filename.includes(';')) {
-            filename = filename.split(';')[0];
-        }
-        return filename;
+getWebviewContent() {
+    return this.webviewPanel.webview.html;
+}
+
+disposeWebview() {
+    if (this.webviewPanel) {
+        this.webviewPanel.dispose();
     }
+}
 
-    getWebviewContent() {
-        return this.webviewPanel.webview.html;
-    }
+// Function to comment out VS Code API calls before saving the HTML
+commentOutVSCodeApi(htmlContent) {
+    // Comment out 'const vscode = acquireVsCodeApi();'
+    htmlContent = htmlContent.replace(/const vscode = acquireVsCodeApi\(\);/, '// const vscode = acquireVsCodeApi();');
 
-    disposeWebview() {
-        if (this.webviewPanel) {
-            this.webviewPanel.dispose();
-        }
-    }
-
-    // Function to comment out VS Code API calls before saving the HTML
-    commentOutVSCodeApi(htmlContent) {
-        // Comment out 'const vscode = acquireVsCodeApi();'
-        htmlContent = htmlContent.replace(/const vscode = acquireVsCodeApi\(\);/, '// const vscode = acquireVsCodeApi();');
-
-        // Comment out 'vscode.postMessage({...})' related to 'updateTitle'
-        htmlContent = htmlContent.replace(
-            /vscode\.postMessage\(\s*\{\s*command:\s*'updateTitle'[\s\S]*?\}\s*\);/g,
-            `// vscode.postMessage({ 
+    // Comment out 'vscode.postMessage({...})' related to 'updateTitle'
+    htmlContent = htmlContent.replace(
+        /vscode\.postMessage\(\s*\{\s*command:\s*'updateTitle'[\s\S]*?\}\s*\);/g,
+        `// vscode.postMessage({ 
                 // command: 'updateTitle', 
                 // groupKey: groupKey, 
                 // title: titleInput 
             // });`
-        );
+    );
 
-        // Comment out 'vscode.postMessage({...})' related to 'updateCodeTitle'
-        htmlContent = htmlContent.replace(
-            /vscode\.postMessage\(\s*\{\s*command:\s*'updateCodeTitle'[\s\S]*?\}\s*\);/g,
-            `// vscode.postMessage({ 
+    // Comment out 'vscode.postMessage({...})' related to 'updateCodeTitle'
+    htmlContent = htmlContent.replace(
+        /vscode\.postMessage\(\s*\{\s*command:\s*'updateCodeTitle'[\s\S]*?\}\s*\);/g,
+        `// vscode.postMessage({ 
                 // command: 'updateCodeTitle', 
                 // groupKey: groupKey, 
                 // eventId: eventId, 
                 // title: codeTitleInput 
             // });`
-        );
+    );
 
-        return htmlContent;
-    }
+    return htmlContent;
+}
 }
 
 module.exports = ClusterManager;
