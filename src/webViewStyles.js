@@ -74,7 +74,8 @@ const historyStyles = `
     
     h4{
         top: 25px;
-        margin: 0;
+        margin: auto;
+        margin-left: 0;
     }
 
     .title {
@@ -333,11 +334,9 @@ const historyStyles = `
     }
 
     .form-container {
-        width: 300px;
-        // padding: 10px;
-        // background-color: white;
-        // background-color: #fff6ed;
+        width: 500px;
         border-radius: 10px 10px 0px 0px;
+        margin-left: 5vw;
     }
 
     #response_area {
@@ -368,13 +367,13 @@ const historyStyles = `
     }
 
     #question {
-        width: 59%;
+        width: 40%;
     }
 
     .forms{
         display: flex;
         justify-content: space-between;
-        margin-right: 20vw;
+        margin-right: 5vw;
         text-align: center;
     }
 `;

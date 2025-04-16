@@ -73,7 +73,7 @@ class ClusterManager {
         this.currentDiffView = 'line-by-line'; //default view
         this.generateJSON = [];
         this.chatGPTInvoked = false;
-
+        this.userQuestion = '';
     }
 
     initializeTemporaryTest() {
@@ -132,6 +132,7 @@ class ClusterManager {
             this.webviewPanel.webview.postMessage({ command: 'restoreState', state: this.previousState });
         } else {
             // Set the initial HTML content if no previous state exists
+            console.log("ERROR IN INITIALIZEWEBVIEW LINE 135!")
             await this.updateWebPanel();
         }
 
@@ -166,16 +167,19 @@ class ClusterManager {
 
             if (message.command === 'changeViewMode') {
                 this.currentDiffView = message.view;
+                console.log("ERROR IN INITIALIZEWEBVIEW, LINE 170!")
                 await this.updateWebPanel('');
             }
 
             if (message.command === "askChatGPT") {
                 console.log("Received askChatGPT message:", message);
+                this.userQuestion = message.question;
                 await this.handleChatGPTRequest(message.question);
                 // await this.updateWebPanel(message);
             }
 
             if (message.command === "resetPanel") {
+                console.log("ERROR IN INITIALIZEWEBVIEW, LINE 181!")
                 await this.updateWebPanel("");
                 await this.updateWebPanel("");
             }
@@ -225,6 +229,7 @@ class ClusterManager {
             await this.initializeWebview();
         } else {
             // If webview is already opened, just update the content
+            console.log("ERROR IN PROCESSCODEEVENT, LINE 231!")
             await this.updateWebPanel();
         }
     }
@@ -262,7 +267,8 @@ class ClusterManager {
             await this.initializeWebview();
         } else {
             // If webview is already opened, just update the content
-            await this.updateWebPanel();
+            console.log("ERROR IN PROCESSWEBEVENTS, LINE 269!")
+            await this.updateWebPanel(this.userQuestion);
         }
     }
 
@@ -328,6 +334,7 @@ class ClusterManager {
             await this.initializeWebview();
         } else {
             // If webview is already opened, just update the content
+            console.log("ERROR IN HANDLESAVEEVENT, LINE 336!")
             await this.updateWebPanel();
         }
     }
@@ -831,89 +838,6 @@ class ClusterManager {
 
     }
 
-    // async allQuestionsAnswered(question) {
-    //     try {
-    //         // console.log("User Question:", question);
-    //         if (!question.trim()) {
-    //             return "no question";
-    //         }
-    //         // whether it provide insight rather than if it "answers" it. 
-    //         let prompt = 'Here is the question: "' + question + '". If the user question is just "", simple say no question. If there are questions, please help me determine whether the JSON file: ' + JSON.stringify(this.generateJSON, null, 2) + ' answered the question fully. If yes, simply say yes; if not, please state which part of the question left unanswered. ';
-    //         const request = {
-    //             contents: [{role: 'user', parts: [{text: prompt}]}],
-    //           };
-
-    //         const result = await model.generateContent(request);
-    //         let summary = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text || "Summary not available";
-    //         // console.log('GEMINI Response: ', summary);
-    //         return summary;
-    //     } catch (error) {
-    //         onsole.error("Error generating questions:", error.message);
-    //         return `response generation failed`;
-    //     }
-    // }
-
-    // async generateAnswer(question, whichOne) {
-
-    //     const startTime = performance.now()
-
-    //     // cashe response to have htem ready when the user asks questions. 
-
-
-    //     try {
-    //         // this.getHighlightedCode();
-    //         // question = 'show me all the edits in fonts.scss';
-    //         console.log("User Question:", question);
-
-    //         if (!question.trim()) {
-    //             return "no question";
-    //         }
-    //         const filteredArray = this.codeActivities.map(({ id, title }) => ({ id, title }));
-    //         console.log("FILTERED ARRAY: ", filteredArray);
-
-    //         let prompt = '';
-    //         if (whichOne === "history") {
-    //             prompt = `The user will ask you to filter the database based on the context of this code history I provided: "${JSON.stringify(filteredArray)}", and here is the question: "${question}". If the user question is just "", simply say no question.`;
-    //         } else {
-    //             prompt = `The user will ask you to filter the database based on the history the user has accessed: "${JSON.stringify(this.codeResources, null, 2)}", and here is the question: "${question}". If the user question is just "", simply say no question.`;
-
-    //         }
-
-    //         console.log("PROMPT: ", prompt);
-    //         const completions = await openai.chat.completions.create({
-    //             model: 'gpt-4o-mini',
-    //             max_tokens: 2000,
-    //             messages: [
-    //                 {
-    //                     role: "system",
-    //                     content: `You are a code history reviewer. The user will provide JSON-like info and expects you to find information based on it.
-    //                     A JSON object entry should have keys: 'id' and 'title'
-    //                     Return me an array of 5 most relevant {id: entry.id} based on the question asked by the user.`
-    //                     // "you are a code history reviewer. The user will provide a json file like info to you and expect you to find information base on the json file. Give me a JSON response with no extra formatting. The new JSON you provided should have the same structure as the JSON file such as'[{\"id\":\"\",\"title\":\"\",\"codeChanges\":[{\"type\":\"code\",\"id\":\"\",\"file\":\"\",\"time\":0,\"before_code\":\"\",\"after_code\":\"\"},{\"type\":\"code\",\"id\":\"\",\"file\":\"\",\"time\":0,\"before_code\":\"\",\"after_code\":\"\"}]}]' You are basically a smart filter for code history documentation and do not change the content of the JSON. "
-    //                 },
-    //                 { role: "user", content: prompt }
-    //             ]
-    //         });
-
-    //         let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
-    //         this.chatGPTInvoked = true;
-    //         console.log("string version of JSON: ", summary);
-    //         let replacedString = JSON.parse(summary);
-    //         console.log('Summary:', replacedString);
-
-    //         const endTime = performance.now()
-
-    //         console.log(`Call to generateAnswer() took ${endTime - startTime} milliseconds`)
-
-    //         return replacedString;
-
-
-    //     } catch (error) {
-    //         console.error("Error generating title:", error.message);
-    //         return `response generation failed`;
-    //     }
-    // }
-
     async *generateAnswerStream(question, whichOne, codeEvents, uniqueVisits) {
         const startTime = performance.now();
 
@@ -928,26 +852,9 @@ class ClusterManager {
                 return;
             }
 
-            // const filteredArray = codeEvents.map(({ id, title, file }) => ({
-            //     id,
-            //     title,
-            //     file
-            // }));
-            // console.log("FILTERED ARRAY: ", filteredArray);
-
-            // const filteredArrayResources = uniqueVisits.map(({ id, title, resources }) => ({
-            //     id,
-            //     title,
-            //     webTitles: resources.flatMap(resource =>
-            //         (resource.actions || [])
-            //             .filter(action => action.webTitle)
-            //             .map(action => action.webTitle)
-            //     )
-            // }));
-
             let prompt = whichOne === "history"
-                ? `The user will ask you to filter the database based on the context of this code history I provided: "${JSON.stringify(codeEvents)}", and here is the question: "${question}". If the user question is just "", simply say no question.`//, doesn't have to be in JSON. If there are questions, please provide a JSON return with the information you sorted, maintaining the same format as the JSON passed in. Don't say anything else. If the user asked for the code change histories, include the entire subgoal, including all codeChanges and corresponding links. If the user is asking for visited resources, include the whole subgoal section with all codeChanges and histories.`
-                : `The user will ask you to filter the database based on the history the user has accessed: "${JSON.stringify(uniqueVisits)}", and here is the question: "${question}". If the user question is just "", simply say no question.`; //, doesn't have to be in JSON. If there are questions, please provide a JSON return with the information you sorted, maintaining the same format as the JSON passed in. Don't say anything else. If the user asked for the code change histories, include the entire subgoal, including all codeChanges and corresponding links. If the user is asking for visited resources, include the whole subgoal section with all codeChanges and histories.;
+                ? `The user will ask you to filter the database based on the context of this code history I provided: "${JSON.stringify(codeEvents)}", and here is the question: "${question}". If the user question is just "", simply say no question.`
+                : `The user will ask you to filter the database based on the history the user has accessed: "${JSON.stringify(uniqueVisits)}", and here is the question: "${question}". If the user question is just "", simply say no question.`;
 
             console.log("in generateAnswerStream, prompt: ", prompt);
             const stream = await openai.chat.completions.create({
@@ -1059,45 +966,10 @@ class ClusterManager {
         }
     }
 
-    //     async generateResources(activity) {
-    //         try {
-
-    //             const prompt = `You have this list of links "${activity}":
-
-    // go through each link and see if theres any repetition, explain in natural language, how each links can be useful for the user's programming process. 
-    // Omit those repeating links and have a paragraph corresponding to each link. Be really brief in each paragraph so the text doesn't take too much space`;
-
-
-    //             const completions = await openai.chat.completions.create({
-    //                 model: 'gpt-3.5-turbo',
-    //                 max_tokens: 400,
-    //                 messages: [
-    //                     {
-    //                         role: "system",
-    //                         content: "You are a resource provider where you will write several small paragraphs explaining why each link is helpful in natural langauage, the paragraphs will be easy to read and understand"
-    //                     },
-    //                     { role: "user", content: prompt }
-    //                 ]
-    //             });
-    //             // console.log('API Response:', completions);
-
-    //             let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
-    //             // console.log('Summary:', summary);
-
-    //             // if summary contains double quotes, make them single quotes
-    //             summary = summary.replace(/"/g, "'");
-    //             return summary;
-    //         } catch (error) {
-    //             console.error("Error generating title:", error.message);
-    //             return `Code changes in ${activity.file}`;
-    //         }
-    //     }
-
     async updateWebPanel(question) {
 
         const startTime = performance.now()
 
-        // this.getHighlightedCode();
         if (!this.webviewPanel) {
             this.webviewPanel = vscode.window.createWebviewPanel(
                 'historyWebview',
@@ -1154,7 +1026,8 @@ class ClusterManager {
                         <h4><em>Ordered from least recent to most recent</em></h4>
                         <form id="chat-form" class="form-container">
                             <div class="question-area">
-                                <input type="text" id="question" name="user_question" placeholder="How do I do this...">
+                                <label style="font-weight: bold; margin: auto; margin-right: 5px;">Search within your history: </label>
+                                <input type="text" id="question" name="user_question" placeholder="Where did I...">
                                 <button type="submit" class="btn">Submit</button>
                                 <button type="button" id="reset-button" class="btn">Reset</button>
                             </div>
@@ -1404,27 +1277,6 @@ class ClusterManager {
                 await this.navigateToLine(message.fileName, message.line);
             }
         });
-
-        // this.webviewPanel.webview.onDidReceiveMessage(async (message) => {
-        //     if (message.command === "generateChatResponse") {
-        //         try {
-        //             const chatResponse = await this.generateChatGPTResponseHTML(message.question);
-        //             this.webviewPanel.webview.postMessage({
-        //                 command: "updateChatResponse",
-        //                 response: chatResponse
-        //             });
-
-        //             await this.updateWebPanel(message.question);
-
-        //         } catch (error) {
-        //             console.error("Error generating response:", error);
-        //             this.webviewPanel.webview.postMessage({
-        //                 command: "updateChatResponse",
-        //                 response: '<p style="color:red;">Error: Could not generate response</p>'
-        //             });
-        //         }
-        //     }
-        // });
 
         const endTime = performance.now()
 
@@ -2036,56 +1888,6 @@ class ClusterManager {
         return html;  // Return the generated HTML
     }
 
-    // const startTime = performance.now();
-
-    // try {
-    //     const reduceLoad = await this.isHistoryOrResource(question);
-    //     console.log("line 1956: history or resources? ", reduceLoad);
-
-    //     const generator = this.generateAnswerStream(question, reduceLoad);
-    //     console.log("generator: ", generator);
-    //     let streamedResponse = "";
-
-    //     for await (const chunk of generator) {
-    //         let chunkStr = typeof chunk === "string" ? chunk : JSON.stringify(chunk);
-    //         streamedResponse += chunkStr;
-    //     }
-
-    //     if (streamedResponse.trim() === "no question") {
-    //         // console.log("there are no questions");
-    //         return `<p>No question detected.</p>`;
-    //     }
-
-    //     console.log("generateChatGPTResponseHTML RESPONSE: ", streamedResponse);
-
-    //     try {
-    //         this.generateJSON = JSON.parse(streamedResponse);
-    //         console.log("generateJSON set!!!");
-    //     } catch (parseError) {
-    //         console.error("Error parsing JSON response:", parseError);
-    //         return `<p style="color:red;">Error parsing response.</p>`;
-    //     }
-
-    //     // const isItAnswered = await this.allQuestionsAnswered(question);
-    //     // console.log("line 1969: is the question being answered fully? ", isItAnswered);
-
-    //     let html = "";
-
-    //     if (question === "") {
-    //         html += await this.generateGroupedEventsHTMLTest();
-    //     } else {
-    //         html += await this.chatGPTFitleredHTML();
-    //     }
-
-    //     const endTime = performance.now();
-    //     console.log(`Call to generateChatGPTResponseHTML took ${endTime - startTime} milliseconds`);
-
-    //     return html;
-    // } catch (err) {
-    //     console.error("Error generating response:", err);
-    //     return `<p style="color:red;">Error: ${err.message}</p>`;
-    // }
-
     async generateChatGPTResponseHTML(question) {
 
 
@@ -2147,7 +1949,7 @@ class ClusterManager {
             }
 
             if (streamedResponse.trim() === "no question") {
-                return `<p>No question detected.</p>`;
+                return ``;
             }
 
             console.log("generateChatGPTResponseHTML RESPONSE: ", streamedResponse);
@@ -2325,13 +2127,19 @@ class ClusterManager {
 
     async generateHistoryChatGPTResponseHTML(question) {
 
+        if(question == 'undefined') {
+            return '';
+        }
 
         const startTime = performance.now();
 
         try {
-            const reduceLoad = await this.isHistoryOrResource(question);
+            let reduceLoad = await this.isHistoryOrResource(question);
             console.log("history or resources? ", reduceLoad);
 
+            if(!reduceLoad.includes("history") || !reduceLoad.includes("resource")) {
+                reduceLoad = "history";
+            }
             const generator = this.generatePastAnswerStream(question, reduceLoad);
             let streamedResponse = "";
 
@@ -2482,158 +2290,160 @@ class ClusterManager {
 
             }
             this.webviewPanel.webview.postMessage({
-            command: 'updateChatResponse',
-            response: html
-        });
+                command: 'updateChatResponse',
+                response: html
+            });
 
-        console.log('Sending setupCollapsibleButtons message');
+            console.log('Sending setupCollapsibleButtons message');
 
-        // Attach collapsible functionality via JS within the webview
-        this.webviewPanel.webview.postMessage({
-            command: 'setupCollapsibleButtons'
-        });
+            // Attach collapsible functionality via JS within the webview
+            this.webviewPanel.webview.postMessage({
+                command: 'setupCollapsibleButtons'
+            });
 
-        return html;
-    } catch(err) {
-        console.error("Error generating response:", err);
-        return `<p style="color:red;">Error: ${err.message}</p>`;
-    }
-}
-
-generateDiffHTMLGroup(codeActivity) {
-    // Get the event at startTime
-    let startCodeEventLines = this.get_code_lines(codeActivity.before_code);
-
-    // Get the event at endTime
-    let endCodeEventLines = this.get_code_lines(codeActivity.after_code);
-
-    let diffString = Diff.createTwoFilesPatch(
-        'start',
-        'end',
-        codeActivity.before_code,
-        codeActivity.after_code,
-        codeActivity.file,
-        codeActivity.file,
-        { ignoreWhitespace: true } // this is important
-    );
-
-    // Render the diff as HTML
-    let diffHtml = diff2html.html(diffString, {
-        outputFormat: this.currentDiffView,
-        drawFileList: false,
-        colorScheme: 'light',
-        showFiles: false,
-    });
-
-    let modifiedHtml = '';
-
-    if (this.currentDiffView === 'line-by-line') {
-        modifiedHtml = diffHtml.replace(/<div class="line-num2">(.*?)<\/div>/g, (match) => {
-            const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
-            return `<div class="line-num2" data-linenumber="${lineNumber - 1}" data-filename="${codeActivity.file}">${lineNumber}</div>`;
-        });
+            return html;
+        } catch (err) {
+            console.error("Error generating response:", err);
+            return `<p style="color:red;">Error: ${err.message}</p>`;
+        }
     }
 
-    if (this.currentDiffView === 'side-by-side') {
-        modifiedHtml = diffHtml.replace(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/g, (match) => {
-            const lineNumber = match.match(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/)[1];
-            return `<td class="d2h-code-side-linenumber clickable-line" data-linenumber="${lineNumber - 1}" data-filename="${codeActivity.file}">${lineNumber}</td>`;
-        });
-    }
+    generateDiffHTMLGroup(codeActivity) {
+        // Get the event at startTime
+        let startCodeEventLines = this.get_code_lines(codeActivity.before_code);
 
-    return modifiedHtml;
-}
+        // Get the event at endTime
+        let endCodeEventLines = this.get_code_lines(codeActivity.after_code);
+
+        let diffString = Diff.createTwoFilesPatch(
+            'start',
+            'end',
+            codeActivity.before_code,
+            codeActivity.after_code,
+            codeActivity.file,
+            codeActivity.file,
+            { ignoreWhitespace: true } // this is important
+        );
+
+        // Render the diff as HTML
+        let diffHtml = diff2html.html(diffString, {
+            outputFormat: this.currentDiffView,
+            drawFileList: false,
+            colorScheme: 'light',
+            showFiles: false,
+        });
+
+        let modifiedHtml = '';
+
+        if (this.currentDiffView === 'line-by-line') {
+            modifiedHtml = diffHtml.replace(/<div class="line-num2">(.*?)<\/div>/g, (match) => {
+                const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
+                return `<div class="line-num2" data-linenumber="${lineNumber - 1}" data-filename="${codeActivity.file}">${lineNumber}</div>`;
+            });
+        }
+
+        if (this.currentDiffView === 'side-by-side') {
+            modifiedHtml = diffHtml.replace(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/g, (match) => {
+                const lineNumber = match.match(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/)[1];
+                return `<td class="d2h-code-side-linenumber clickable-line" data-linenumber="${lineNumber - 1}" data-filename="${codeActivity.file}">${lineNumber}</td>`;
+            });
+        }
+
+        return modifiedHtml;
+    }
 
     async updateTitle(groupKey, title) {
-    this.displayForGroupedEvents[groupKey].title = title;
-    await this.updateWebPanel();
-}
+        console.log("ERROR IN UPDATETITLE!")
+        this.displayForGroupedEvents[groupKey].title = title;
+        await this.updateWebPanel();
+    }
 
     async updateCodeTitle(groupKey, eventId, title) {
-    this.displayForGroupedEvents[groupKey].actions[eventId].title = title;
-    await this.updateWebPanel();
-}
+        console.log("ERROR IN UPDATECODETITLE!")
+        this.displayForGroupedEvents[groupKey].actions[eventId].title = title;
+        await this.updateWebPanel();
+    }
 
-// getHighlightedCode () {
-//     const editor = vscode.window.activeTextEditor;
-//     const selection = editor.selection;
-//     if (selection && !selection.isEmpty) {
-//         const selectionRange = new vscode.Range(selection.start.line, selection.start.character, selection.end.line, selection.end.character);
-//         const highlighted = editor.document.getText(selectionRange);
-//         console.log(highlighted);
-//         return highlighted;
-//     }
-// }
+    // getHighlightedCode () {
+    //     const editor = vscode.window.activeTextEditor;
+    //     const selection = editor.selection;
+    //     if (selection && !selection.isEmpty) {
+    //         const selectionRange = new vscode.Range(selection.start.line, selection.start.character, selection.end.line, selection.end.character);
+    //         const highlighted = editor.document.getText(selectionRange);
+    //         console.log(highlighted);
+    //         return highlighted;
+    //     }
+    // }
 
-best_match(target, lines) {
-    if (target.length > 0) {
-        let match = null;
-        let maxRatio = 0.0;
-        for (const line of lines) {
-            if (line.length > 0) {
-                const ratio = fuzzball.ratio(target, line);
-                if (ratio > maxRatio) {
-                    maxRatio = ratio;
-                    match = line;
+    best_match(target, lines) {
+        if (target.length > 0) {
+            let match = null;
+            let maxRatio = 0.0;
+            for (const line of lines) {
+                if (line.length > 0) {
+                    const ratio = fuzzball.ratio(target, line);
+                    if (ratio > maxRatio) {
+                        maxRatio = ratio;
+                        match = line;
+                    }
                 }
             }
+            return { target: target, match: match, ratio: maxRatio };
+        } else {
+            return { target: target, match: null, ratio: 0.0 };
         }
-        return { target: target, match: match, ratio: maxRatio };
-    } else {
-        return { target: target, match: null, ratio: 0.0 };
     }
-}
 
-get_code_lines(code_text) {
-    return code_text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
-}
-
-getFilename(notes) {
-    let filename = notes.substring(6);
-    if (filename.includes(';')) {
-        filename = filename.split(';')[0];
+    get_code_lines(code_text) {
+        return code_text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
     }
-    return filename;
-}
 
-getWebviewContent() {
-    return this.webviewPanel.webview.html;
-}
-
-disposeWebview() {
-    if (this.webviewPanel) {
-        this.webviewPanel.dispose();
+    getFilename(notes) {
+        let filename = notes.substring(6);
+        if (filename.includes(';')) {
+            filename = filename.split(';')[0];
+        }
+        return filename;
     }
-}
 
-// Function to comment out VS Code API calls before saving the HTML
-commentOutVSCodeApi(htmlContent) {
-    // Comment out 'const vscode = acquireVsCodeApi();'
-    htmlContent = htmlContent.replace(/const vscode = acquireVsCodeApi\(\);/, '// const vscode = acquireVsCodeApi();');
+    getWebviewContent() {
+        return this.webviewPanel.webview.html;
+    }
 
-    // Comment out 'vscode.postMessage({...})' related to 'updateTitle'
-    htmlContent = htmlContent.replace(
-        /vscode\.postMessage\(\s*\{\s*command:\s*'updateTitle'[\s\S]*?\}\s*\);/g,
-        `// vscode.postMessage({ 
+    disposeWebview() {
+        if (this.webviewPanel) {
+            this.webviewPanel.dispose();
+        }
+    }
+
+    // Function to comment out VS Code API calls before saving the HTML
+    commentOutVSCodeApi(htmlContent) {
+        // Comment out 'const vscode = acquireVsCodeApi();'
+        htmlContent = htmlContent.replace(/const vscode = acquireVsCodeApi\(\);/, '// const vscode = acquireVsCodeApi();');
+
+        // Comment out 'vscode.postMessage({...})' related to 'updateTitle'
+        htmlContent = htmlContent.replace(
+            /vscode\.postMessage\(\s*\{\s*command:\s*'updateTitle'[\s\S]*?\}\s*\);/g,
+            `// vscode.postMessage({ 
                 // command: 'updateTitle', 
                 // groupKey: groupKey, 
                 // title: titleInput 
             // });`
-    );
+        );
 
-    // Comment out 'vscode.postMessage({...})' related to 'updateCodeTitle'
-    htmlContent = htmlContent.replace(
-        /vscode\.postMessage\(\s*\{\s*command:\s*'updateCodeTitle'[\s\S]*?\}\s*\);/g,
-        `// vscode.postMessage({ 
+        // Comment out 'vscode.postMessage({...})' related to 'updateCodeTitle'
+        htmlContent = htmlContent.replace(
+            /vscode\.postMessage\(\s*\{\s*command:\s*'updateCodeTitle'[\s\S]*?\}\s*\);/g,
+            `// vscode.postMessage({ 
                 // command: 'updateCodeTitle', 
                 // groupKey: groupKey, 
                 // eventId: eventId, 
                 // title: codeTitleInput 
             // });`
-    );
+        );
 
-    return htmlContent;
-}
+        return htmlContent;
+    }
 }
 
 module.exports = ClusterManager;
