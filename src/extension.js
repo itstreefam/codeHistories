@@ -49,6 +49,8 @@ var contentTimelineManager = null;
 // this controls whether one wants to always show webview (even if it is closed) or not
 var persist = true;
 
+var executionInfo = {}; // global variable to store info from both onDidStartTerminalShellExecution and onDidEndTerminalShellExecution
+
 function updateContextKeys() {
     vscode.commands.executeCommand('setContext', 'codeHistories.usingContentTimelineView', usingContentTimelineView);
     vscode.commands.executeCommand('setContext', 'codeHistories.usingHistoryWebview', usingHistoryView);
@@ -121,7 +123,11 @@ function activate(context) {
 	contentTimelineManager.initializeContentTimelineManager();
 
 	vscode.window.onDidStartTerminalShellExecution(async event => {
-		await onDidExecuteShellCommandHelper(event, clusterManager, contentTimelineManager);
+		await onDidStartTerminalShellExecutionHelper(event, clusterManager, contentTimelineManager); // for grabbing command, cwd, time and cleaning up output
+	});
+
+	vscode.window.onDidEndTerminalShellExecution(async event => {
+		await onDidEndTerminalShellExecutionHelper(event, clusterManager, contentTimelineManager); // for grabbing exit code and performing git actions
 	});
 
 	myCustomEmitter.on('save', async (entry) => {
@@ -381,7 +387,7 @@ function removeNonASCIICharsHelper(txt) {
 	return processedTxt;
 }
 
-async function onDidExecuteShellCommandHelper(event, clusterManager, contentTimelineManager) {
+async function onDidStartTerminalShellExecutionHelper(event, clusterManager, contentTimelineManager) {
 	try {
 		// console.log('event.terminal', event.terminal);
 		// console.log('event.shellIntegration', event.shellIntegration);
@@ -406,8 +412,8 @@ async function onDidExecuteShellCommandHelper(event, clusterManager, contentTime
 				output = output.replace(weirdRegex, '\\');
 			}
 
-			// Regex to grab between ]633;C and ]633;D including multiple lines (in the case of errors)
-			const outputRegex = /\]633;C([\s\S]*?)\]633;D/g;
+			// Regex to grab between ]633;C and (optional) ]633;D including multiple lines (in the case of errors)
+			const outputRegex = /\]633;C([\s\S]*?)(?=\]633;D|$)/g;
 			let outputMatch = output.match(outputRegex);
 			let finalOutput = '';
 			if(outputMatch){
@@ -428,16 +434,6 @@ async function onDidExecuteShellCommandHelper(event, clusterManager, contentTime
 				}
 			}
 
-			// Regex to check exit code
-			const exitCodeRegex = /\]633;D(?:;(\d+))?/g;
-			let exitCodeMatch = output.match(exitCodeRegex);
-			let exitCode = '';
-			if(exitCodeMatch){
-				exitCode = exitCodeMatch[0];
-				exitCode = exitCode.replace(']633;D;', '');
-				// console.log('exitCodeMatch:', exitCode);
-			}
-
 			// grab cwd from shellIntegration event
 			let cwd = '';
 			if(event.shellIntegration.cwd && event.shellIntegration.cwd.path){
@@ -447,16 +443,7 @@ async function onDidExecuteShellCommandHelper(event, clusterManager, contentTime
 				}
 			}
 
-			// Regex to match cmd executed
-			const execCmdRegex = /\]633;E;(.*?);/g;
-			let execCmdMatch = output.match(execCmdRegex);
-			let command = '';
-			if(execCmdMatch){
-				command = execCmdMatch[0];
-				command = command.replace(']633;E;', '');
-				command = command.replace(';', '');
-				// console.log('execCmdMatch:', command);
-			}
+			let command = event.execution.commandLine.value;
 
 			if (user && hostname) {
 				// Define regular expressions with word boundaries
@@ -477,54 +464,69 @@ async function onDidExecuteShellCommandHelper(event, clusterManager, contentTime
 					finalOutput = finalOutput.replace(userRegex, 'user');
 				}
 			}
-	
-			// console.log('command:', command);
-			// console.log('output:', finalOutput);
-			// console.log('cwd:', cwd);
-			// console.log('exitCode:', exitCode);
 
-			let executionInfo = {
-				type: 'execution',
-				command: command,
-				output: finalOutput,
-				exitCode: exitCode,
-				cwd: cwd,
-				time: time
-			};
-
-			console.log('executionInfo:', executionInfo);
-	
-			// Log the execution info to JSON file
-			const currentDir = getCurrentDir();
-			const ndjsonString = JSON.stringify(executionInfo) + '\n'; // Convert to JSON string and add newline
-			const outputPath = path.join(currentDir, 'CH_cfg_and_logs', 'CH_terminal_data.ndjson');
-			await fs.promises.appendFile(outputPath, ndjsonString);
-
-			await tracker.gitAdd();
-	
-			// if command contains "codehistories" then we should commit
-			if (command.includes("codehistories")) {
-				const outputTxtFilePath = path.join(currentDir, 'output.txt');
-				await fs.promises.appendFile(outputTxtFilePath, `${finalOutput}\n`);
-				await tracker.gitAddOutput();
-				await tracker.checkWebData();
-				if(usingHistoryView) {
-					await tracker.gitCommit();
-					let codeEntries = await tracker.grabLatestCommitFiles();
-					await clusterManager.processCodeEvents(codeEntries);
-				} else if(usingContentTimelineView) {
-					// await tracker.gitCommit();
-					await contentTimelineManager.processEvent(executionInfo);
-				} else {
-					await tracker.gitCommit();
-				}
-				// vscode.window.showInformationMessage('Commit supposedly executed successfully!');
-			} else {
-				await tracker.gitReset();
-			}
+			executionInfo.type = 'execution';
+			executionInfo.command = command;
+			executionInfo.output = finalOutput;
+			executionInfo.exitCode =  '';
+			executionInfo.cwd = cwd;
+			executionInfo.time = time;
 		}
 	} catch (error) {
 		console.log("Error occurred:", error);
+		await tracker.gitReset();
+		await vscode.window.showInformationMessage('Error committing to git. Please wait a few seconds and try again.');
+	}
+}
+
+async function onDidEndTerminalShellExecutionHelper(event, clusterManager, contentTimelineManager) {
+	try{
+		let exitCode = '';
+		if (event.exitCode === undefined) {
+			exitCode = -1; //'Command finished but exit code is unknown';
+		} else if (event.exitCode === 0) {
+			exitCode = 0; //'Command succeeded';
+		} else {
+			exitCode = 1; //'Command failed';
+		}
+
+		executionInfo.exitCode = exitCode;
+		// console.log('executionInfo:', executionInfo);
+
+		//Log the execution info to JSON file
+		const currentDir = getCurrentDir();
+		const ndjsonString = JSON.stringify(executionInfo) + '\n'; // Convert to JSON string and add newline
+		const outputPath = path.join(currentDir, 'CH_cfg_and_logs', 'CH_terminal_data.ndjson');
+		await fs.promises.appendFile(outputPath, ndjsonString);
+
+		await tracker.gitAdd();
+
+		// if command contains "codehistories" then we should commit
+		if (executionInfo.command.includes("codehistories")) {
+			const outputTxtFilePath = path.join(currentDir, 'output.txt');
+			await fs.promises.appendFile(outputTxtFilePath, `${executionInfo.output}\n`);
+			await tracker.gitAddOutput();
+			await tracker.checkWebData();
+			if(usingHistoryView) {
+				await tracker.gitCommit();
+				let codeEntries = await tracker.grabLatestCommitFiles();
+				await clusterManager.processCodeEvents(codeEntries);
+			} else if(usingContentTimelineView) {
+				// await tracker.gitCommit();
+				await contentTimelineManager.processEvent(executionInfo);
+			} else {
+				await tracker.gitCommit();
+			}
+			// vscode.window.showInformationMessage('Commit supposedly executed successfully!');
+		} else {
+			await tracker.gitReset();
+		}
+
+		// wait for a second then reset executionInfo
+		await new Promise(resolve => setTimeout(resolve, 1000));
+		executionInfo = {};
+	} catch (error) {
+		console.log("Error occurred in onDidEndTerminalShellExecutionHelper:", error);
 		await tracker.gitReset();
 		await vscode.window.showInformationMessage('Error committing to git. Please wait a few seconds and try again.');
 	}
