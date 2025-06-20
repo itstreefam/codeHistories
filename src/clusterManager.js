@@ -788,14 +788,14 @@ class ClusterManager {
         }
     }
 
-    async generateNLResponse(question) {
+    async generateNLResponse(question, relevant_info, most_relevant) {
         try {
 
             if (!question.trim()) {
                 return "no question";
             }
 
-            let prompt = `when given a question, don't answer it, simply summarize what the user question is about and what they are looking for or trying to know about. Here is the user question: ${question}`;
+            let prompt = `With the given information, summarize everything. Here is the user question: ${question}, here is all the relevant information: ${JSON.stringify(relevant_info)}, and here is the id of the most relevant information id to the user question: ${JSON.stringify(most_relevant)}. Please asnwer in the format like you are directly talking to the user, aka use second person. Please don't show the id, beacuse user does not know the id, the id was defined in the backend. `;
 
             console.log("in generateNLResponse, prompt: ", prompt);
             const completions = await openai.chat.completions.create({
@@ -804,7 +804,7 @@ class ClusterManager {
                 messages: [
                     {
                         role: "system",
-                        content: `You are a user question summarizer. you will be given a question asked by the user and it is your job to say in a format of "You are interested in finding/understanding... in your editing history, and here is what I have found:", it doesn't have to be exact wording but it does have to clearly convey what the user serached for and it is also an opportunity to demonstrate that the user question is being processed by a LLM and is a hint that natural language can be understanderstood here, meaning users are able to treat the search function as a chat with a LLM. `
+                        content: `You are a user question summarizer. you will be given a question asked by the user, overall information filtered regarding the question, and the most relevant piece of information id to answer the question. It is your job to summarize what the user asked, the result of user question, aka the filtered information provided, which one is the background information and which one is more relevant. It has to clearly convey what the user serached for and it is also an opportunity to demonstrate that the user question is being processed by a LLM and is a hint that natural language can be understanderstood here, meaning users are able to treat the search function as a chat with a LLM. If the user asked a definition question, provide the definite also in the response. `
                     },
                     { role: "user", content: prompt }
                 ]
@@ -812,6 +812,44 @@ class ClusterManager {
             console.log('API Response:', completions);
 
             let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
+           
+            this.chatGPTInvoked = true;
+            return `${summary}`;
+            
+
+        } catch (error) {
+            console.error("Error generating answer:", error.message);
+            return "response generation failed";
+        }
+    }
+
+    async generateRelevantInfo(question, relevant_info) {
+        try {
+
+            if (!question.trim()) {
+                return "no question";
+            }
+
+            let prompt = `Here is the user question: ${question}, and here is the filtered code change information: ${JSON.stringify(relevant_info)}. Please use the given question and information provided to find the most relevant piece of information, the rest are background information that might not seem important but it is still relevant.`;
+
+            console.log("in generateRelevantInfo, prompt: ", prompt);
+            const completions = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                max_tokens: 500,
+                messages: [
+                    {
+                        role: "system",
+                        content: `You are a code history reviewer. You will be provided with a user question and a list of already sorted out information about code changes. These information is grouped together with a larger overall goal therefore it is why some information listed does not seem relevant to the user question. 
+                        Return me an array of most relevant {id: entry.id} based on the question asked by the user.
+                        The array you have returned to me should not have extra formatting and should be ready to parse. `
+                    },
+                    { role: "user", content: prompt }
+                ]
+            });
+            console.log('In generateRelevantInfo, API Response:', completions);
+
+            let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
+            console.log('In generateRelevantInfo, filtered API Response:', completions);
            
             this.chatGPTInvoked = true;
             return `${summary}`;
@@ -848,7 +886,6 @@ class ClusterManager {
     }
 
     async *generateAnswerStream(question, whichOne, codeEvents, uniqueVisits) {
-        const startTime = performance.now();
 
         console.log("in generateAnswerStream, code events: ", codeEvents);
         console.log("in generateAnswerStream, unique visits: ", uniqueVisits);
@@ -893,9 +930,6 @@ class ClusterManager {
                 yield content;
             }
 
-            const endTime = performance.now();
-            console.log(`Call to generateAnswerStream() took ${endTime - startTime} milliseconds`);
-
             this.chatGPTInvoked = true;
 
         } catch (error) {
@@ -933,8 +967,8 @@ class ClusterManager {
             }));
 
             let prompt = whichOne === "history"
-                ? `The user will ask you to filter the database based on the context of this code history I provided: "${JSON.stringify(filteredArray)}", and here is the question: "${question}". If the user question is just "", simply say no question.`//, doesn't have to be in JSON. If there are questions, please provide a JSON return with the information you sorted, maintaining the same format as the JSON passed in. Don't say anything else. If the user asked for the code change histories, include the entire subgoal, including all codeChanges and corresponding links. If the user is asking for visited resources, include the whole subgoal section with all codeChanges and histories.`
-                : `The user will ask you to filter the database based on the history the user has accessed: "${JSON.stringify(filteredArrayResources)}", and here is the question: "${question}". If the user question is just "", simply say no question.`; //, doesn't have to be in JSON. If there are questions, please provide a JSON return with the information you sorted, maintaining the same format as the JSON passed in. Don't say anything else. If the user asked for the code change histories, include the entire subgoal, including all codeChanges and corresponding links. If the user is asking for visited resources, include the whole subgoal section with all codeChanges and histories.;
+                ? `The user will ask you to filter the database based on the context of this code history I provided: "${JSON.stringify(filteredArray)}", and here is the question: "${question}". If the user question is just "", simply say no question.`
+                : `The user will ask you to filter the database based on the history the user has accessed: "${JSON.stringify(filteredArrayResources)}", and here is the question: "${question}". If the user question is just "", simply say no question.`; 
 
             console.log("in generatePastAnswerStream, prompt: ", prompt);
             const stream = await openai.chat.completions.create({
@@ -1897,6 +1931,31 @@ class ClusterManager {
         return html;  // Return the generated HTML
     }
 
+    
+    findActivities (codeList, targets) {
+        const memoization = new Map();
+        for (const item of codeList) { 
+            memoization.set(String(item.id), item.codeChanges);
+        }
+        let result = [];
+
+        for(const target of targets) {
+            const key = String(target.id);
+            const codeChanges = memoization.get(key); 
+
+            if(Array.isArray(codeChanges)) {
+                for(const change of codeChanges) {
+                    result.push({
+                        id: change.id, 
+                        title: change.title
+                    });
+                }
+            }
+        }
+
+        return result;
+    }
+
     async generateChatGPTResponseHTML(question) {
 
 
@@ -2149,10 +2208,6 @@ class ClusterManager {
             let reduceLoad = await this.isHistoryOrResource(question);
             console.log("history or resources? ", reduceLoad);
 
-            let natural_language_indicator = await this.generateNLResponse(question);
-            console.log("HERE IS THE NATURAL LANGUAGE INDICATOR: ", natural_language_indicator);
-
-
             if(!reduceLoad.includes("history") || !reduceLoad.includes("resource")) {
                 reduceLoad = "history";
             }
@@ -2171,13 +2226,26 @@ class ClusterManager {
             console.log("generateChatGPTResponseHTML RESPONSE: ", streamedResponse);
 
             let parsed = JSON.parse(streamedResponse);
+            //here is the response in a array format!!!!!!
+           
             console.log("generateChatGPTResponseHTML PARSED: ", parsed);
+            console.log("the orginal array: ", this.codeActivities);
 
             parsed = parsed.map(entry => ({
                 ...entry,
                 id: parseInt(entry.id, 10) // or: id: +entry.id
+                //purpose: making the ID an actually integer rather than string
             }));
             console.log("generateChatGPTResponseHTML PARSED: ", parsed);
+            console.log("Here is the list of ids that we can then send to chatGPT: ", this.findActivities(this.codeActivities, parsed));
+            
+            let extra_filter = await this.generateRelevantInfo(question, this.findActivities(this.codeActivities, parsed));
+            let parsed_extra = JSON.parse(extra_filter);
+            console.log("HERE IS THE EXTRA FILTERED ARRAY: ", parsed_extra);
+            
+            let natural_language_indicator = await this.generateNLResponse(question, this.findActivities(this.codeActivities, parsed), parsed_extra);
+            console.log("HERE IS THE NATURAL LANGUAGE INDICATOR: ", natural_language_indicator);
+
             let html = `<div>
                             <p>${natural_language_indicator}<p>
                         </div>`;
@@ -2201,8 +2269,123 @@ class ClusterManager {
                 }
                 else {
                     let count = 0;
+                    //check for most relevant information: parsed_extra
+                    const targetIDs = new Set(parsed_extra.map(t => String(t.id)));
+
                     for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
                         const subgoal = group.codeChanges[subgoalKey];
+                        console.log("LINE 2275: ", subgoal);
+
+                        if (!targetIDs.has(String(subgoal.id))) continue;
+
+                        const diffHTML = this.generateDiffHTMLGroup(subgoal);
+                        if (links.resources.length != 0 && count < links.resources.length) {
+                            html += `
+                            
+                        <li data-eventid="${subgoalKey}">
+                            <!-- Editable title for the code activity -->
+                                    <div class="li-header">
+                                <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
+                                <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
+                                <!-- <i class="bi bi-pencil-square"></i> -->
+                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
+                                                <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
+                                                <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
+                                            </svg>
+                                        </button>
+                                <b>in ${subgoal.file} </b> `
+                            const link = links.resources[count];
+                            // console.log(link.actions.length);
+                            html += `
+                                        <div class="container">
+                                            <i class="bi bi-bookmark"></i>
+                            <div class="centered">${link.actions.length}</div>
+                        </div>`
+                            html += `
+                                    </div>
+
+                                    <div class="content">
+                            <div class="left-container">
+                                            ${diffHTML}
+                                        </div>
+                            <div class="resources">
+                        `
+                            if (count < links.resources.length) {
+                                const link = links.resources[count];
+                                // html += `<ul class="link_list">`
+                                for (let i = 0; i < link.actions.length; i++) {
+                                    const eachLink = links.resources[count].actions[i];
+                                    html += `   
+                                        <div class="tooltip">
+                                            <a href="${eachLink.webpage}">${eachLink.webTitle}</a><br>
+        
+                                            <br>
+
+
+
+
+
+                                            </div>
+                                        <br>
+                                    `
+                                }
+                                html += `
+        
+                                </div>`
+                            } else {
+                                html += `</div>`
+                            }
+                        } else {
+                            html += `
+                        <li data-eventid="${subgoalKey}">
+                            <!-- Editable title for the code activity -->
+                            <div class="li-header">
+                                <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
+                                <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
+                                <!-- <i class="bi bi-pencil-square"></i> -->
+                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
+                                    <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
+                                    <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
+                                    </svg>
+                                </button>
+                                <b>in ${subgoal.file} </b>
+                                <div class="placeholder">
+                                                            </div>
+                                            </div>
+                            <div class="content">
+                                <div class="full-container">
+                                    ${diffHTML}
+                                    </div>
+                            </div>`
+                        }
+                        count++;
+                        html += `
+                                </li>
+                        <script> 
+                            document.addEventListener('DOMContentLoaded', () => {
+                                const button = document.getElementById('plusbtn-${groupKey}-${subgoalKey}');
+
+                                button.addEventListener('click', () => {
+                                    button.textContent = button.textContent === '+' ? '-' : '+';
+                                });
+                            });
+                            document.getElementById('button-${groupKey}-${subgoalKey}').addEventListener('click', function() {
+                                document.getElementById('code-title-${groupKey}-${subgoalKey}').focus();
+                                            });  
+                                </script>
+                            `;
+                    }
+                    html += `
+                    <br>
+                    <p><b>Here is the background information that can be helpful: </b></p>
+                    `;
+
+                    for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
+                        const subgoal = group.codeChanges[subgoalKey];
+
+                        if (targetIDs.has(String(subgoal.id))) continue;
 
                         const diffHTML = this.generateDiffHTMLGroup(subgoal);
                         if (links.resources.length != 0 && count < links.resources.length) {
@@ -2324,6 +2507,7 @@ class ClusterManager {
             return `<p style="color:red;">Error: ${err.message}</p>`;
         }
     }
+
 
     generateDiffHTMLGroup(codeActivity) {
         // Get the event at startTime
