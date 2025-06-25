@@ -65,8 +65,8 @@ class ClusterManager {
         this.currentWebEvent = null;
         this.idCounter = 0;
         this.styles = historyStyles;
-        this.initializeTemporaryTest();
-        this.initializeResourcesTemporaryTest();
+        // this.initializeTemporaryTest();
+        // this.initializeResourcesTemporaryTest();
         this.debugging = true;
         this.prevCommittedEvents = [];
         this.isInitialized = false;
@@ -79,6 +79,7 @@ class ClusterManager {
         this.chatGPTInvoked = false;
         this.queryHistory = []; // Store previous queries and responses
         this.activeDecorations = []; // Task active decorations/highlights
+        this.hasRestoredFromLastSession = false; // Track if we restored from last session
     }
 
     initializeTemporaryTest(){
@@ -107,6 +108,58 @@ class ClusterManager {
         this.isInitialized = true;
     }
 
+    async restoreLastSession() {
+        try {
+            // read from CH_cfg_and_logs and check if file in this format history_webview_${dateStr}_${epochTimeInSeconds}.html exists
+            const currentDir = getCurrentDir();
+
+            // regex to match history_webview_*.html
+            const regex = /history_webview_.*\.html/;
+            const files = fs.readdirSync(path.join(currentDir, 'CH_cfg_and_logs'));
+            const historyFiles = files.filter(file => regex.test(file));
+
+            if (historyFiles.length > 0) {
+                // get the most recent file
+                const mostRecentFile = historyFiles.sort((a, b) => {
+                    const aTime = parseInt(a.split('_').slice(-1)[0].replace('.html', ''));
+                    const bTime = parseInt(b.split('_').slice(-1)[0].replace('.html', ''));
+                    return bTime - aTime; // Sort in descending order
+                })[0];
+
+                // read the file content
+                const filePath = path.join(currentDir, 'CH_cfg_and_logs', mostRecentFile);
+                const fileContent = fs.readFileSync(filePath, 'utf8');
+
+                // // get first 5 lines of the file content
+                // const firstFiveLines = fileContent.split('\n').slice(0, 5).join('\n');
+                // console.log(firstFiveLines);
+
+                return fileContent; // html format
+
+                // // Set the webviewPanel's HTML content to the file content
+                // this.webviewPanel = vscode.window.createWebviewPanel(
+                //     'historyWebview',
+                //     'History Webview',
+                //     vscode.ViewColumn.Beside,
+                //     {
+                //         enableScripts: true,
+                //         enableFindWidget: true
+                //     }
+                // );
+
+                // // Set the initial HTML content
+                // this.webviewPanel.webview.html = fileContent;
+                // this.webviewPanel.reveal(vscode.ViewColumn.Beside);
+            } else {
+                return null; // No history files found
+            }
+        } catch (error) {
+            console.error('Error restoring last session:', error);
+            vscode.window.showErrorMessage('Failed to restore last session.');
+            return null; // Return null if an error occurs
+        }
+    }
+
     async initializeWebview() {
         if(this.isPanelClosed && this.stayPersistent === false){
             return;
@@ -118,9 +171,23 @@ class ClusterManager {
             return;
         }
 
-        // Retrieve the previous state from globalState
-        this.previousState = this.context.globalState.get('historyWebviewState', null);
+        let htmlContent = null;
 
+        // Retrieve the previous state from globalState
+        this.previousWebviewState = this.context.globalState.get('previousWebviewState') || null;
+
+        // If there's a previous state, restore it
+        if (this.previousWebviewState) {
+            htmlContent = this.previousWebviewState; // html
+        } else if(!this.hasRestoredFromLastSession) {
+            // Try to restore from the last session (one-time at initialization)
+            const restoredContent = await this.restoreLastSession(); // this returns HTML content or null if no file found
+            if (restoredContent) {
+                htmlContent = restoredContent;
+                this.hasRestoredFromLastSession = true;
+            }
+        }
+        
         this.webviewPanel = vscode.window.createWebviewPanel(
             'historyWebview',
             'History Webview',
@@ -131,10 +198,8 @@ class ClusterManager {
             }
         );
 
-        // If there's a previous state, restore it
-        if (this.previousState) {
-            this.webviewPanel.webview.html = this.previousState.html;
-            this.webviewPanel.webview.postMessage({ command: 'restoreState', state: this.previousState });
+        if (htmlContent) {
+            this.webviewPanel.webview.html = htmlContent;
         } else {
             // Set the initial HTML content if no previous state exists
             await this.updateWebPanel();
@@ -146,10 +211,9 @@ class ClusterManager {
             this.webviewPanel = null; // Clean up the reference
         });
 
-        // Send a message to the webview just before it is closed
+        // Save webview's html just before it is closed
         this.webviewPanel.onDidDispose(() => {
-            // Request the webview to send its current state before closing
-            this.webviewPanel.webview.postMessage({ type: 'saveStateRequest' });
+            this.context.globalState.update('previousWebviewState', this.webviewPanel.webview.html);
 
             // Set a small timeout to ensure the state is sent before we consider it disposed
             setTimeout(() => {
@@ -160,11 +224,6 @@ class ClusterManager {
 
         // Listen for messages from the webview to save the state
         this.webviewPanel.webview.onDidReceiveMessage(async message => {
-            if (message.type === 'saveState') {
-                // Save the state returned by the webview
-                await this.context.globalState.update('historyWebviewState', message.state);
-            }
-
             if (message.command === 'updateCodeTitle') {
                 await this.updateCodeTitle(message.groupKey, message.eventId, message.title);
             }
@@ -1126,18 +1185,18 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
             );
         }
 
-        if (!this.webviewPanel) {
-            this.webviewPanel = vscode.window.createWebviewPanel(
-                "chatPanel",
-                "Chat Panel",
-                vscode.ViewColumn.One,
-                { enableScripts: true }
-            );
+        // if (!this.webviewPanel) {
+        //     this.webviewPanel = vscode.window.createWebviewPanel(
+        //         "chatPanel",
+        //         "Chat Panel",
+        //         vscode.ViewColumn.One,
+        //         { enableScripts: true }
+        //     );
 
-            this.webviewPanel.onDidDispose(() => {
-                this.webviewPanel = null;
-            });
-        }
+        //     this.webviewPanel.onDidDispose(() => {
+        //         this.webviewPanel = null;
+        //     });
+        // }
         
         // const chatboxHTML = await this.generateChatGPTResponseHTML('');
         // const groupedEventsHTML = await this.generateGroupedEventsHTML();
@@ -1145,8 +1204,8 @@ Omit those repeating links and have a paragraph corresponding to each link. Be r
 
         console.log("line 864");
         const chatboxHTML = await this.generateChatGPTResponseHTML('');
-        const groupedEventsHTML = await this.generateGroupedEventsHTMLTest();
-        const strayEventsHTML = await this.generateStrayEventsHTMLTest();
+        const groupedEventsHTML = await this.generateGroupedEventsHTML();
+        const strayEventsHTML = await this.generateStrayEventsHTML();
 
         this.webviewPanel.webview.html = `
             <!DOCTYPE html>

@@ -851,6 +851,9 @@ function deactivate() {
 			const groupedEventsPath = path.join(currentDir, 'CH_cfg_and_logs', `grouped_events_${dateStr}_${epochTimeInSeconds}.json`);
 			const groupedEvents = clusterManager.displayForGroupedEvents;
 			fs.writeFileSync(groupedEventsPath, JSON.stringify(groupedEvents, null, 4));
+
+			// reset flag
+			clusterManager.hasRestoredFromLastSession = false;
 		} 
 		
 		if(usingContentTimelineView){
