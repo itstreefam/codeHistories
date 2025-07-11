@@ -55,7 +55,7 @@ const historyStyles = `
     }
 
     #upper{
-        height: 50vh;
+        height: 70vh;
     }
 
     #lower{
@@ -102,7 +102,7 @@ const historyStyles = `
     }
 
     li {
-        margin-bottom: 7px;
+        margin-bottom: 10px;
     }
 
     .editable-title {
@@ -375,6 +375,10 @@ const historyStyles = `
         justify-content: space-between;
         margin-right: 5vw;
         text-align: center;
+    }
+
+    .stories_with_code {
+
     }
 `;
 
