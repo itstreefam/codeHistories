@@ -99,6 +99,7 @@ const historyStyles = `
     ul {
         list-style-type: none;
         padding-left: 0;
+        padding-top: 120px;
     }
 
     li {
@@ -106,7 +107,7 @@ const historyStyles = `
     }
 
     .editable-title {
-        background-color: #ffffff;
+        background-color: transparent;
         color: #333333;
         border: none;
         padding: 5px 10px;
@@ -377,8 +378,45 @@ const historyStyles = `
         text-align: center;
     }
 
-    .stories_with_code {
+    .subgoal_summary {
+        font-weight: normal;
+    }
 
+    .upper_header {
+        position: fixed;
+        height: 120px;
+        background-color: #ffffff;
+        width: 100%; 
+        z-index: 100;
+    }
+
+    .tooltip-wrapper {
+    position: relative;
+    display: inline-block;
+    cursor: help;
+    }
+
+    .custom-tooltip {
+    visibility: hidden;
+    opacity: 0;
+    position: absolute;
+    bottom: 120%; /* adjust as needed */
+    left: 0;
+    background-color: black;
+    color: white;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: larger;
+    white-space: pre-line;
+    max-width: 600px;
+    z-index: 100;
+    transition: opacity 0.15s ease-in-out;
+    pointer-events: none;
+    }
+
+    .tooltip-wrapper:hover .custom-tooltip {
+    visibility: visible;
+    opacity: 1;
     }
 `;
 

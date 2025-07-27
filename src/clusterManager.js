@@ -77,7 +77,7 @@ class ClusterManager {
     }
 
     initializeTemporaryTest() {
-        const testData = new temporaryTest(String.raw`C:\users\zhouh\Downloads\wordleStory.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\users\zhouh\Downloads\clone2048.json`); // change path of test data here
         // codeActivities has id, title, and code changes
         // the focus atm would be code changes array which contains smaller codeActivity objects
         // for eg, to access before_code, we would do this.codeActivities[0].codeChanges[0].before_code
@@ -90,7 +90,7 @@ class ClusterManager {
     }
 
     initializeResourcesTemporaryTest() {
-        const testData = new temporaryTest(String.raw`C:\users\zhouh\Downloads\wordleStory.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\users\zhouh\Downloads\clone2048.json`); // change path of test data here
         this.codeResources = testData.processResources(testData.data);
         console.log("Resources", this.codeResources);
     }
@@ -809,18 +809,8 @@ Your job is to summarize what is happening — what the user is asking, what the
 - Don’t mention backend IDs.
 - Be concise and neutral.
 - This is not a conversation; don’t say things like “feel free to ask.”
-
-Write in second person.
-
-If appropriate, include a short **"Hint"** section at the end with 1–2 suggestions for what you might want to explore next — for example:
-- a follow-up edit that supports the same goal
-- a related question you might ask
-- a concept that might clarify your thinking
-
-If there is no useful suggestion, leave out the Hint section entirely.
             `;
 
-            // console.log("in generateNLResponse, prompt: ", prompt);
             const completions = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 max_tokens: 500,
@@ -836,7 +826,58 @@ If there is no useful suggestion, leave out the Hint section entirely.
                     { role: "user", content: prompt }
                 ]
             });
-            // console.log('API Response:', completions);
+
+            let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
+
+            this.chatGPTInvoked = true;
+            return `${summary}`;
+
+
+        } catch (error) {
+            console.error("Error generating answer:", error.message);
+            return "response generation failed";
+        }
+    }
+
+    async generateHint(question, subgoal, most_relevant) {
+        try {
+
+            if (!question.trim()) {
+                return "no question";
+            }
+
+            let prompt = `You are given 3 things:
+1. A user question: ${question}
+2. An overall goal for this section: ${subgoal}
+3. A detailed edit made toward the goal: ${JSON.stringify(most_relevant)}
+
+Your job is to write a **single sentence** that directs the reader to this section of the code edit.
+
+your job is to provide a one sentence response in the format of "Read this section to learn more about [what this edits was]."
+
+Guidelines:
+- Focus on the exact logic or behavior that was changed or added.
+- Be precise and concrete (e.g., mention the function or visual behavior if relevant).
+- Avoid praise or general statements.
+- Do not refer to the fact that an edit was made—just what it teaches or explains.
+- Do not include quotes or code block formatting.
+- Don’t mention backend IDs.`;
+
+            const completions = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                max_tokens: 500,
+                messages: [
+                    {
+                        role: "system",
+                        content: `You are a code history comprehension helpter. you will be given 3 different informations: 
+                        1. a question asked by the user, 
+                        2. overall goal for this smaller code change, and 
+                        3. the specific change happened in the code that partially contribute to the overall goal, it will also have a smaller subgoal here, the overall goal was breaked into smaller subgoal such as the one provided here. 
+                        your job here is to write little "hints" for the user as to which area they should be looking at. the hints you write will allow them to quickly skip anything that is not related to their user question. `
+                    },
+                    { role: "user", content: prompt }
+                ]
+            });
 
             let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
 
@@ -853,25 +894,38 @@ If there is no useful suggestion, leave out the Hint section entirely.
     async generateStoryResponse(question, parallelled_array) {
         try {
 
+            console.log("generateStoryResponse parallel array: ", parallelled_array)
+
             if (!question.trim()) {
                 return "no question";
             }
+//             let prompt = `You are a technical summarization assistant. Given a chronological array of coding events answering the question: "${question}", rewrite each event as a concise bullet-point style summary.
 
-            // let prompt = `you are given question: ${question}, and here is the array of information generated earlier that goes in chronological order: ${JSON.stringify(parallelled_array)}. please rewrite then in a more cohesive manner. Keep the array styling with the same chronological order, ie. if the give information is (3) ["...", "...", "..."],  you should return an array that is ready to parse and should have the same length as the original one just that the sentences in the original one are improved here for better story flow. they should also remain in the same chronological order. `;
+// Requirements:
+// - Keep the array length and order exactly the same.
+// - Start each entry with a short, bolded label in HTML like "<strong>Label:</strong>".
+// - Then list the key points as short bullet points separated by "\n- ".
+// - Focus on what was implemented, changed, or fixed, mentioning key functions or components.
+// - Avoid filler words, compliments, or repetitive phrases.
+// - Compress minor or unrelated steps into a single clear sentence.
+// - Use active and direct language.
+// - Output only the revised array as valid array, no extra text or explanation. ready to parse`;
+let prompt = `You are a technical summarization assistant. Given a chronological array of coding events:"${JSON.stringify(parallelled_array)}", answering the question: "${question}", rewrite each event as a concise, HTML-formatted summary.
 
-            let prompt = `You are helping summarize a sequence of coding events that answer the question: "${question}"
+Requirements:
+- Don't repeat what the user is asking or inquiring about.
+- The number of output items must exactly match the input array length. For each input entry, generate one corresponding summary.
+- Keep the array length and order exactly the same.
+- Start each entry with a short bolded label in HTML, like "<strong>a small phrase that describes the edits:</strong>".
+- Then include a <ul style="padding-top: 0px;list-style: circle;margin-left: 40px;"> with each key point wrapped in an <li> tag.
+- Focus on what was implemented, changed, or fixed. Mention key functions or elements.
+- Instead of putting quotation around objects from the code, put <code> tag.
+- Avoid filler language, compliments, or repetition.
+- Combine minor or low-value steps into one line when needed.
+- Use clear, direct language.
+- Output only the revised array as valid array ready to parse (do not wrap in extra text).`;
 
-Here is the chronological array of events:
-${JSON.stringify(parallelled_array)}
 
-Your task is to rewrite this array into a cleaner, more cohesive narrative:
-- Keep the array format and order (same length, valid JSON)
-- Start each entry with a short summary label, like "<strong>Updated tile logic:</strong>"
-- Use <strong>...</strong> to emphasize parts relevant to the question
-- Avoid repeating phrases like "You asked..." in each entry
-- Instead, use the question to guide emphasis in each step
-- Compress unrelated or low-value steps into brief summaries
-- Output only the revised array as valid JSON, nothing else`;
             const completions = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 max_tokens: 1500,
@@ -905,25 +959,37 @@ Your task is to rewrite this array into a cleaner, more cohesive narrative:
                 return "no question";
             }
 
+            // let prompt = `You are given a user question and a chronological sequence of summarized coding events. These events represent the user's step-by-step progress toward a specific coding goal.
+            // Your job is to the answer to the question.
+            // - Be precise and direct
+            // Question: ${question}
+            // Chronological steps:
+            // ${JSON.stringify(parallelled_array)}`;
             let prompt = `You are given a user question and a chronological sequence of summarized coding events. These events represent the user's step-by-step progress toward a specific coding goal.
 
-Your job is to write a short, high-level summary (1–3 sentences) that captures the overall **development journey** reflected in the steps. Focus on how the work evolved over time: where the process started, how it progressed, and what it was aiming to achieve.
+Your job is to answer the question based on the coding events.
 
-Use simple, narrative language. Emphasize the purpose and trajectory of the changes rather than listing specific edits.
-
-Only include information relevant to the question.
+Instructions:
+- Begin with a direct, one-sentence answer to the question. besure to put <strong> tag around it
+- Follow up with 1–2 sentences that explain how the user's code or steps address the question.
+- Be precise, specific, and technical where appropriate.
+- Avoid general summaries or vague commentary.
+- Do not compliment or praise the user.
+- Do not repeat the question in your answer.
+- Output only the final answer, no preamble or list formatting.
 
 Question: ${question}
 
-Chronological steps:
+Chronological coding steps:
 ${JSON.stringify(parallelled_array)}`;
+
             const completions = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 max_tokens: 1000,
                 messages: [
                     {
                         role: "system",
-                        content: `You are helping summarize a programmer's progress on a specific feature. Your job is to generate a short high-level summary of the development process described in a list of changes. Focus on the story of how the work evolved toward a coding goal.`
+                        content: `You are a question answerer. You are given a user question and a list of events done by the user. Try to answer the question using the events given to you. `
                     },
                     { role: "user", content: prompt }
                 ]
@@ -941,43 +1007,66 @@ ${JSON.stringify(parallelled_array)}`;
         }
     }
 
-    // async generateRelevantInfo(question, relevant_info) {
-    //     try {
+    findActivities (codeList, targets) {
+        const memoization = new Map();
+        for (const item of codeList) { 
+            memoization.set(String(item.id), item.codeChanges);
+        }
+        let result = [];
 
-    //         if (!question.trim()) {
-    //             return "no question";
-    //         }
+        for(const target of targets) {
+            const key = String(target.id);
+            const codeChanges = memoization.get(key); 
 
-    //         let prompt = `Here is the user question: ${question}, and here is the filtered code change information: ${JSON.stringify(relevant_info)}. Please use the given question and information provided to find the most relevant piece of information, the rest are background information that might not seem important but it is still relevant.`;
+            if(Array.isArray(codeChanges)) {
+                for(const change of codeChanges) {
+                    result.push({
+                        id: change.id, 
+                        title: change.title
+                    });
+                }
+            }
+        }
 
-    //         // console.log("in generateRelevantInfo, prompt: ", prompt);
-    //         const completions = await openai.chat.completions.create({
-    //             model: "gpt-4o-mini",
-    //             max_tokens: 500,
-    //             messages: [
-    //                 {
-    //                     role: "system",
-    //                     content: `You are a code history reviewer. You will be provided with a user question and a list of already sorted out information about code changes. These information is grouped together with a larger overall goal therefore it is why some information listed does not seem relevant to the user question. 
-    //                     Return me an array of most relevant {id: entry.id} based on the question asked by the user.
-    //                     The array you have returned to me should not have extra formatting and should be ready to parse. `
-    //                 },
-    //                 { role: "user", content: prompt }
-    //             ]
-    //         });
-    //         // console.log('In generateRelevantInfo, API Response:', completions);
+        return result;
+    }
 
-    //         let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
-    //         // console.log('In generateRelevantInfo, filtered API Response:', completions);
+    async generateRelevantInfo(question, relevant_info) {
+        try {
 
-    //         this.chatGPTInvoked = true;
-    //         return `${summary}`;
+            if (!question.trim()) {
+                return "no question";
+            }
+
+            let prompt = `Here is the user question: ${question}, and here is the filtered code change information: ${JSON.stringify(relevant_info)}. Please use the given question and information provided to find the most relevant piece of information, the rest are background information that might not seem important but it is still relevant.`;
+
+            const completions = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                max_tokens: 500,
+                messages: [
+                    {
+                        role: "system",
+                        content: `You are a code history reviewer. You will be provided with a user question and a list of already sorted out information about code changes. These information is grouped together with a larger overall goal therefore it is why some information listed does not seem relevant to the user question. 
+                        Return me an array of most relevant {id: entry.id} based on the question asked by the user, you can include as many as possible.
+                        There will be instances where all information seem relevant, if so, send everthing. 
+                        The array you have returned to me should not have extra formatting and should be ready to parse. `
+                    },
+                    { role: "user", content: prompt }
+                ]
+            });
+
+            let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
+            // console.log('In generateRelevantInfo, filtered API Response:', completions);
+
+            this.chatGPTInvoked = true;
+            return `${summary}`;
 
 
-    //     } catch (error) {
-    //         console.error("Error generating answer:", error.message);
-    //         return "response generation failed";
-    //     }
-    // }
+        } catch (error) {
+            console.error("Error generating answer:", error.message);
+            return "response generation failed";
+        }
+    }
 
     async isHistoryOrResource(question) {
         try {
@@ -1180,6 +1269,7 @@ ${JSON.stringify(parallelled_array)}`;
             <body>
             <div class="wrapper">
                 <div class="box" id="upper">
+                <div class="upper_header">
                     <div>
                         <h2>Recent Development Highlights </h2>
                     </div>
@@ -1201,6 +1291,7 @@ ${JSON.stringify(parallelled_array)}`;
                         </div>
                         <p class="description">Click line numbers to jump to code</p>
                     </div>
+                </div>
                     <ul id="grouped-events">
                         ${groupedEventsHTML}
                     </ul>
@@ -1549,13 +1640,15 @@ ${JSON.stringify(parallelled_array)}`;
 
 
 
-        for (let groupKey = 0; groupKey <= 8; groupKey++) {
+        for (let groupKey = 0; groupKey < this.codeActivities.length; groupKey++) {
             const group = this.codeActivities[groupKey];
+            console.log(group)
             const links = this.codeResources[groupKey];
 
             let count = 0;
             for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
                 const subgoal = group.codeChanges[subgoalKey];
+                console.log("here is the subgoal for debug purpose: ", subgoal);
 
                 const diffHTML = this.generateDiffHTMLGroup(subgoal);
 
@@ -2120,11 +2213,11 @@ ${JSON.stringify(parallelled_array)}`;
                 }
             }
 
-            console.log("filtered array code events: ", filteredArray);
-            console.log("filtered array resources", filteredArrayResources);
+            // console.log("filtered array code events: ", filteredArray);
+            // console.log("filtered array resources", filteredArrayResources);
 
             const reduceLoad = await this.isHistoryOrResource(question);
-            console.log("history or resources? ", reduceLoad);
+            // console.log("history or resources? ", reduceLoad);
 
             // const natural_language_indicator = await this.generateNLResponse(question);
             // console.log("natural_language_indicator: ", natural_language_indicator);
@@ -2323,12 +2416,12 @@ ${JSON.stringify(parallelled_array)}`;
         const startTime = performance.now();
 
         try {
-            let reduceLoad = await this.isHistoryOrResource(question);
-            // console.log("history or resources? ", reduceLoad);
+            // let reduceLoad = await this.isHistoryOrResource(question);
+            let reduceLoad = "history";
 
-            if (!reduceLoad.includes("history") || !reduceLoad.includes("resource")) {
-                reduceLoad = "history";
-            }
+            // if (!reduceLoad.includes("history") || !reduceLoad.includes("resource")) {
+            //     reduceLoad = "history";
+            // }
 
             const generator = this.generatePastAnswerStream(question, reduceLoad);
             let streamedResponse = "";
@@ -2342,13 +2435,8 @@ ${JSON.stringify(parallelled_array)}`;
                 return `<p>No question detected.</p>`;
             }
 
-            // console.log("generateChatGPTResponseHTML RESPONSE: ", streamedResponse);
-
             let parsed = JSON.parse(streamedResponse);
             //here is the response in a array format!!!!!!
-
-            // console.log("generateChatGPTResponseHTML PARSED: ", parsed);
-            // console.log("the orginal array: ", this.codeActivities);
 
             parsed = parsed.map(entry => ({
                 ...entry,
@@ -2358,17 +2446,17 @@ ${JSON.stringify(parallelled_array)}`;
             // console.log("generateChatGPTResponseHTML PARSED: ", parsed);
             // console.log("Here is the list of ids that we can then send to chatGPT: ", this.findActivities(this.codeActivities, parsed));
 
-            // let extra_filter = await this.generateRelevantInfo(question, this.findActivities(this.codeActivities, parsed));
-            // let parsed_extra = JSON.parse(extra_filter);
+            let extra_filter = await this.generateRelevantInfo(question, this.findActivities(this.codeActivities, parsed));
+            let parsed_extra = JSON.parse(extra_filter);
 
-            // console.log("HERE IS THE EXTRA FILTERED ARRAY: ", parsed_extra);
+            console.log("HERE IS THE EXTRA FILTERED ARRAY: ", parsed_extra);
 
             //loop here to grab every smaller subgoal --> save it in an array and then pass it parallelly to api
             let array_for_parallel = [];
-            for (let groupKey = 0; groupKey <= 8; groupKey++) {
+            for (let groupKey = 0; groupKey < this.codeActivities.length; groupKey++) {
                 const group = this.codeActivities[groupKey];
                 const links = this.codeResources[groupKey];
-                console.log(group.title);
+                console.log("check id", group);
 
                 let contains = parsed.some(entry => entry.id == group.id);
                 if (!contains) {
@@ -2384,19 +2472,28 @@ ${JSON.stringify(parallelled_array)}`;
                     }
                 }
             }
+            console.log("array_for_parallel", array_for_parallel);
 
             const results = await Promise.all(
-                array_for_parallel.map(jsonStr => {
+                array_for_parallel.map(async jsonStr => {
                     const parsed = JSON.parse(jsonStr);
                     const subgoal = parsed.title;
                     const most_relevant = parsed;
+
+                    // const[response, hint] = await Promise.all([
+                    //     this.generateNLResponse(question, subgoal, most_relevant), 
+                    //     this.generateHint(question, subgoal, most_relevant)
+                    // ]);
                     return this.generateNLResponse(question, subgoal, most_relevant);
+                    // return [response, hint];
                 })
             );
-            // console.log("HERE IS THE PARALLELISM RESULT: ", results);
-            // console.log(array_for_parallel);
+            const responses = results.map(pair => pair[0]);
+            // const hints = results.map(pair => pair[1]);
 
-            // let story = await this.generateStoryResponse(question, results);
+            console.log("HERE IS THE PARALLELISM RESULT FOR RESPONSE: ", responses);
+            // console.log("HERE IS THE PARALLELISM RESULT FOR HINTS: ", hints);
+
             const promises = {
                 story: this.generateStoryResponse(question, results),
                 summary: this.generateSummary(question, results)
@@ -2410,24 +2507,14 @@ ${JSON.stringify(parallelled_array)}`;
             story = JSON.parse(story);
             console.log("HERE IS THE STORY: ", story);
 
-            // let natural_language_indicator = "placeholder";
-            // console.log("HERE IS THE NATURAL LANGUAGE INDICATOR: ", natural_language_indicator);
-
-            // let html = `<div>
-            //                 <p>${natural_language_indicator}<p>
-            //             </div>`;
-            let html = `<h3>Summary: </h3>
-            <h4>${summary}</h4>
-                        <hr>
+            let html = `<h2>Summary: </h2>
+            <p>${summary}</p>
+            <hr>
+            <h2>Your process: </h2>
             `;
 
-            // if (!this.codeResources || this.codeResources.length === 0) {
-            //     console.error("codeResources is undefined or empty");
-            //     return '<li>No resources for you :(.</li>';
-            // }
-
-            // console.log("generateChatGPTResponseHTML: ", this.displayForGroupedEvents);
-            for (let groupKey = 0; groupKey <= 8; groupKey++) {
+            let index = 1;
+            for (let groupKey = 0; groupKey < this.codeActivities.length; groupKey++) {
 
                 const group = this.codeActivities[groupKey];
                 const links = this.codeResources[groupKey];
@@ -2441,21 +2528,25 @@ ${JSON.stringify(parallelled_array)}`;
                 else {
                     let count = 0;
                     //check for most relevant information: parsed_extra
-                    // const targetIDs = new Set(parsed_extra.map(t => String(t.id)));
+                    const targetIDs = new Set(parsed_extra.map(t => String(t.id)));
 
                     for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
                         const subgoal = group.codeChanges[subgoalKey];
                         // console.log("LINE 2275: ", subgoal);
 
                         // if (targetIDs.has(String(subgoal.id))) {
-                        // }
+
+                        // } else {
 
                         html += `
-                        <div class="stories_with_code">
                         <div class="stories">
-                                <p><strong>${subgoalKey + 1}: </strong> ${story[subgoalKey]}</p>
-                            </div>
+                                <p><strong>${index}: </strong> 
+                                    ${story[index-1]}
+                                </p>
+                        </div>
                         `;
+                        // }
+                        index ++;
 
                         const diffHTML = this.generateDiffHTMLGroup(subgoal);
                         if (links.resources.length != 0 && count < links.resources.length) {
@@ -2558,115 +2649,6 @@ ${JSON.stringify(parallelled_array)}`;
                                 </script>
                             `;
                     }
-                    // html += `
-                    // <br>
-                    // <p><b>Here is the background information that can be helpful: </b></p>
-                    // `;
-
-                    // for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
-                    //     const subgoal = group.codeChanges[subgoalKey];
-
-                    //     if (targetIDs.has(String(subgoal.id))) continue;
-
-                    //     const diffHTML = this.generateDiffHTMLGroup(subgoal);
-                    //     if (links.resources.length != 0 && count < links.resources.length) {
-                    //         html += `
-
-                    //     <li data-eventid="${subgoalKey}">
-                    //         <!-- Editable title for the code activity -->
-                    //                 <div class="li-header">
-                    //             <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
-                    //             <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
-                    //             <!-- <i class="bi bi-pencil-square"></i> -->
-                    //             <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
-                    //                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
-                    //                             <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
-                    //                             <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
-                    //                         </svg>
-                    //                     </button>
-                    //             <b>in ${subgoal.file} </b> `
-                    //         const link = links.resources[count];
-                    //         // console.log(link.actions.length);
-                    //         html += `
-                    //                     <div class="container">
-                    //                         <i class="bi bi-bookmark"></i>
-                    //         <div class="centered">${link.actions.length}</div>
-                    //     </div>`
-                    //         html += `
-                    //                 </div>
-
-                    //                 <div class="content">
-                    //         <div class="left-container">
-                    //                         ${diffHTML}
-                    //                     </div>
-                    //         <div class="resources">
-                    //     `
-                    //         if (count < links.resources.length) {
-                    //             const link = links.resources[count];
-                    //             // html += `<ul class="link_list">`
-                    //             for (let i = 0; i < link.actions.length; i++) {
-                    //                 const eachLink = links.resources[count].actions[i];
-                    //                 html += `   
-                    //                     <div class="tooltip">
-                    //                         <a href="${eachLink.webpage}">${eachLink.webTitle}</a><br>
-
-                    //                         <br>
-
-
-
-
-
-                    //                         </div>
-                    //                     <br>
-                    //                 `
-                    //             }
-                    //             html += `
-
-                    //             </div>`
-                    //         } else {
-                    //             html += `</div>`
-                    //         }
-                    //     } else {
-                    //         html += `
-                    //     <li data-eventid="${subgoalKey}">
-                    //         <!-- Editable title for the code activity -->
-                    //         <div class="li-header">
-                    //             <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
-                    //             <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
-                    //             <!-- <i class="bi bi-pencil-square"></i> -->
-                    //             <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
-                    //                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
-                    //                 <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
-                    //                 <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
-                    //                 </svg>
-                    //             </button>
-                    //             <b>in ${subgoal.file} </b>
-                    //             <div class="placeholder">
-                    //                                         </div>
-                    //                         </div>
-                    //         <div class="content">
-                    //             <div class="full-container">
-                    //                 ${diffHTML}
-                    //                 </div>
-                    //         </div>`
-                    //     }
-                    //     count++;
-                    //     html += `
-                    //             </li>
-                    //     <script> 
-                    //         document.addEventListener('DOMContentLoaded', () => {
-                    //             const button = document.getElementById('plusbtn-${groupKey}-${subgoalKey}');
-
-                    //             button.addEventListener('click', () => {
-                    //                 button.textContent = button.textContent === '+' ? '-' : '+';
-                    //             });
-                    //         });
-                    //         document.getElementById('button-${groupKey}-${subgoalKey}').addEventListener('click', function() {
-                    //             document.getElementById('code-title-${groupKey}-${subgoalKey}').focus();
-                    //                         });  
-                    //             </script>
-                    //         `;
-                    // }
                 }
 
             }
