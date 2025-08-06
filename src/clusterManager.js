@@ -899,17 +899,7 @@ Guidelines:
             if (!question.trim()) {
                 return "no question";
             }
-//             let prompt = `You are a technical summarization assistant. Given a chronological array of coding events answering the question: "${question}", rewrite each event as a concise bullet-point style summary.
 
-// Requirements:
-// - Keep the array length and order exactly the same.
-// - Start each entry with a short, bolded label in HTML like "<strong>Label:</strong>".
-// - Then list the key points as short bullet points separated by "\n- ".
-// - Focus on what was implemented, changed, or fixed, mentioning key functions or components.
-// - Avoid filler words, compliments, or repetitive phrases.
-// - Compress minor or unrelated steps into a single clear sentence.
-// - Use active and direct language.
-// - Output only the revised array as valid array, no extra text or explanation. ready to parse`;
 let prompt = `You are a technical summarization assistant. Given a chronological array of coding events:"${JSON.stringify(parallelled_array)}", answering the question: "${question}", rewrite each event as a concise, HTML-formatted summary.
 
 Requirements:
@@ -959,29 +949,43 @@ Requirements:
                 return "no question";
             }
 
-            // let prompt = `You are given a user question and a chronological sequence of summarized coding events. These events represent the user's step-by-step progress toward a specific coding goal.
-            // Your job is to the answer to the question.
-            // - Be precise and direct
-            // Question: ${question}
-            // Chronological steps:
-            // ${JSON.stringify(parallelled_array)}`;
-            let prompt = `You are given a user question and a chronological sequence of summarized coding events. These events represent the user's step-by-step progress toward a specific coding goal.
+//             let prompt = `You are given a user question and a chronological sequence of summarized coding events. These events represent the user's step-by-step progress toward a specific coding goal.
 
-Your job is to answer the question based on the coding events.
+// Your job is to answer the question based on the coding events.
 
-Instructions:
-- Begin with a direct, one-sentence answer to the question. besure to put <strong> tag around it
-- Follow up with 1–2 sentences that explain how the user's code or steps address the question.
-- Be precise, specific, and technical where appropriate.
-- Avoid general summaries or vague commentary.
-- Do not compliment or praise the user.
-- Do not repeat the question in your answer.
-- Output only the final answer, no preamble or list formatting.
+// Instructions:
+// - Begin with a direct, one-sentence answer to the question. besure to put <strong> tag around it
+// - Then include a <ul style="padding-top: 0px;list-style: circle;margin-left: 40px;"> with each key point wrapped in an <li> tag.
+// - Be precise, specific, and technical where appropriate.
+// - Avoid general summaries or vague commentary.
+// - IMPORTANT! put <code> tag around ANY object your are quoting from the code, DO NOT use quatation marks. 
+// - Do not compliment or praise the user.
+// - Do not repeat the question in your answer.
+// - Output only the final answer, no preamble or list formatting.
+
+// Question: ${question}
+
+// Chronological coding steps:
+// ${JSON.stringify(parallelled_array)}`;
+let prompt = `You are given a user question and a chronological sequence of summarized coding events. These events represent the user's step-by-step progress toward a specific coding goal.
+
+Your task is to answer the question based solely on these coding events.
+
+FORMAT REQUIREMENTS (STRICTLY FOLLOW):
+1. Start with a single-sentence direct answer wrapped in <strong> tags.
+2. Then include a <ul style="padding-top: 0px;list-style: circle;margin-left: 40px;">.
+3. Each key point must be in an <li> tag.
+4. Use <code> tags ONLY for **all references to code elements** — this includes variable names, functions, file names, keywords, code snippets, and anything the user wrote in code.
+5. DO NOT use quotation marks around code references — use ONLY <code>.
+6. Be specific and technical; do NOT include any general praise or restate the question.
+
+FAILURE TO FOLLOW THE FORMAT IS AN ERROR.
 
 Question: ${question}
 
 Chronological coding steps:
 ${JSON.stringify(parallelled_array)}`;
+
 
             const completions = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
@@ -2441,8 +2445,8 @@ ${JSON.stringify(parallelled_array)}`;
             parsed = parsed.map(entry => ({
                 ...entry,
                 id: parseInt(entry.id, 10) // or: id: +entry.id
-                //purpose: making the ID an actually integer rather than string
             }));
+
             // console.log("generateChatGPTResponseHTML PARSED: ", parsed);
             // console.log("Here is the list of ids that we can then send to chatGPT: ", this.findActivities(this.codeActivities, parsed));
 
@@ -2479,20 +2483,12 @@ ${JSON.stringify(parallelled_array)}`;
                     const parsed = JSON.parse(jsonStr);
                     const subgoal = parsed.title;
                     const most_relevant = parsed;
-
-                    // const[response, hint] = await Promise.all([
-                    //     this.generateNLResponse(question, subgoal, most_relevant), 
-                    //     this.generateHint(question, subgoal, most_relevant)
-                    // ]);
                     return this.generateNLResponse(question, subgoal, most_relevant);
-                    // return [response, hint];
                 })
             );
             const responses = results.map(pair => pair[0]);
-            // const hints = results.map(pair => pair[1]);
 
             console.log("HERE IS THE PARALLELISM RESULT FOR RESPONSE: ", responses);
-            // console.log("HERE IS THE PARALLELISM RESULT FOR HINTS: ", hints);
 
             const promises = {
                 story: this.generateStoryResponse(question, results),
