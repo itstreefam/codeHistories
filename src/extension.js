@@ -841,7 +841,17 @@ function deactivate() {
 				strayEvents: clusterManager.strayEvents,
 				currentDiffView: clusterManager.currentDiffView,
 				allSaves: clusterManager.allSaves,
-				initialSaves: clusterManager.initialSaves
+				initialSaves: clusterManager.initialSaves,
+				allPastEvents: clusterManager.allPastEvents,
+				prevCommittedEvents: clusterManager.prevCommittedEvents,
+				currentGroup: clusterManager.currentGroup,
+				inCluster: clusterManager.inCluster,
+				clusterStartTime: clusterManager.clusterStartTime,
+				pastEvents: clusterManager.pastEvents,
+				currentCodeEvent: clusterManager.currentCodeEvent,
+				currentWebEvent: clusterManager.currentWebEvent,
+				idCounter: clusterManager.idCounter,
+				hasRestoredFromLastSession: clusterManager.hasRestoredFromLastSession
 			};
 
 			// Write the state object to a JSON file

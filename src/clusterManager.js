@@ -117,9 +117,19 @@ class ClusterManager {
                 this.currentDiffView = state.currentDiffView || 'line-by-line';
 				this.allSaves = state.allSaves || {};
 				this.initialSaves = state.initialSaves || {};
+                this.allPastEvents = state.allPastEvents || {};
+                this.prevCommittedEvents = state.prevCommittedEvents || [];
+                this.currentGroup = state.currentGroup || null;
+
+                this.inCluster = state.inCluster || {};
+                this.clusterStartTime = state.clusterStartTime || {};
+                this.pastEvents = state.pastEvents || null;
+                this.currentCodeEvent = state.currentCodeEvent || null;
+                this.currentWebEvent = state.currentWebEvent || null;
+                this.idCounter = state.idCounter || 0;
 
                 this.hasRestoredFromLastSession = true;
-                console.log('Successfully restored state from last session.');
+                console.log(`Successfully restored state from last session`);
             }
         } catch (error) {
             // console.error('Error restoring session state:', error);
@@ -134,14 +144,26 @@ class ClusterManager {
             this.currentDiffView = 'line-by-line';
             this.allSaves = {};
             this.initialSaves = {};
+            this.allPastEvents = {};
+            this.prevCommittedEvents = [];
+            this.currentGroup = null;
+            this.inCluster = {};
+            this.clusterStartTime = {};
+            this.pastEvents = [];
+            this.currentCodeEvent = null;
+            this.currentWebEvent = null;
+            this.idCounter = 0;
         }
     }
 
     async initializeClusterManager() {
         await this.restoreStateFromFile(); // if there is data to restore
-        // Grab the initial commit data without displaying it in the web panel
-        const initialCodeEntries = await this.gitTracker.grabAllLatestCommitFiles();
-        await this.processCodeEvents(initialCodeEntries);
+        
+        if(!this.hasRestoredFromLastSession) {
+            const initialCodeEntries = await this.gitTracker.grabAllLatestCommitFiles();
+            await this.processCodeEvents(initialCodeEntries);
+        }
+
         this.isInitialized = true;
     }
 
@@ -695,58 +717,43 @@ class ClusterManager {
         let startCodeEvent = this.strayEvents.find(event => event.type === "code" && event.file === filename);
 
         // grab the last code event from the stray events
+        // update: the "end" state is the last code event from the current session's in-progress work.
         let endCodeEvent = [...this.strayEvents].reverse().find(event => event.type === "code" && event.file === filename);
 
-        if (endCodeEvent) {
-            this.initialSaves[filename] = {
-                file: filename,
-                time: endCodeEvent.time,
-                code_text: endCodeEvent.code_text,
-            };
+        // if there's no code event to process, we can't create a subgoal
+        if (!endCodeEvent) {
+            return;
+        }
+
+        // find the true "before" state by looking at the last event in the history
+        const lastHistoricalEvent = this.allPastEvents[filename] ? this.allPastEvents[filename].slice(-1)[0] : null;
+
+        // if there's a history, use its text; if not, this is a new file, so "before" is an empty string
+        const beforeCodeText = lastHistoricalEvent ? lastHistoricalEvent.code_text : '';
+        const afterCodeText = endCodeEvent.code_text;
+
+        // only form a subgoal if there is an actual change
+        if (beforeCodeText === afterCodeText) {
+            console.log(`FinalizeGroup: No meaningful change for ${filename}, skipping subgoal.`);
+            // clean up the events for this file as they don't form a valid diff
+            this.strayEvents = this.strayEvents.filter(event => event.file !== filename);
+            delete this.initialSaves[filename];
+            return;
         }
 
         console.log('Finalizing group:', filename, startCodeEvent, endCodeEvent);
 
-        let codeActivity = {};
-
-        if (startCodeEvent.code_text !== endCodeEvent.code_text) {
-        // grab any stray code events that's not the filename
-        // const strayCodeEvents = this.strayEvents.filter(event => event.type === "code" && event.file !== filename);
-
-            codeActivity = {
-                type: "code",
-                id: (++this.idCounter).toString(),
-                file: filename,
-                startTime: this.clusterStartTime[filename],
-                endTime: endCodeEvent.time,
-                before_code: startCodeEvent.code_text,
-                after_code: endCodeEvent.code_text,
-                // title: `Code changes in ${filename}`
-            };
-            
-            codeActivity.title = await this.generateSubGoalTitle(codeActivity);
-        }
-
-        // if both events are the same, this means that this file had clustering occurred before
-        // and so the startCodeEvent should be from allPastEvents instead
-        else {
-            // grab the last code event from all past events
-            startCodeEvent = this.allPastEvents[filename].slice(-1)[0];
-
-            codeActivity = {
-                type: "code",
-                id: (++this.idCounter).toString(),
-                file: filename,
-                startTime: this.clusterStartTime[filename],
-                endTime: endCodeEvent.time,
-                before_code: startCodeEvent.code_text,
-                after_code: endCodeEvent.code_text,
-                related: {},
-                // title: `Code changes in ${filename}`
-            };
-
-            codeActivity.title = await this.generateSubGoalTitle(codeActivity);
-        }
+        let codeActivity = {
+            type: "code",
+            id: (++this.idCounter).toString(),
+            file: filename,
+            startTime: this.clusterStartTime[filename],
+            endTime: endCodeEvent.time,
+            before_code: beforeCodeText, // use the historically accurate "before" state
+            after_code: afterCodeText,   // use the latest "after" state
+        };
+        
+        codeActivity.title = await this.generateSubGoalTitle(codeActivity);
 
         // grab only the web events from the stray events that has time before the endCodeEvent
         let webEvents = this.strayEvents.filter(event => event.type !== "code" && event.time <= endCodeEvent.time);
@@ -757,44 +764,7 @@ class ClusterManager {
         // Temporary storage for the current search event being structured
         let currentSearchEvent = null;
 
-        // // Iterate over stray events and structure web events
-        // for (const event of webEvents) {
-        //     // console.log('Processing event', event);
-        //     if (event.type === "search") {
-        //         // If there's an existing search event, push it to the structured events
-        //         if (currentSearchEvent) {
-        //             structureWebEvents.push(currentSearchEvent);
-        //         }
-
-        //         // Start a new search event structure
-        //         currentSearchEvent = {
-        //             type: "search",
-        //             query: event.webTitle || "Search query missing",  // Use webTitle instead of notes
-        //             time: event.time,
-        //             actions: [],
-        //         };
-        //     } else if (event.type === "visit" || event.type === "revisit") {
-        //         // If the current event is a visit, add it to the current search event's actions
-        //         if (currentSearchEvent) {
-        //             currentSearchEvent.actions.push({
-        //                 type: event.type,
-        //                 webTitle: event.webTitle || "Visit title missing",  // Use webTitle instead of notes
-        //                 webpage: event.webpage || "URL missing",  // Use webpage instead of timed_url
-        //                 time: event.time,
-        //             });
-        //         } else {
-        //             // If there's no search event, treat it as a stray visit
-        //             structureWebEvents.push({
-        //                 type: event.type,
-        //                 webTitle: event.webTitle || "Visit title missing",  // Use webTitle instead of notes
-        //                 webpage: event.webpage || "URL missing",  // Use webpage instead of timed_url
-        //                 time: event.time,
-        //             });
-        //         }
-        //     }
-        // }
-
-        // Sort stray events by time to
+        // sort stray events by time to ensure chronological order
         const sortedWebEvents = webEvents.sort((a, b) => a.time - b.time);
 
         for (const event of sortedWebEvents) {
@@ -860,6 +830,9 @@ class ClusterManager {
 
         // Once the stray events have been processed, reset the currentGroup
         this.currentGroup = null;
+
+        // Clean up the initial save tracker now that this work has been grouped
+        delete this.initialSaves[filename];
     }
 
     async generateSubGoalTitle(activity) {
