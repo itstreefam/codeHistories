@@ -101,7 +101,44 @@ class ClusterManager {
         console.log("Resources", this.codeResources);
     }
 
+    async restoreStateFromFile() {
+        if (this.hasRestoredFromLastSession) return; // Prevent re-loading
+
+        try {
+            const currentDir = getCurrentDir();
+            const statePath = path.join(currentDir, 'CH_cfg_and_logs', 'history_session_state.json');
+
+            if (fs.existsSync(statePath)) {
+                const stateJSON = fs.readFileSync(statePath, 'utf8');
+                const state = JSON.parse(stateJSON);
+
+                this.displayForGroupedEvents = state.groupedEvents || [];
+                this.strayEvents = state.strayEvents || [];
+                this.currentDiffView = state.currentDiffView || 'line-by-line';
+				this.allSaves = state.allSaves || {};
+				this.initialSaves = state.initialSaves || {};
+
+                this.hasRestoredFromLastSession = true;
+                console.log('Successfully restored state from last session.');
+            }
+        } catch (error) {
+            // console.error('Error restoring session state:', error);
+            // // In case of error, start with a fresh state
+            // this.displayForGroupedEvents = [];
+            // this.strayEvents = [];
+
+            console.error('Could not restore session state, starting fresh:', error);
+        
+            this.displayForGroupedEvents = [];
+            this.strayEvents = [];
+            this.currentDiffView = 'line-by-line';
+            this.allSaves = {};
+            this.initialSaves = {};
+        }
+    }
+
     async initializeClusterManager() {
+        await this.restoreStateFromFile(); // if there is data to restore
         // Grab the initial commit data without displaying it in the web panel
         const initialCodeEntries = await this.gitTracker.grabAllLatestCommitFiles();
         await this.processCodeEvents(initialCodeEntries);
@@ -171,22 +208,22 @@ class ClusterManager {
             return;
         }
 
-        let htmlContent = null;
+        // let htmlContent = null;
 
-        // Retrieve the previous state from globalState
-        this.previousWebviewState = this.context.globalState.get('previousWebviewState') || null;
+        // // Retrieve the previous state from workspaceState
+        // this.previousWebviewState = this.context.workspaceState.get('previousWebviewState') || null;
 
-        // If there's a previous state, restore it
-        if (this.previousWebviewState) {
-            htmlContent = this.previousWebviewState; // html
-        } else if(!this.hasRestoredFromLastSession) {
-            // Try to restore from the last session (one-time at initialization)
-            const restoredContent = await this.restoreLastSession(); // this returns HTML content or null if no file found
-            if (restoredContent) {
-                htmlContent = restoredContent;
-                this.hasRestoredFromLastSession = true;
-            }
-        }
+        // // If there's a previous state, restore it
+        // if (this.previousWebviewState) {
+        //     htmlContent = this.previousWebviewState; // html
+        // } else if(!this.hasRestoredFromLastSession) {
+        //     // Try to restore from the last session (one-time at initialization)
+        //     const restoredContent = await this.restoreLastSession(); // this returns HTML content or null if no file found
+        //     if (restoredContent) {
+        //         htmlContent = restoredContent;
+        //         this.hasRestoredFromLastSession = true;
+        //     }
+        // }
         
         this.webviewPanel = vscode.window.createWebviewPanel(
             'historyWebview',
@@ -198,12 +235,14 @@ class ClusterManager {
             }
         );
 
-        if (htmlContent) {
-            this.webviewPanel.webview.html = htmlContent;
-        } else {
-            // Set the initial HTML content if no previous state exists
-            await this.updateWebPanel();
-        }
+        // if (htmlContent) {
+        //     this.webviewPanel.webview.html = htmlContent;
+        // } else {
+        //     // Set the initial HTML content if no previous state exists
+        //     await this.updateWebPanel();
+        // }
+
+        await this.updateWebPanel();
 
         // Save the state when the webview is closed
         this.webviewPanel.onDidDispose(() => {
@@ -213,7 +252,7 @@ class ClusterManager {
 
         // Save webview's html just before it is closed
         this.webviewPanel.onDidDispose(() => {
-            this.context.globalState.update('previousWebviewState', this.webviewPanel.webview.html);
+            // this.context.workspaceState.update('previousWebviewState', this.webviewPanel.webview.html);
 
             // Set a small timeout to ensure the state is sent before we consider it disposed
             setTimeout(() => {

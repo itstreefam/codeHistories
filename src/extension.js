@@ -830,30 +830,44 @@ function deactivate() {
 	terminalOpenedFirstTime = new Object();
 
 	try{
-		if(usingHistoryView){
+		if(usingHistoryView && clusterManager){
 			// save webview inside CH_cfg_and_logs
 			const currentDir = getCurrentDir();
+			const statePath = path.join(currentDir, 'CH_cfg_and_logs', 'history_session_state.json');
 
-			let date = new Date();
-			let dateStr = date.toISOString().split('T')[0];
-			let epochTimeInSeconds = Math.floor(date.getTime() / 1000);  // Get the current time in seconds
+			// Create a state object with the data needed to rebuild the view
+			const sessionState = {
+				groupedEvents: clusterManager.displayForGroupedEvents,
+				strayEvents: clusterManager.strayEvents,
+				currentDiffView: clusterManager.currentDiffView,
+				allSaves: clusterManager.allSaves,
+				initialSaves: clusterManager.initialSaves
+			};
 
-			const webviewPath = path.join(currentDir, 'CH_cfg_and_logs', `history_webview_${dateStr}_${epochTimeInSeconds}.html`);
-			// console.log('webviewPath:', webviewPath);
+			// Write the state object to a JSON file
+			fs.writeFileSync(statePath, JSON.stringify(sessionState, null, 4));
+			console.log('History view state saved successfully.');
 
-			let webviewContent = clusterManager.getWebviewContent();
-			// webviewContent = clusterManager.commentOutVSCodeApi(webviewContent); // Comment out the VS Code API script so html can run as standalone in browser
-			// // console.log('webviewContent:', webviewContent);
+			// let date = new Date();
+			// let dateStr = date.toISOString().split('T')[0];
+			// let epochTimeInSeconds = Math.floor(date.getTime() / 1000);  // Get the current time in seconds
 
-			fs.writeFileSync(webviewPath, webviewContent);
+			// const webviewPath = path.join(currentDir, 'CH_cfg_and_logs', `history_webview_${dateStr}_${epochTimeInSeconds}.html`);
+			// // console.log('webviewPath:', webviewPath);
+
+			// let webviewContent = clusterManager.getWebviewContent();
+			// // webviewContent = clusterManager.commentOutVSCodeApi(webviewContent); // Comment out the VS Code API script so html can run as standalone in browser
+			// // // console.log('webviewContent:', webviewContent);
+
+			// fs.writeFileSync(webviewPath, webviewContent);
 			
-			// save groupedEvents to a file
-			const groupedEventsPath = path.join(currentDir, 'CH_cfg_and_logs', `grouped_events_${dateStr}_${epochTimeInSeconds}.json`);
-			const groupedEvents = clusterManager.displayForGroupedEvents;
-			fs.writeFileSync(groupedEventsPath, JSON.stringify(groupedEvents, null, 4));
+			// // save groupedEvents to a file
+			// const groupedEventsPath = path.join(currentDir, 'CH_cfg_and_logs', `grouped_events_${dateStr}_${epochTimeInSeconds}.json`);
+			// const groupedEvents = clusterManager.displayForGroupedEvents;
+			// fs.writeFileSync(groupedEventsPath, JSON.stringify(groupedEvents, null, 4));
 
-			// reset flag
-			clusterManager.hasRestoredFromLastSession = false;
+			// // reset flag
+			// clusterManager.hasRestoredFromLastSession = false;
 		} 
 		
 		if(usingContentTimelineView){
