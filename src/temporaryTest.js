@@ -82,7 +82,6 @@ class temporaryTest {
 
             const codeActivity = {
                 title: subgoal.title,
-                time: subgoal.time, 
                 resources: searchHistory
             };
 

@@ -55,7 +55,7 @@ const historyStyles = `
     }
 
     #upper{
-        height: 50vh;
+        height: 70vh;
     }
 
     #lower{
@@ -74,7 +74,8 @@ const historyStyles = `
     
     h4{
         top: 25px;
-        margin: 0;
+        margin: auto;
+        margin-left: 0;
     }
 
     .title {
@@ -98,14 +99,15 @@ const historyStyles = `
     ul {
         list-style-type: none;
         padding-left: 0;
+        padding-top: 120px;
     }
 
     li {
-        margin-bottom: 7px;
+        margin-bottom: 10px;
     }
 
     .editable-title {
-        background-color: #ffffff;
+        background-color: transparent;
         color: #333333;
         border: none;
         padding: 5px 10px;
@@ -333,11 +335,9 @@ const historyStyles = `
     }
 
     .form-container {
-        width: 300px;
-        padding: 10px;
-        // background-color: white;
-        background-color: #fff6ed;
+        width: 500px;
         border-radius: 10px 10px 0px 0px;
+        margin-left: 5vw;
     }
 
     #response_area {
@@ -362,12 +362,61 @@ const historyStyles = `
         margin-bottom: 5px;
     }
 
-    .user-question-area {
+    .question-area {
         margin: 1px;
+        display: flex;
     }
 
     #question {
-        width: 59%;
+        width: 40%;
+    }
+
+    .forms{
+        display: flex;
+        justify-content: space-between;
+        margin-right: 5vw;
+        text-align: center;
+    }
+
+    .subgoal_summary {
+        font-weight: normal;
+    }
+
+    .upper_header {
+        position: fixed;
+        height: 120px;
+        background-color: #ffffff;
+        width: 100%; 
+        z-index: 100;
+    }
+
+    .tooltip-wrapper {
+    position: relative;
+    display: inline-block;
+    cursor: help;
+    }
+
+    .custom-tooltip {
+    visibility: hidden;
+    opacity: 0;
+    position: absolute;
+    bottom: 120%; /* adjust as needed */
+    left: 0;
+    background-color: black;
+    color: white;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: larger;
+    white-space: pre-line;
+    max-width: 600px;
+    z-index: 100;
+    transition: opacity 0.15s ease-in-out;
+    pointer-events: none;
+    }
+
+    .tooltip-wrapper:hover .custom-tooltip {
+    visibility: visible;
+    opacity: 1;
     }
 `;
 
