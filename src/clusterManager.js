@@ -13,31 +13,8 @@ const { getCurrentDir, extractText } = require('./helpers');
 const express = require("express");
 require('dotenv').config({ path: __dirname + '/../.env' });
 const { OpenAI } = require("openai");
-const { GoogleGenerativeAI } = require("@google/generative-ai");
 const app = express();
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-
-let genAIHistory = [];
-// [{}]
-// gemini model example
-/*
-const result = await model.generateContent({
-    contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              text: "Explain how AI works",
-            }
-          ],
-        }
-    ],
-    generationConfig: {
-      maxOutputTokens: 1000,
-      temperature: 0.1,
-    }
-});
-*/
 
 // console.log(process.env.OPENAI_API_KEY);
 
@@ -186,58 +163,6 @@ class ClusterManager {
         this.isInitialized = true;
     }
 
-    async restoreLastSession() {
-        try {
-            // read from CH_cfg_and_logs and check if file in this format history_webview_${dateStr}_${epochTimeInSeconds}.html exists
-            const currentDir = getCurrentDir();
-
-            // regex to match history_webview_*.html
-            const regex = /history_webview_.*\.html/;
-            const files = fs.readdirSync(path.join(currentDir, 'CH_cfg_and_logs'));
-            const historyFiles = files.filter(file => regex.test(file));
-
-            if (historyFiles.length > 0) {
-                // get the most recent file
-                const mostRecentFile = historyFiles.sort((a, b) => {
-                    const aTime = parseInt(a.split('_').slice(-1)[0].replace('.html', ''));
-                    const bTime = parseInt(b.split('_').slice(-1)[0].replace('.html', ''));
-                    return bTime - aTime; // Sort in descending order
-                })[0];
-
-                // read the file content
-                const filePath = path.join(currentDir, 'CH_cfg_and_logs', mostRecentFile);
-                const fileContent = fs.readFileSync(filePath, 'utf8');
-
-                // // get first 5 lines of the file content
-                // const firstFiveLines = fileContent.split('\n').slice(0, 5).join('\n');
-                // console.log(firstFiveLines);
-
-                return fileContent; // html format
-
-                // // Set the webviewPanel's HTML content to the file content
-                // this.webviewPanel = vscode.window.createWebviewPanel(
-                //     'historyWebview',
-                //     'History Webview',
-                //     vscode.ViewColumn.Beside,
-                //     {
-                //         enableScripts: true,
-                //         enableFindWidget: true
-                //     }
-                // );
-
-                // // Set the initial HTML content
-                // this.webviewPanel.webview.html = fileContent;
-                // this.webviewPanel.reveal(vscode.ViewColumn.Beside);
-            } else {
-                return null; // No history files found
-            }
-        } catch (error) {
-            console.error('Error restoring last session:', error);
-            vscode.window.showErrorMessage('Failed to restore last session.');
-            return null; // Return null if an error occurs
-        }
-    }
-
     async initializeWebview() {
         if (this.isPanelClosed && this.stayPersistent === false) {
             return;
@@ -248,23 +173,6 @@ class ClusterManager {
             this.webviewPanel.reveal(vscode.ViewColumn.Beside);
             return;
         }
-
-        // let htmlContent = null;
-
-        // // Retrieve the previous state from workspaceState
-        // this.previousWebviewState = this.context.workspaceState.get('previousWebviewState') || null;
-
-        // // If there's a previous state, restore it
-        // if (this.previousWebviewState) {
-        //     htmlContent = this.previousWebviewState; // html
-        // } else if(!this.hasRestoredFromLastSession) {
-        //     // Try to restore from the last session (one-time at initialization)
-        //     const restoredContent = await this.restoreLastSession(); // this returns HTML content or null if no file found
-        //     if (restoredContent) {
-        //         htmlContent = restoredContent;
-        //         this.hasRestoredFromLastSession = true;
-        //     }
-        // }
         
         this.webviewPanel = vscode.window.createWebviewPanel(
             'historyWebview',
@@ -275,23 +183,6 @@ class ClusterManager {
                 enableFindWidget: true
             }
         );
-
-//         // If there's a previous state, restore it
-//         if (this.previousState) {
-//             this.webviewPanel.webview.html = this.previousState.html;
-//             this.webviewPanel.webview.postMessage({ command: 'restoreState', state: this.previousState });
-//         } else {
-//             // Set the initial HTML content if no previous state exists
-//             console.log("ERROR IN INITIALIZEWEBVIEW LINE 135!")
-//             await this.updateWebPanel();
-//         }
-      
-        // if (htmlContent) {
-        //     this.webviewPanel.webview.html = htmlContent;
-        // } else {
-        //     // Set the initial HTML content if no previous state exists
-        //     await this.updateWebPanel();
-        // }
 
         await this.updateWebPanel();
 
@@ -766,46 +657,6 @@ class ClusterManager {
             return;
         }
 
-//         // console.log('Finalizing group:', filename, startCodeEvent, endCodeEvent);
-
-//         let codeActivity = {};
-
-//         if (startCodeEvent.code_text !== endCodeEvent.code_text) {
-//             // grab any stray code events that's not the filename
-//             // const strayCodeEvents = this.strayEvents.filter(event => event.type === "code" && event.file !== filename);
-
-//             codeActivity = {
-//                 type: "code",
-//                 id: (++this.idCounter).toString(),
-//                 file: filename,
-//                 startTime: this.clusterStartTime[filename],
-//                 endTime: endCodeEvent.time,
-//                 before_code: startCodeEvent.code_text,
-//                 after_code: endCodeEvent.code_text,
-//                 // title: `Code changes in ${filename}`
-//             };
-
-//             codeActivity.title = await this.generateSubGoalTitle(codeActivity);
-//         }
-
-//         // if both events are the same, this means that this file had clustering occurred before
-//         // and so the startCodeEvent should be from allPastEvents instead
-//         else {
-//             // grab the last code event from all past events
-//             startCodeEvent = this.allPastEvents[filename].slice(-1)[0];
-
-//             codeActivity = {
-//                 type: "code",
-//                 id: (++this.idCounter).toString(),
-//                 file: filename,
-//                 startTime: this.clusterStartTime[filename],
-//                 endTime: endCodeEvent.time,
-//                 before_code: startCodeEvent.code_text,
-//                 after_code: endCodeEvent.code_text,
-//                 related: {},
-//                 // title: `Code changes in ${filename}`
-//             };
-
         // find the true "before" state by looking at the last event in the history
         const lastHistoricalEvent = this.allPastEvents[filename] ? this.allPastEvents[filename].slice(-1)[0] : null;
 
@@ -847,7 +698,6 @@ class ClusterManager {
 
 
         // sort stray events by time to ensure chronological order
-
         const sortedWebEvents = webEvents.sort((a, b) => a.time - b.time);
 
         for (const event of sortedWebEvents) {
@@ -1079,50 +929,6 @@ Guidelines:
 
             console.log("generateStoryResponse parallel array: ", parallelled_array)
 
-//     async generateGeminiAnswer(question) {
-//         try {
-//             console.log("User Question:", question);
-//             // 'Here if the context for you if the user are to ask you any questions regarding the data I have provided. Here is the data: ' + 
-//             // let context = "you are a coding debug helper. The users will copy and paste in their code and ask you to debug their code. Here is the context: " + JSON.stringify(this.codeActivities, null, 2);
-//             console.log('In generateAnswer, codeActivities', this.codeActivities);
-
-//             if (!question.trim()) {
-//                 return "no question";
-//             }
-//             let prompt = 'The user will ask you to sort the data base on the context of this code history I provided: "' + JSON.stringify(this.codeActivities, null, 2) + '" and here is the question: "' + question + '". If the user question is just "", simple say no question, doesnt have to be in json. If there are questions, please just provide me a json return with the information you sorted, make sure to keep the same format as the json passed in, dont say anything else.';
-//             console.log("Context:", prompt);
-
-//             const request = {
-//                 contents: [{
-//                     role: 'user', 
-//                     parts: [{text: prompt}]
-//                 }],
-//                 generationConfig: {
-//                     maxOutputTokens: 1000,
-//                     temperature: 0.1,
-//                 }
-//             };
-
-//             const completions = await geminiModel.generateContent(request);
-            
-//             console.log('Gemini API Response:', completions);
-//             // let summary = completions?.response?.candidates?.[0]?.content?.parts?.[0]?.text || "Summary not available";
-
-//             let summary = completions?.response?.text() || "Summary not available";
-  
-//             // if summary contains double quotes, make them single quotes
-//             // summary = summary.replace(/"/g, "'");            
-//             // let replacedString = summary.replace(/'([^']+)'/g, '"$1"');
-//             // console.log('Summary:', replacedString);
-//             // let replacedString = JSON.parse(summary);
-//             // console.log('Summary:', replacedString);
-//             // return replacedString; 
-//             return summary;
-//         } catch (error) {
-//             console.error("Error generating title:", error.message);
-//             return `response generation failed`;
-//         }
-//     }
             if (!question.trim()) {
                 return "no question";
             }
@@ -1451,180 +1257,6 @@ ${JSON.stringify(parallelled_array)}`;
 
         const startTime = performance.now()
 
-//     async generateStructuredAnswer(question) {
-//         try {
-//             console.log("User Question:", question);
-//             console.log('In generateStructuredAnswer, codeActivities', this.codeActivities);
-    
-//             if (!question.trim()) {
-//                 return { status: "error", message: "No question provided" };
-//             }
-            
-//             // Get current content of relevant files
-//             const currentFileStates = await this.getCurrentFilesContent();
-            
-//             // Build context from current codeActivities and previous interactions
-//             const previousInteractions = this.queryHistory.slice(-3); // Last 3 interactions for context
-            
-//             // Construct a prompt that specifically requests structured data
-//             const prompt = `
-//             I need to analyze code history to answer the following question: "${question}"
-
-//             Here is the code activity context:
-//             // ${JSON.stringify(this.codeActivities, null, 2)}
-
-//             Current state of relevant files:
-//             ${JSON.stringify(currentFileStates, null, 2)}
-
-//             ${previousInteractions.length > 0 ? 
-//             `Previous relevant queries: 
-//             ${previousInteractions.map(qi => `Q: ${qi.question}\nA: ${JSON.stringify(qi.response)}`).join('\n\n')}` 
-//             : ''}
-
-//             IMPORTANT: When referencing line numbers, use the line numbers from the CURRENT file state provided above, not from historical versions.
-//             Line numbers start at 0, so the first line of a file is line 0.
-
-//             Return a JSON response with the following structure:
-//             {
-//             "responseType": "HIGHLIGHT" | "SUGGESTION" | "REFERENCE" | "EXPLANATION",
-//             "targetFiles": [{ "filename": "string", "lineNumbers": [number] }],
-//             "content": {
-//                 // If HIGHLIGHT: areas of code to highlight
-//                 "highlights": [{ "startLine": number, "endLine": number, "filename": "string" }],
-                
-//                 // If SUGGESTION: inline code suggestions
-//                 "suggestions": [{ "line": number, "suggestion": "string", "filename": "string" }],
-                
-//                 // If REFERENCE: references to related code
-//                 "references": [{ "description": "string", "location": "string" }],
-                
-//                 // If EXPLANATION: textual explanation
-//                 "explanation": "string"
-//             },
-//             "summary": "string" // Brief summary of the answer
-//             }
-
-//             Important: The JSON structure MUST be valid and match exactly what I described above.
-//             Your highlights and line numbers should be based on the CURRENT state of files provided above.`;
-            
-//             console.log("Context:", prompt);
-            
-//             // Make API call
-//             const completions = await openai.chat.completions.create({
-//                 model: 'gpt-4o-mini',
-//                 response_format: { type: "json_object" }, // Ensure JSON response
-//                 max_tokens: 4000,
-//                 messages: [
-//                     {
-//                         role: "system",
-//                         content: "You are a specialized code analysis assistant that returns structured JSON data for editor integration. Your responses will be used to highlight code, provide suggestions, and generate context-aware visualizations."
-//                     },
-//                     { role: "user", content: prompt }
-//                 ]
-//             });
-            
-//             console.log('API Response:', completions);
-            
-//             // Parse response
-//             const response = JSON.parse(completions.choices[0].message.content);
-            
-//             // Store this interaction for future context
-//             this.queryHistory.push({ question, response });
-            
-//             return response;
-//         } catch (error) {
-//             console.error("Error generating structured answer:", error);
-//             return { 
-//                 status: "error", 
-//                 message: `Response generation failed: ${error.message}`,
-//                 responseType: "EXPLANATION",
-//                 content: { explanation: "Failed to analyze the code history." }
-//             };
-//         }
-//     }
-    
-//     // Add this helper method to get current content of relevant files
-//     async getCurrentFilesContent() {
-//         const fileStates = [];
-        
-//         try {
-//             // Get a list of relevant files from code activities
-//             const relevantFiles = new Set();
-            
-//             // Add files from codeActivities
-//             if (this.codeActivities) {
-//                 for (const activity of this.codeActivities) {
-//                     if (activity.codeChanges) {
-//                         for (const change of activity.codeChanges) {
-//                             if (change.file) {
-//                                 relevantFiles.add(change.file);
-//                             }
-//                         }
-//                     }
-//                 }
-//             }
-            
-//             // Add currently open file if not already included
-//             const activeEditor = vscode.window.activeTextEditor;
-//             if (activeEditor) {
-//                 const currentFilename = path.basename(activeEditor.document.uri.fsPath);
-//                 relevantFiles.add(currentFilename);
-//             }
-            
-//             // Get content for each relevant file
-//             for (const filename of relevantFiles) {
-//                 try {
-//                     // First check if file is already open in an editor
-//                     let content = null;
-//                     let foundOpenFile = false;
-                    
-//                     for (const editor of vscode.window.visibleTextEditors) {
-//                         const editorFilename = path.basename(editor.document.uri.fsPath);
-//                         if (editorFilename === filename) {
-//                             content = editor.document.getText();
-//                             foundOpenFile = true;
-                            
-//                             fileStates.push({
-//                                 filename,
-//                                 fullPath: editor.document.uri.fsPath,
-//                                 content,
-//                                 lines: content.split('\n')
-//                             });
-//                             break;
-//                         }
-//                     }
-                    
-//                     // If not found in open editors, try to find and read it
-//                     if (!foundOpenFile) {
-//                         const fileUri = await this.findFileInWorkspace(filename);
-                        
-//                         if (fileUri) {
-//                             const document = await vscode.workspace.openTextDocument(fileUri);
-//                             content = document.getText();
-                            
-//                             fileStates.push({
-//                                 filename,
-//                                 fullPath: fileUri.fsPath,
-//                                 content,
-//                                 lines: content.split('\n')
-//                             });
-//                         }
-//                     }
-//                 } catch (error) {
-//                     console.error(`Error reading file ${filename}:`, error);
-//                 }
-//             }
-//         } catch (error) {
-//             console.error("Error getting current file states:", error);
-//         }
-        
-//         console.log("Current file states:", fileStates);
-//         return fileStates;
-//     }
-
-//     async updateWebPanel() {
-//         // this.getHighlightedCode();
-
         if (!this.webviewPanel) {
             this.webviewPanel = vscode.window.createWebviewPanel(
                 'historyWebview',
@@ -1656,27 +1288,6 @@ ${JSON.stringify(parallelled_array)}`;
             groupedEventsHTML = await this.generateHistoryChatGPTResponseHTML(question) + await this.generateChatGPTResponseHTML(question);
             this.chatGPTInvoked = false;
         }
-
-//         // if (!this.webviewPanel) {
-//         //     this.webviewPanel = vscode.window.createWebviewPanel(
-//         //         "chatPanel",
-//         //         "Chat Panel",
-//         //         vscode.ViewColumn.One,
-//         //         { enableScripts: true }
-//         //     );
-
-//         //     this.webviewPanel.onDidDispose(() => {
-//         //         this.webviewPanel = null;
-//         //     });
-//         // }
-        
-//         // const chatboxHTML = await this.generateChatGPTResponseHTML('');
-//         // const groupedEventsHTML = await this.generateGroupedEventsHTML();
-//         // const strayEventsHTML = await this.generateStrayEventsHTML();
-
-//         console.log("line 864");
-//         const chatboxHTML = await this.generateChatGPTResponseHTML('');
-//         const groupedEventsHTML = await this.generateGroupedEventsHTML();
 
         const strayEventsHTML = await this.generateStrayEventsHTML();
 
@@ -1990,343 +1601,6 @@ ${JSON.stringify(parallelled_array)}`;
         }
     }
     
-//         // const response = await this.generateChatGPTResponseHTML(question);
-    
-//         // if (this.webviewPanel.webview) {
-//         //     this.webviewPanel.webview.postMessage({
-//         //         command: "updateChatResponse",
-//         //         response: response
-//         //     });
-//         // } else {
-//         //     console.error("Webview is not available.");
-//         // }
-
-//         try {
-//             // Generate structured response
-//             const structuredResponse = await this.generateStructuredAnswer(question);
-            
-//             // Handle the response based on its type
-//             await this.handleStructuredResponse(structuredResponse);
-
-//             console.log("Structured response:", structuredResponse);
-            
-//             // Generate HTML for the webview
-//             const responseHTML = this.formatResponseHTML(question, structuredResponse);
-            
-//             // Update the webview
-//             if (this.webviewPanel.webview) {
-//                 this.webviewPanel.webview.postMessage({
-//                     command: "updateChatResponse",
-//                     response: responseHTML
-//                 });
-//             } else {
-//                 console.error("Webview is not available.");
-//             }
-//         } catch (error) {
-//             console.error("Error in handleChatGPTRequest:", error);
-            
-//             // Update the webview with error message
-//             if (this.webviewPanel.webview) {
-//                 this.webviewPanel.webview.postMessage({
-//                     command: "updateChatResponse",
-//                     response: `<p style="color:red;">Error processing request: ${error.message}</p>`
-//                 });
-//             }
-//         }
-//     }
-
-//     async handleStructuredResponse(response) {
-//         // Clear previous decorations/highlights
-//         this.clearAllDecorations();
-        
-//         switch(response.responseType) {
-//             case "HIGHLIGHT":
-//                 await this.highlightCodeInEditor(response.content.highlights);
-//                 break;
-//             case "SUGGESTION":
-//                 await this.showCodeSuggestions(response.content.suggestions);
-//                 break;
-//             case "REFERENCE":
-//                 await this.displayCodeReferences(response.content.references);
-//                 break;
-//             case "EXPLANATION":
-//                 // Just display the explanation in the response area
-//                 // No additional action needed as the webview will display it
-//                 break;
-//             default:
-//                 console.error("Unknown response type:", response.responseType);
-//         }
-//     }
-    
-//     async highlightCodeInEditor(highlights) {
-//         if (!highlights || highlights.length === 0) {
-//             return;
-//         }
-        
-//         console.log("Highlighting code:", highlights);
-        
-//         // Process each highlight
-//         for (const highlight of highlights) {
-//             try {
-//                 // Get the filename
-//                 const filename = highlight.filename;
-                
-//                 // Try to find the file in already open editors first
-//                 let editor = null;
-//                 let document = null;
-//                 let foundInOpenEditors = false;
-                
-//                 for (const openEditor of vscode.window.visibleTextEditors) {
-//                     const editorFilename = path.basename(openEditor.document.uri.fsPath);
-//                     console.log(`Comparing ${editorFilename} with ${filename}`);
-                    
-//                     if (editorFilename === filename) {
-//                         editor = openEditor;
-//                         document = openEditor.document;
-//                         foundInOpenEditors = true;
-//                         console.log(`Found file in open editors: ${filename}`);
-//                         break;
-//                     }
-//                 }
-                
-//                 // If not found in open editors, try to find and open it
-//                 if (!foundInOpenEditors) {
-//                     console.log(`File not found in open editors, searching workspace: ${filename}`);
-//                     const filePattern = new vscode.RelativePattern(
-//                         vscode.workspace.workspaceFolders[0], 
-//                         `**/${filename}`
-//                     );
-                    
-//                     const files = await vscode.workspace.findFiles(filePattern, '**/node_modules/**', 1);
-                    
-//                     if (files.length === 0) {
-//                         console.error(`File not found in workspace: ${filename}`);
-//                         continue;
-//                     }
-                    
-//                     const fileUri = files[0];
-//                     console.log(`Found file in workspace: ${fileUri.fsPath}`);
-                    
-//                     document = await vscode.workspace.openTextDocument(fileUri);
-//                     editor = await vscode.window.showTextDocument(document, {
-//                         viewColumn: vscode.ViewColumn.One,
-//                         preserveFocus: false
-//                     });
-//                 }
-                
-//                 // Validate line numbers
-//                 const startLine = Math.max(0, highlight.startLine);
-//                 const endLine = Math.min(document.lineCount - 1, highlight.endLine);
-                
-//                 if (startLine > endLine || startLine >= document.lineCount) {
-//                     console.error(`Invalid line numbers: start=${highlight.startLine}, end=${highlight.endLine}, max=${document.lineCount-1}`);
-//                     continue;
-//                 }
-                
-//                 // Create decoration type
-//                 const highlightDecorationType = vscode.window.createTextEditorDecorationType({
-//                     backgroundColor: new vscode.ThemeColor('editor.findMatchHighlightBackground'),
-//                     isWholeLine: true,
-//                 });
-                
-//                 // Create decoration range
-//                 const range = new vscode.Range(startLine, 0, endLine, 0);
-                
-//                 // Apply decoration
-//                 editor.setDecorations(highlightDecorationType, [{range}]);
-                
-//                 // Store decoration type to clear later
-//                 this.activeDecorations.push(highlightDecorationType);
-                
-//                 // Focus on the highlighted area
-//                 editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
-//             } catch (error) {
-//                 console.error(`Error highlighting file ${highlight.filename}:`, error);
-//             }
-//         }
-//     }
-
-//     // Add this helper method to find files in the workspace
-//     async findFileInWorkspace(filename) {
-//         const workspaceFolder = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0];
-//         if (!workspaceFolder) {
-//             return null;
-//         }
-        
-//         // Create a pattern to search for the file in the workspace
-//         // Using ** to search all subdirectories
-//         const filePattern = new vscode.RelativePattern(workspaceFolder, `**/${filename}`);
-        
-//         // Search for the file in the workspace
-//         const files = await vscode.workspace.findFiles(filePattern, '**/node_modules/**', 1);
-        
-//         if (files.length > 0) {
-//             return files[0];
-//         }
-        
-//         // If not found, try direct path (for cases where full path might be provided)
-//         try {
-//             const directUri = vscode.Uri.file(filename);
-//             await vscode.workspace.fs.stat(directUri); // Check if file exists
-//             return directUri;
-//         } catch (err) {
-//             console.error(`File not found: ${filename}`);
-//             return null;
-//         }
-//     }
-    
-//     async showCodeSuggestions(suggestions) {
-//         if (!suggestions || suggestions.length === 0) {
-//             return;
-//         }
-        
-//         // Group suggestions by filename
-//         const suggestionsByFile = {};
-//         for (const suggestion of suggestions) {
-//             if (!suggestionsByFile[suggestion.filename]) {
-//                 suggestionsByFile[suggestion.filename] = [];
-//             }
-//             suggestionsByFile[suggestion.filename].push(suggestion);
-//         }
-        
-//         // Process each file
-//         for (const [filename, fileSuggestions] of Object.entries(suggestionsByFile)) {
-//             try {
-//                 // Find the full path to the file
-//                 const workspaceFolder = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0];
-//                 if (!workspaceFolder) {
-//                     continue;
-//                 }
-                
-//                 const fileUri = vscode.Uri.file(path.join(workspaceFolder.uri.fsPath, filename));
-//                 const document = await vscode.workspace.openTextDocument(fileUri);
-//                 const editor = await vscode.window.showTextDocument(document);
-                
-//                 // Show inline suggestion using VS Code's hover provider
-//                 // For simplicity, we'll use decorations with hover message
-//                 const suggestionDecorationType = vscode.window.createTextEditorDecorationType({
-//                     border: '1px dashed #75b9e6',
-//                     backgroundColor: 'rgba(117, 185, 230, 0.1)',
-//                     isWholeLine: true,
-//                     after: {
-//                         contentText: '💡 Suggestion available',
-//                         color: '#75b9e6',
-//                         margin: '0 0 0 1em',
-//                     }
-//                 });
-                
-//                 // Create array of decoration ranges with hover message
-//                 const decorations = fileSuggestions.map(s => {
-//                     return {
-//                         range: new vscode.Range(s.line, 0, s.line, 0),
-//                         hoverMessage: s.suggestion
-//                     };
-//                 });
-                
-//                 // Apply decorations
-//                 editor.setDecorations(suggestionDecorationType, decorations);
-                
-//                 // Store decoration type to clear later
-//                 this.activeDecorations.push(suggestionDecorationType);
-//             } catch (error) {
-//                 console.error(`Error showing suggestions for file ${filename}:`, error);
-//             }
-//         }
-//     }
-    
-//     async displayCodeReferences(references) {
-//         if (!references || references.length === 0) {
-//             return;
-//         }
-        
-//         // For references, we'll just navigate to the first one
-//         // and show the others in the response HTML
-//         if (references.length > 0 && references[0].location) {
-//             const parts = references[0].location.split(':');
-//             if (parts.length >= 2) {
-//                 const filename = parts[0];
-//                 const lineNumber = parseInt(parts[1]) - 1; // Convert to 0-based line number
-                
-//                 await this.navigateToLine(filename, lineNumber);
-//             }
-//         }
-//     }
-    
-//     clearAllDecorations() {
-//         // Remove all active decorations
-//         for (const decoration of this.activeDecorations) {
-//             decoration.dispose();
-//         }
-//         this.activeDecorations = [];
-//     }
-    
-//     formatResponseHTML(question, response) {
-//         let html = `
-//         <div class="user-question">
-//             <p class="user-question-area">${question}</p>
-//         </div>
-//         <div class="chat-response">
-//             <strong>Response:</strong>
-//         `;
-        
-//         // Add summary if available
-//         if (response.summary) {
-//             html += `<p class="response-summary">${response.summary}</p>`;
-//         }
-        
-//         // Format based on response type
-//         switch (response.responseType) {
-//             case "HIGHLIGHT":
-//                 html += `
-//                     <p>Found relevant code in the following files:</p>
-//                     <ul>
-//                         ${response.targetFiles.map(file => 
-//                             `<li>${file.filename} (lines ${file.lineNumbers.join(', ')})</li>`
-//                         ).join('')}
-//                     </ul>
-//                     <p><i>Code has been highlighted in the editor.</i></p>
-//                 `;
-//                 break;
-                
-//             case "SUGGESTION":
-//                 html += `
-//                     <p>Suggestions for the following files:</p>
-//                     <ul>
-//                         ${response.targetFiles.map(file => 
-//                             `<li>${file.filename}</li>`
-//                         ).join('')}
-//                     </ul>
-//                     <p><i>Hover over the highlighted lines in the editor to see suggestions.</i></p>
-//                 `;
-//                 break;
-                
-//             case "REFERENCE":
-//                 html += `
-//                     <p>Related code references:</p>
-//                     <ul>
-//                         ${response.content.references.map(ref => 
-//                             `<li><strong>${ref.description}</strong>: ${ref.location}</li>`
-//                         ).join('')}
-//                     </ul>
-//                 `;
-//                 break;
-                
-//             case "EXPLANATION":
-//                 html += `<p>${response.content.explanation}</p>`;
-//                 break;
-                
-//             default:
-//                 if (response.status === "error") {
-//                     html += `<p style="color:red;">${response.message}</p>`;
-//                 } else {
-//                     html += `<p>${JSON.stringify(response, null, 2)}</p>`;
-//                 }
-//         }
-        
-//         html += `</div>`;
-//         return html;
-//     }
-
     async navigateToLine(fileName, lineNumber) {
         // console.log(fileName);
 
@@ -2400,8 +1674,6 @@ ${JSON.stringify(parallelled_array)}`;
 
         // console.log('In generateGroupedEventsHTML, codeActivities', this.codeActivities);
         // console.log('In generateGroupedEventsHTML, codeActivities in string version: ', JSON.stringify(this.codeActivities));
-
-
 
         for (let groupKey = 0; groupKey < this.codeActivities.length; groupKey++) {
             const group = this.codeActivities[groupKey];
@@ -2516,7 +1788,6 @@ ${JSON.stringify(parallelled_array)}`;
         }
         return html;
     }
-
 
     async generateGroupedEventsHTML() {
         // this.displayForGroupedEvents is an array of objects, each object is a group
@@ -2733,7 +2004,6 @@ ${JSON.stringify(parallelled_array)}`;
             return 'Error generating diff';
         }
     }
-
 
     async generateStrayEventsHTMLTest() {
         return '<li>Your future changes goes here.</li>';
@@ -3160,69 +2430,7 @@ ${JSON.stringify(parallelled_array)}`;
                 command: 'setupCollapsibleButtons'
             });
 
-//         question = 'in what situation was LettersPattern been called? what is the function of LettersPattern?';
-//         try {
-//             // const response = await this.generateAnswer(question);
-//             const response = await this.generateGeminiAnswer(question);
-//             console.log(response);
-
-//             if(response === 'no question') {
-//                 console.log("there are no questions")
-
-//             }else {
-//                 console.log("generateChatGPTResponseHTML: ", response);
-//                 // this.generateJSON = JSON.parse(response);
-//                 this.generateJSON = response;
-//                 console.log("generateJSON set!!!");
-//                 console.log("print out generateJSON here", this.generateJSON)
-//             }
-           
-    
-//             if (!response) {
-//                 return `<p style="color:red;">Error: No response received.</p>`;
-//             }
-    
-//             let html = '';
-
-//             if(question === '') {
-//                 html+= 
-//                 `<div class="chat-response">
-//                     <strong>ChatGPT:</strong>
-//                     <p>No question provided.</p>
-//                 </div>`;
-//             } else {
-//                 html +=
-//                 `
-//                 <div class="user-question">
-//                     <p class="user-question-area">${question}</p>
-//                 </div>
-//                 <div class="chat-response">
-//                     <strong>ChatGPT:</strong>
-//                     <p>${response}</p>
-//                 </div>
-//             `;
-//             }
-
-//             return html;
-//         } catch (err) {
-//             console.error("Error generating response:", err);
-//             return `<p style="color:red;">Error: ${err.message}</p>`;
-//         }
-
-        if (!question || question.trim() === '') {
-            return `
-            <div class="chat-response">
-                <strong>Assistant:</strong>
-                <p>No question provided.</p>
-            </div>`;
-        }
-        
-        try {
-            // Generate structured response
-            const response = await this.generateStructuredAnswer(question);
-            
-            // Format HTML for the response
-            return this.formatResponseHTML(question, response);
+            return html;
         } catch (err) {
             console.error("Error generating response:", err);
             return `<p style="color:red;">Error: ${err.message}</p>`;
