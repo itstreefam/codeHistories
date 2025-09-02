@@ -54,33 +54,6 @@ class ContentTimelineManager {
         }
     }
 
-    async saveStateToFile() {
-        try {
-            const currentDir = getCurrentDir();
-            const configDir = path.join(currentDir, 'CH_cfg_and_logs');
-            
-            // Ensure the directory exists
-            if (!fs.existsSync(configDir)) {
-                fs.mkdirSync(configDir, { recursive: true });
-            }
-
-            const statePath = path.join(configDir, 'content_timeline_session_state.json');
-            
-            const state = {
-                contentTimeline: this.contentTimeline,
-                eventHtmlMap: this.eventHtmlMap,
-                previousSaveContent: this.previousSaveContent,
-                idCounter: this.idCounter,
-                currentEvent: this.currentEvent
-            };
-
-            fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
-            console.log(`Content timeline state saved successfully`);
-        } catch (error) {
-            console.error('Error saving content timeline session state:', error);
-        }
-    }
-
     async initializeContentTimelineManager() {
         await this.restoreStateFromFile(); // Restore state if available
         
@@ -122,16 +95,6 @@ class ContentTimelineManager {
             if (this.stayPersistent === false) this.isPanelClosed = true;
             this.webviewPanel = null; // Clean up the reference
         });
-
-        // Save webview's state just before it is closed
-        this.webviewPanel.onDidDispose(() => {
-            // Set a small timeout to ensure the state is saved before we consider it disposed
-            setTimeout(async () => {
-                await this.saveStateToFile();
-                if (this.stayPersistent === false) this.isPanelClosed = true;
-                this.webviewPanel = null;
-            }, 1000); // Adjust timeout if necessary
-        });
     }
 
     async processEvent(event) {
@@ -146,20 +109,7 @@ class ContentTimelineManager {
             await this.handleSaveEvent(this.currentEvent);
         } else if (event.type === 'execution') {
             await this.handleExecutionEvent(this.currentEvent);
-        } else if (event.type === 'selection') {
-            await this.handleSelectionEvent(this.currentEvent);
-            
-            // always update silently
-            // if webview is open, update it; but if not still update but don't open it
-            if(this.webviewPanel){
-                await this.updateWebPanel();
-            } else {
-                await this.updateWebPanelSilently();
-            }
         }
-
-        // Save state after processing each event
-        await this.saveStateToFile();
 
         if(!this.isInitialized){
             return;
@@ -174,46 +124,100 @@ class ContentTimelineManager {
         }
     }
 
-    async handleSelectionEvent(event) {
-        const fileName = this.getFilename(event.data.document);
-        let htmlLines = '';
+    async processWebEvents(webEventsList) {
+        if (!webEventsList || webEventsList.length === 0) {
+            return;
+        }
 
-        const startLine = event.data.range[0];
-        const endLine = event.data.range[1];
-        const startChar = event.data.charRange[0];
-        const endChar = event.data.charRange[1];
-        const documentText = event.data.allText.split('\n');
+        console.log('In processWebEvents', webEventsList);
 
-        htmlLines = documentText.slice(startLine - 1, endLine).map((line, index) => {
-            const lineNumber = startLine + index;
-    
-            if (lineNumber === startLine && lineNumber === endLine) {
-                // The selection is only on one line
-                const highlightedLine = line.substring(0, startChar) +
-                    `<strong>${line.substring(startChar, endChar)}</strong>` +
-                    line.substring(endChar);
-                return `<span class="clickable-line" data-line-number="${lineNumber - 1}" data-filename="${fileName}">${lineNumber}: ${highlightedLine}</span>`;
-            } else if (lineNumber === startLine) {
-                // The selection starts on this line
-                const highlightedLine = line.substring(0, startChar) +
-                    `<strong>${line.substring(startChar)}</strong>`;
-                return `<span class="clickable-line" data-line-number="${lineNumber - 1}" data-filename="${fileName}">${lineNumber}: ${highlightedLine}</span>`;
-            } else if (lineNumber === endLine) {
-                // The selection ends on this line
-                const highlightedLine = `<strong>${line.substring(0, endChar)}</strong>` +
-                    line.substring(endChar);
-                return `<span class="clickable-line" data-line-number="${lineNumber - 1}" data-filename="${fileName}">${lineNumber}: ${highlightedLine}</span>`;
-            } else {
-                // Entire line is part of the selection
-                return `<span class="clickable-line" data-line-number="${lineNumber - 1}" data-filename="${fileName}">${lineNumber}: <strong>${line}</strong></span>`;
+        // Remove duplicate visits within 3 seconds
+        const filteredEvents = this.removeDuplicateVisits(webEventsList);
+
+        for (const entry of filteredEvents) {
+            const webEvent = {
+                id: this.idCounter++,
+                time: entry.time,
+                type: this.getWebEventType(entry.notes),
+                data: entry
+            };
+
+            await this.handleWebEvent(webEvent);
+        }
+
+        if (!this.isInitialized) {
+            return;
+        }
+
+        // Trigger webview if not opened
+        if (!this.webviewPanel) {
+            await this.initializeWebview();
+        } else {
+            // If webview is already opened, just update the content
+            await this.updateWebPanel();
+        }
+    }
+
+    removeDuplicateVisits(webEventsList) {
+        const filtered = [];
+        const visitTracker = new Map(); // Track URL -> last visit time
+
+        for (const event of webEventsList) {
+            const eventType = this.getWebEventType(event.notes);
+            
+            const url = event.timed_url;
+            const currentTime = event.time;
+            
+            // Check if we've seen this URL recently (within 3 seconds)
+            if (visitTracker.has(url)) {
+                const lastVisitTime = visitTracker.get(url);
+                if (currentTime - lastVisitTime < 3) {
+                    // Skip this duplicate visit
+                    console.log(`Skipping duplicate visit to ${url} within 3 seconds`);
+                    continue;
+                }
             }
-        }).join('<br>');
+            
+            // Update the tracker with current visit time
+            visitTracker.set(url, currentTime);
+            
+            filtered.push(event);
+        }
 
-        event.data.notes = `Click: ${new Date(event.time * 1000).toLocaleDateString()} ${new Date(event.time * 1000).toLocaleTimeString()}`;
-        event.data.diffHtml = htmlLines;
+        return filtered;
+    }
+
+    getWebEventType(notes) {
+        if (notes.startsWith('search:')) {
+            return 'search';
+        } else if (notes.startsWith('visit:')) {
+            return 'visit';
+        } else if (notes.startsWith('revisit:')) {
+            return 'revisit';
+        }
+        return 'unknown';
+    }
+
+    async handleWebEvent(event) {
+        const eventType = event.type;
+        
+        // Clean up the notes to extract just the essential information
+        let cleanedInfo = '';
+        
+        if (eventType === 'search') {
+            // Extract just the search query (remove "search:" and trailing ";")
+            cleanedInfo = event.data.notes.replace('search:', '').replace(';', '').trim();
+        } else if (eventType === 'visit' || eventType === 'revisit') {
+            // Extract just the page title (remove "visit:"/"revisit:" and trailing ";")
+            cleanedInfo = event.data.notes.replace(/^(visit:|revisit:)/, '').replace(/;$/, '').trim();
+        }
+
+        // Store the cleaned info for display
+        event.data.cleanedInfo = cleanedInfo;
+        event.data.formattedTime = `${new Date(event.time * 1000).toLocaleDateString()} ${new Date(event.time * 1000).toLocaleTimeString()}`;
 
         this.contentTimeline.push(event);
-        this.eventHtmlMap[event.id] = await this.generateEventHTML(event);
+        this.eventHtmlMap[event.id] = await this.generateWebEventHTML(event);
     }
 
     async handleSaveEvent(event) {
@@ -311,6 +315,38 @@ class ContentTimelineManager {
         return `<div class="diff-container">${finalHtml}</div>`;
     }    
 
+    async generateWebEventHTML(event) {
+        const eventType = event.type;
+        let displayContent = '';
+        const url = event.data.timed_url || '';
+        const cleanedInfo = event.data.cleanedInfo || '';
+        const timestamp = event.data.formattedTime || '';
+
+        if (eventType === 'search') {
+            // Show only the search query in bold
+            displayContent = `<div class="web-event">
+                <strong>${cleanedInfo}</strong>
+            </div>`;
+        } else if (eventType === 'visit' || eventType === 'revisit') {
+            // Show page title in bold + clickable URL
+            displayContent = `<div class="web-event">
+                <strong>${cleanedInfo}</strong>
+                ${url ? `<br><a href="${url}" target="_blank">${url}</a>` : ''}
+            </div>`;
+        }
+
+        return `
+            <div class="event" id="event-${event.id}">
+                <div class="event-content">
+                    ${displayContent}
+                </div>
+                <div class="event-timestamp">
+                    ${timestamp}
+                </div>
+            </div>
+        `;
+    }
+
     async generateEventHTML(event) {
         const fileName = this.getFilename(event.data.document);
 
@@ -324,18 +360,7 @@ class ContentTimelineManager {
                     ${event.data.diffHtml || ''}
                 </div>
                 ${event.data.notes}
-
             </div>
-        `;
-    }
-
-    async generateBuildHTML(event) {
-        return `
-            <hr>
-            <div id="event-${event.id}">
-                <strong>${event.data.notes}</strong>
-            </div>
-            <hr>
         `;
     }
 
@@ -407,13 +432,6 @@ class ContentTimelineManager {
                 await this.navigateToLine(message.fileName, message.line);
             }
         });
-    }
-
-    async updateWebPanelSilently() {
-        // This method is called when the webview is not open but we still want to update the internal state
-        // Since we're now using JSON-based state management, we don't need to generate HTML here
-        // The state is already updated in the processEvent method via saveStateToFile()
-        console.log('Content timeline updated silently');
     }
 
     async navigateToLine(fileName, lineNumber) {

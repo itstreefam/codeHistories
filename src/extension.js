@@ -41,8 +41,8 @@ var hostname = os.hostname();
 var terminalList;
 var terminalInstance;
 var eventEntry = {};
-var usingHistoryView = true;
-var usingContentTimelineView = false;
+var usingHistoryView = false;
+var usingContentTimelineView = true;
 var clusterManager = null;
 var contentTimelineManager = null;
 
@@ -337,6 +337,12 @@ function activate(context) {
 					}
 					// let currentTime = Math.floor(Date.now() / 1000);
 					// console.log('currentTime: ', currentTime);
+				}
+
+				if(contentTimelineWebview && nonLocalWebEntries.length > 0){
+					let webEntriesForHistory = processWebData(nonLocalWebEntries);
+					console.log('webEntriesForHistory: ', webEntriesForHistory);
+					await contentTimelineManager.processWebEvents(webEntriesForHistory);
 				}
 			}
 		} catch (error) {
@@ -861,39 +867,36 @@ function deactivate() {
 			// let date = new Date();
 			// let dateStr = date.toISOString().split('T')[0];
 			// let epochTimeInSeconds = Math.floor(date.getTime() / 1000);  // Get the current time in seconds
-
 			// const webviewPath = path.join(currentDir, 'CH_cfg_and_logs', `history_webview_${dateStr}_${epochTimeInSeconds}.html`);
-			// // console.log('webviewPath:', webviewPath);
-
 			// let webviewContent = clusterManager.getWebviewContent();
-			// // webviewContent = clusterManager.commentOutVSCodeApi(webviewContent); // Comment out the VS Code API script so html can run as standalone in browser
-			// // // console.log('webviewContent:', webviewContent);
-
 			// fs.writeFileSync(webviewPath, webviewContent);
-			
-			// // save groupedEvents to a file
-			// const groupedEventsPath = path.join(currentDir, 'CH_cfg_and_logs', `grouped_events_${dateStr}_${epochTimeInSeconds}.json`);
-			// const groupedEvents = clusterManager.displayForGroupedEvents;
-			// fs.writeFileSync(groupedEventsPath, JSON.stringify(groupedEvents, null, 4));
-
-			// // reset flag
-			// clusterManager.hasRestoredFromLastSession = false;
 		} 
 		
-		if(usingContentTimelineView){
+		if(usingContentTimelineView && contentTimelineManager){
 			// save webview inside CH_cfg_and_logs
 			const currentDir = getCurrentDir();
+			const statePath = path.join(currentDir, 'CH_cfg_and_logs', 'content_timeline_session_state.json');
 
-			let date = new Date();
-			let dateStr = date.toISOString().split('T')[0];
-			let epochTimeInSeconds = Math.floor(date.getTime() / 1000);  // Get the current time in seconds
+			// Create a state object with the data needed to rebuild the view
+			const sessionState = {
+				contentTimeline: contentTimelineManager.contentTimeline,
+				eventHtmlMap: contentTimelineManager.eventHtmlMap,
+				previousSaveContent: contentTimelineManager.previousSaveContent,
+				idCounter: contentTimelineManager.idCounter,
+				currentEvent: contentTimelineManager.currentEvent,
+				hasRestoredFromLastSession: contentTimelineManager.hasRestoredFromLastSession
+			};
 
-			const webviewPath = path.join(currentDir, 'CH_cfg_and_logs', `content_timeline_webview_${dateStr}_${epochTimeInSeconds}.html`);
-			// console.log('webviewPath:', webviewPath);
+			// Write the state object to a JSON file
+			fs.writeFileSync(statePath, JSON.stringify(sessionState, null, 4));
+			console.log('Content timeline view state saved successfully.');
 
-			let webviewContent = contentTimelineManager.getWebviewContent();
-
-			fs.writeFileSync(webviewPath, webviewContent);
+			// let date = new Date();
+			// let dateStr = date.toISOString().split('T')[0];
+			// let epochTimeInSeconds = Math.floor(date.getTime() / 1000);
+			// const webviewPath = path.join(currentDir, 'CH_cfg_and_logs', `content_timeline_webview_${dateStr}_${epochTimeInSeconds}.html`);
+			// let webviewContent = contentTimelineManager.getWebviewContent();
+			// fs.writeFileSync(webviewPath, webviewContent);
 		}
 	} catch (error) {
 		console.error('Error saving webview:', error);
