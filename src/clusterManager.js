@@ -2012,17 +2012,29 @@ ${JSON.stringify(parallelled_array)}`;
     // This happens after a "save" occurrence (comparing two versions of file save)
     async generateDiffHtmlSave(filename) {
         try {
-            const initialSave = this.initialSaves[filename];
             const allSavesForFile = this.allSaves[filename] || [];
             const latestSave = allSavesForFile[allSavesForFile.length - 1];
 
-            // If no initial or latest save exists, return an empty string
-            if (!initialSave || !latestSave) {
+            // If there are no saves recorded for this file, do nothing.
+            if (!latestSave) {
                 return '';
             }
 
-            const initialContent = initialSave.code_text || '';
+            let initialContent = ''; // Default to an empty string for the "before" state.
+
+            // If there is more than one save event, it means the file is not new.
+            // In this case, use the content from the very first save for comparison.
+            if (allSavesForFile.length > 1) {
+                const initialSave = this.initialSaves[filename];
+                initialContent = initialSave.code_text || '';
+            }
+
             const latestContent = latestSave.code_text || '';
+
+            // If the content hasn't changed (e.g., saving without changes), don't show a diff.
+            if (initialContent === latestContent) {
+                return '';
+            }
 
             const diffString = Diff.createTwoFilesPatch(
                 'Initial Save',
@@ -2033,14 +2045,6 @@ ${JSON.stringify(parallelled_array)}`;
                 filename,
                 { ignoreWhitespace: true } // Ignore whitespace-only changes
             );
-
-            // Check if there are real content changes (e.g., additions or deletions)
-            const hasRealChanges = diffString.includes('@@') && (diffString.includes('+') || diffString.includes('-'));
-            if (!hasRealChanges) {
-                // If no real content changes, return an empty string
-                // Indicating we should skip displaying this event in the webview
-                return '';
-            }
 
             const diffHtml = diff2html.html(diffString, {
                 outputFormat: this.currentDiffView,
