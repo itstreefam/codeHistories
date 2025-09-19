@@ -60,8 +60,8 @@ class ClusterManager {
         this.currentWebEvent = null;
         this.idCounter = 0;
         this.styles = historyStyles;
-        // this.initializeTemporaryTest();
-        // this.initializeResourcesTemporaryTest();
+        this.initializeTemporaryTest();
+        this.initializeResourcesTemporaryTest();
         this.debugging = true;
         this.prevCommittedEvents = [];
         this.isInitialized = false;
@@ -71,15 +71,15 @@ class ClusterManager {
         this.initialSaves = {}; // Tracks the first save for comparison
         this.currentDiffView = 'line-by-line'; //default view
         this.generateJSON = [];
-        this.chatGPTInvoked = false;
         this.userQuestion = '';
         this.queryHistory = []; // Store previous queries and responses
         this.activeDecorations = []; // Task active decorations/highlights
         this.hasRestoredFromLastSession = false; // Track if we restored from last session
+        this.chatResponseHTML = null;
     }
 
     initializeTemporaryTest() {
-        const testData = new temporaryTest(String.raw`C:\users\zhouh\Downloads\clone2048.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\Users\Pham\Downloads\tileMakingPuzzle.json`); // change path of test data here
         // codeActivities has id, title, and code changes
         // the focus atm would be code changes array which contains smaller codeActivity objects
         // for eg, to access before_code, we would do this.codeActivities[0].codeChanges[0].before_code
@@ -92,7 +92,7 @@ class ClusterManager {
     }
 
     initializeResourcesTemporaryTest() {
-        const testData = new temporaryTest(String.raw`C:\users\zhouh\Downloads\clone2048.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\Users\Pham\Downloads\tileMakingPuzzle.json`); // change path of test data here
         this.codeResources = testData.processResources(testData.data);
         console.log("Resources", this.codeResources);
     }
@@ -219,13 +219,13 @@ class ClusterManager {
                 console.log("Received askChatGPT message:", message);
                 this.userQuestion = message.question;
                 await this.handleChatGPTRequest(message.question);
-                // await this.updateWebPanel(message);
             }
 
             if (message.command === "resetPanel") {
                 console.log("ERROR IN INITIALIZEWEBVIEW, LINE 181!")
-                await this.updateWebPanel("");
-                await this.updateWebPanel("");
+                this.chatResponseHTML = null;
+                this.userQuestion = '';
+                await this.updateWebPanel('');
             }
         });
     }
@@ -312,7 +312,7 @@ class ClusterManager {
         } else {
             // If webview is already opened, just update the content
             console.log("ERROR IN PROCESSWEBEVENTS, LINE 269!")
-            await this.updateWebPanel(this.userQuestion);
+            await this.updateWebPanel();
         }
     }
 
@@ -373,13 +373,15 @@ class ClusterManager {
             return;
         }
 
-        // Trigger webview if not opened
-        if (!this.webviewPanel) {
-            await this.initializeWebview();
-        } else {
-            // If webview is already opened, just update the content
-            console.log("ERROR IN HANDLESAVEEVENT, LINE 336!")
-            await this.updateWebPanel();
+        // Instead of a full refresh, generate just the stray events HTML
+        const strayEventsHTML = await this.generateStrayEventsHTML();
+
+        if (this.webviewPanel) {
+            // Send a partial update for only the "in-progress" section
+            this.webviewPanel.webview.postMessage({
+                command: 'updateStrayEvents',
+                response: strayEventsHTML
+            });
         }
     }
 
@@ -862,7 +864,6 @@ Your job is to summarize what is happening — what the user is asking, what the
 
             let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
 
-            this.chatGPTInvoked = true;
             return `${summary}`;
 
 
@@ -914,7 +915,6 @@ Guidelines:
 
             let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
 
-            this.chatGPTInvoked = true;
             return `${summary}`;
 
 
@@ -965,7 +965,6 @@ Requirements:
             summary = summary.trim().replace(/^```json/, "").replace(/^```/, "").replace(/```$/, "").trim();
 
             // console.log("generateStoryResponse: ", summary);
-            this.chatGPTInvoked = true;
             return `${summary}`;
 
 
@@ -1034,7 +1033,6 @@ ${JSON.stringify(parallelled_array)}`;
             console.log("generateSummary: ", completions);
             let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
             // console.log("generateStoryResponse: ", summary);
-            this.chatGPTInvoked = true;
             return `${summary}`;
 
 
@@ -1095,7 +1093,6 @@ ${JSON.stringify(parallelled_array)}`;
             let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
             // console.log('In generateRelevantInfo, filtered API Response:', completions);
 
-            this.chatGPTInvoked = true;
             return `${summary}`;
 
 
@@ -1173,8 +1170,6 @@ ${JSON.stringify(parallelled_array)}`;
                 // console.log("response text here: ", responseText);
                 yield content;
             }
-
-            this.chatGPTInvoked = true;
 
         } catch (error) {
             console.error("Error generating answer:", error.message);
@@ -1266,27 +1261,14 @@ ${JSON.stringify(parallelled_array)}`;
             );
         }
 
-        if (!this.webviewPanel) {
-            this.webviewPanel = vscode.window.createWebviewPanel(
-                "chatPanel",
-                "Chat Panel",
-                vscode.ViewColumn.One,
-                { enableScripts: true }
-            );
+        let groupedEventsHTML;
 
-            this.webviewPanel.onDidDispose(() => {
-                this.webviewPanel = null;
-            });
-        }
-
-
-        let editHistoryHTML = await this.generateGroupedEventsHTMLTest();
-
-        let groupedEventsHTML = await this.generateGroupedEventsHTMLTest() + await this.generateGroupedEventsHTML();
-        if (this.chatGPTInvoked) {
-            console.log("chatGPT invoked!!!!!!!!!!!!!!!!!")
-            groupedEventsHTML = await this.generateHistoryChatGPTResponseHTML(question) + await this.generateChatGPTResponseHTML(question);
-            this.chatGPTInvoked = false;
+        // If a chat response exists in our state, use it. Otherwise, generate the default view.
+        if (this.chatResponseHTML) {
+            groupedEventsHTML = this.chatResponseHTML;
+        } else {
+            // This is the default view when no chat is active.
+            groupedEventsHTML = await this.generateGroupedEventsHTMLTest() + await this.generateGroupedEventsHTML();
         }
 
         const strayEventsHTML = await this.generateStrayEventsHTML();
@@ -1316,7 +1298,7 @@ ${JSON.stringify(parallelled_array)}`;
                         <form id="chat-form" class="form-container">
                             <div class="question-area">
                                 <label style="font-weight: bold; margin: auto; margin-right: 5px;">Search within your history: </label>
-                                <input type="text" id="question" name="user_question" placeholder="Where did I...">
+                                <input type="text" id="question" name="user_question" placeholder="Where did I..." value="${this.userQuestion || ''}">
                                 <button type="submit" class="btn">Submit</button>
                                 <button type="button" id="reset-button" class="btn">Reset</button>
                             </div>
@@ -1402,15 +1384,20 @@ ${JSON.stringify(parallelled_array)}`;
             // Attach collapsible event listeners
             function attachCollapsibleListeners() {
                 document.querySelectorAll('.collapsible').forEach(button => {
+                    // Check if the listener has already been added to prevent duplicates
+                    if (button.dataset.listenerAttached) return;
+
                     button.addEventListener('click', function () {
                         this.classList.toggle('active');
                         const content = this.parentElement.nextElementSibling;
-                        console.log('clicked!!!!!!');
+                        // console.log('clicked!!!!!!');
                         if (content) {
                             content.style.display = content.style.display === 'flex' ? 'none' : 'flex';
                             this.textContent = this.textContent === '+' ? '-' : '+';
                         }
                     });
+
+                    button.dataset.listenerAttached = 'true'; // Mark the button so we don't add the listener again
                 });
             }
 
@@ -1427,7 +1414,7 @@ ${JSON.stringify(parallelled_array)}`;
             const responseArea = document.getElementById("grouped-events");
             const questionInput = document.getElementById("question");
             const chatForm = document.getElementById("chat-form");
-
+            const strayEvents = document.getElementById("stray-events");
 
 
             chatForm.addEventListener("submit", async function(event) {
@@ -1451,26 +1438,17 @@ ${JSON.stringify(parallelled_array)}`;
                 if (event.data.command === "updateChatResponse") {
                     const response = event.data.response;
                     responseArea.innerHTML = response; // Update the response
-                }
-            });
+                    attachCollapsibleListeners(); // Reattach listeners to new content
 
-            window.addEventListener("message", (event) => {
-                console.log("Received message:", event.data);
-
-                if (event.data.command === 'setupCollapsibleButtons') {
-                    console.log('Setting up collapsible buttons'); // Check if this log appears
-                    document.querySelectorAll('.collapsible').forEach(button => {
-                        button.addEventListener('click', function() {
-                            this.classList.toggle('active');
-                            const content = this.parentElement.nextElementSibling;
-                            console.log('clicked!!!!!!');
-                            if (content) {
-                                content.style.display = content.style.display === 'flex' ? 'none' : 'flex';
-                                this.textContent = this.textContent === '+' ? '-' : '+';
-                            }
-                        });
-                    });
+                    // After updating the content, restore the collapsible state
+                    const collapsibleState = getCollapsibleState();
+                    restoreCollapsibleState(collapsibleState);
                 }
+                
+                if (event.data.command === 'updateStrayEvents') {
+                    const response = event.data.response;
+                    strayEvents.innerHTML = response;
+                }   
             });
 
             function handleMouseMove(e) {
@@ -1585,12 +1563,15 @@ ${JSON.stringify(parallelled_array)}`;
             const response = await this.generateChatGPTResponseHTML(question);
             const historyResponse = await this.generateHistoryChatGPTResponseHTML(question);
 
-            const combined = response + historyResponse;
+            const newContentHTML= response + historyResponse;
 
-            // Once the HTML content is injected, update the webview
+            // 1. Update the persistent state
+            this.chatResponseHTML = newContentHTML;
+
+            // 2. Once the HTML content is injected, update the webview
             this.webviewPanel.webview.postMessage({
-                // command: "updateChatResponse",
-                response: historyResponse
+                command: "updateChatResponse",
+                response: newContentHTML
             });
         } catch (error) {
             console.error("Error generating response:", error);
@@ -1770,19 +1751,6 @@ ${JSON.stringify(parallelled_array)}`;
 
                 html += `
                         </li>
-                        <script> 
-                            document.addEventListener('DOMContentLoaded', () => {
-                                const button = document.getElementById('plusbtn-${groupKey}-${subgoalKey}');
-
-                                button.addEventListener('click', () => {
-                                    button.textContent = button.textContent === '+' ? '-' : '+';
-                                });
-                            });
-
-                            document.getElementById('button-${groupKey}-${subgoalKey}').addEventListener('click', function() {
-                                document.getElementById('code-title-${groupKey}-${subgoalKey}').focus();
-                            });  
-                        </script>
                     `;
             }
         }
@@ -2012,17 +1980,29 @@ ${JSON.stringify(parallelled_array)}`;
     // This happens after a "save" occurrence (comparing two versions of file save)
     async generateDiffHtmlSave(filename) {
         try {
-            const initialSave = this.initialSaves[filename];
             const allSavesForFile = this.allSaves[filename] || [];
             const latestSave = allSavesForFile[allSavesForFile.length - 1];
 
-            // If no initial or latest save exists, return an empty string
-            if (!initialSave || !latestSave) {
+            // If there are no saves recorded for this file, do nothing.
+            if (!latestSave) {
                 return '';
             }
 
-            const initialContent = initialSave.code_text || '';
+            let initialContent = ''; // Default to an empty string for the "before" state.
+
+            // If there is more than one save event, it means the file is not new.
+            // In this case, use the content from the very first save for comparison.
+            if (allSavesForFile.length > 1) {
+                const initialSave = this.initialSaves[filename];
+                initialContent = initialSave.code_text || '';
+            }
+
             const latestContent = latestSave.code_text || '';
+
+            // If the content hasn't changed (e.g., saving without changes), don't show a diff.
+            if (initialContent === latestContent) {
+                return '';
+            }
 
             const diffString = Diff.createTwoFilesPatch(
                 'Initial Save',
@@ -2033,14 +2013,6 @@ ${JSON.stringify(parallelled_array)}`;
                 filename,
                 { ignoreWhitespace: true } // Ignore whitespace-only changes
             );
-
-            // Check if there are real content changes (e.g., additions or deletions)
-            const hasRealChanges = diffString.includes('@@') && (diffString.includes('+') || diffString.includes('-'));
-            if (!hasRealChanges) {
-                // If no real content changes, return an empty string
-                // Indicating we should skip displaying this event in the webview
-                return '';
-            }
 
             const diffHtml = diff2html.html(diffString, {
                 outputFormat: this.currentDiffView,
@@ -2423,13 +2395,6 @@ ${JSON.stringify(parallelled_array)}`;
                 response: html
             });
 
-            console.log('Sending setupCollapsibleButtons message');
-
-            // Attach collapsible functionality via JS within the webview
-            this.webviewPanel.webview.postMessage({
-                command: 'setupCollapsibleButtons'
-            });
-
             return html;
         } catch (err) {
             console.error("Error generating response:", err);
@@ -2657,18 +2622,6 @@ ${JSON.stringify(parallelled_array)}`;
                                 </li>
                                 <hr>
                                 </div>
-                        <script> 
-                            document.addEventListener('DOMContentLoaded', () => {
-                                const button = document.getElementById('plusbtn-${groupKey}-${subgoalKey}');
-
-                                button.addEventListener('click', () => {
-                                    button.textContent = button.textContent === '+' ? '-' : '+';
-                                });
-                            });
-                            document.getElementById('button-${groupKey}-${subgoalKey}').addEventListener('click', function() {
-                                document.getElementById('code-title-${groupKey}-${subgoalKey}').focus();
-                                            });  
-                                </script>
                             `;
                     }
                 }
@@ -2680,13 +2633,6 @@ ${JSON.stringify(parallelled_array)}`;
             this.webviewPanel.webview.postMessage({
                 command: 'updateChatResponse',
                 response: html
-            });
-
-            console.log('Sending setupCollapsibleButtons message');
-
-            // Attach collapsible functionality via JS within the webview
-            this.webviewPanel.webview.postMessage({
-                command: 'setupCollapsibleButtons'
             });
 
             return html;
