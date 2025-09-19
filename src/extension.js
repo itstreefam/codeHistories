@@ -41,8 +41,8 @@ var hostname = os.hostname();
 var terminalList;
 var terminalInstance;
 var eventEntry = {};
-var usingHistoryView = false;
-var usingContentTimelineView = true;
+var usingHistoryView = true;
+var usingContentTimelineView = false;
 var clusterManager = null;
 var contentTimelineManager = null;
 
