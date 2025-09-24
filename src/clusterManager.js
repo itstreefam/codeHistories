@@ -2146,31 +2146,6 @@ ${JSON.stringify(parallelled_array)}`;
         return html;  // Return the generated HTML
     }
 
-
-    findActivities(codeList, targets) {
-        const memoization = new Map();
-        for (const item of codeList) {
-            memoization.set(String(item.id), item.codeChanges);
-        }
-        let result = [];
-
-        for (const target of targets) {
-            const key = String(target.id);
-            const codeChanges = memoization.get(key);
-
-            if (Array.isArray(codeChanges)) {
-                for (const change of codeChanges) {
-                    result.push({
-                        id: change.id,
-                        title: change.title
-                    });
-                }
-            }
-        }
-
-        return result;
-    }
-
     async generateChatGPTResponseHTML(question) {
 
         const startTime = performance.now();
