@@ -59,8 +59,28 @@ function updateContextKeys() {
 /**
  * @param {vscode.ExtensionContext} context
  */
-function activate(context) {
+async function activate(context) {
 	console.log('Congratulations, your extension "codeHistories" is now active!');
+
+	// Check if this is the first time the extension is running
+	const hasApiKey = await context.secrets.get('openaiApiKey');
+	const isFirstRun = context.globalState.get('isFirstRun', true);
+
+	// Handle API key setup FIRST, before any other initialization
+	if (isFirstRun && !hasApiKey) {
+		const action = await vscode.window.showInformationMessage(
+			'Welcome to Code Histories! Set up your OpenAI API key to enable AI-powered summarization features.',
+			'Setup Now',
+			'Setup Later'
+		);
+		
+		if (action === 'Setup Now') {
+			await promptForApiKey(context);
+		}
+		
+		await context.globalState.update('isFirstRun', false);
+	}
+
 	const currentDir = getCurrentDir();
 	if (!currentDir) return;
 
@@ -154,16 +174,37 @@ function activate(context) {
 	// 	console.log('event: ', event);
 	// });
 
-	let activateCodeHistories = vscode.commands.registerCommand('codeHistories.codeHistories', activateCodeHistoriesHelper);
-	let executeCheckAndCommit = vscode.commands.registerCommand('codeHistories.checkAndCommit', executeCheckAndCommitHelper);
-	let selectGitRepo = vscode.commands.registerCommand('codeHistories.selectGitRepo', selectGitRepoHelper);
-	let setNewCmd = vscode.commands.registerCommand('codeHistories.setNewCmd', setNewCmdHelper);
-	let undoCommit = vscode.commands.registerCommand('codeHistories.undoCommit', undoCommitHelper);
-	let enterGoal = vscode.commands.registerCommand('codeHistories.enterGoal', enterGoalHelper);
-	let quickAutoCommit = vscode.commands.registerCommand('codeHistories.quickAutoCommit', quickAutoCommitHelper);
-	let selectTerminalProfile = vscode.commands.registerCommand('codeHistories.selectTerminalProfile', showTerminalProfileQuickPick);
-	let testRunPythonScript = vscode.commands.registerCommand('codeHistories.testRunPythonScript', testRunPythonScriptHelper);
-	let testDBConstructor = vscode.commands.registerCommand('codeHistories.testDBConstructor', testDBConstructorHelper);
+	let activateCodeHistories = vscode.commands.registerCommand('codeHistories.codeHistories', async () => {
+		await activateCodeHistoriesHelper(context);
+	});
+	let executeCheckAndCommit = vscode.commands.registerCommand('codeHistories.checkAndCommit', async () => {
+		await executeCheckAndCommitHelper();
+	});
+	let selectGitRepo = vscode.commands.registerCommand('codeHistories.selectGitRepo', async () => {
+		await selectGitRepoHelper();
+	});
+	let setNewCmd = vscode.commands.registerCommand('codeHistories.setNewCmd', async () => {
+		await setNewCmdHelper();
+	});
+	let undoCommit = vscode.commands.registerCommand('codeHistories.undoCommit', async () => {
+		await undoCommitHelper();
+	});
+	let enterGoal = vscode.commands.registerCommand('codeHistories.enterGoal', async () => {
+		await enterGoalHelper();
+	});
+	let quickAutoCommit = vscode.commands.registerCommand('codeHistories.quickAutoCommit', async () => {
+		await quickAutoCommitHelper();
+	});
+	let selectTerminalProfile = vscode.commands.registerCommand('codeHistories.selectTerminalProfile', async () => {
+		await showTerminalProfileQuickPick();
+	});
+	let testRunPythonScript = vscode.commands.registerCommand('codeHistories.testRunPythonScript', async () => {
+		await testRunPythonScriptHelper();
+	});
+	let testDBConstructor = vscode.commands.registerCommand('codeHistories.testDBConstructor', async () => {
+		await testDBConstructorHelper();
+	});
+
 	let historyWebview = vscode.commands.registerCommand('codeHistories.historyWebview', function () {
 		clusterManager.isPanelClosed = !clusterManager.isPanelClosed;
 		if(persist === true){
@@ -354,7 +395,9 @@ function activate(context) {
 	intervalId = setTimeout(checkAppSwitch, 500);
 
 	// call activateCodeHistoriesHelper on startup
-	activateCodeHistoriesHelper();
+	await activateCodeHistoriesHelper(context);
+
+	registerSetApiKeyCommand(context);
 }
 
 async function testRunPythonScriptHelper() {
@@ -538,12 +581,73 @@ async function onDidEndTerminalShellExecutionHelper(event, clusterManager, conte
 	}
 }
 
+async function promptForApiKey(context) {
+	const apiKey = await vscode.window.showInputBox({
+			prompt: 'Enter your OpenAI API key',
+			ignoreFocusOut: true,
+			placeHolder: 'sk-...',
+			validateInput: text => text.trim() === '' ? 'API key cannot be empty' : null
+		});
+
+	if (apiKey) {
+		try {
+			await context.secrets.store('openaiApiKey', apiKey);
+			vscode.window.showInformationMessage('OpenAI API key saved successfully!');
+			return true;
+		} catch (error) {
+			vscode.window.showErrorMessage('Failed to save API key: ' + error.message);
+			return false;
+		}
+	} else {
+		vscode.window.showWarningMessage('API key setup skipped. You can set it up later using the "Set OpenAI API Key" command.');
+		return false;
+	}
+}
+
+// Add a command to allow users to set/update their API key later
+function registerSetApiKeyCommand(context) {
+	let setOpenAIApiKey = vscode.commands.registerCommand('codeHistories.setOpenAIApiKey', async () => {
+		const currentKey = await context.secrets.get('openaiApiKey');
+		const action = currentKey ? 
+			await vscode.window.showInformationMessage(
+				'You already have an OpenAI API key set. Do you want to update it?',
+				'Update Key',
+				'Cancel'
+			) : 'Update Key';
+		
+		if (action === 'Update Key') {
+			await promptForApiKey(context);
+		}
+	});
+	
+	context.subscriptions.push(setOpenAIApiKey);
+}
+
 /* Activate the extension */
-async function activateCodeHistoriesHelper() {
-	vscode.window.showInformationMessage('Code histories activated!');
+async function activateCodeHistoriesHelper(context) {
+	// vscode.window.showInformationMessage('Code histories activated!');
 	const currentDir = getCurrentDir();
+
+	// Ensure API key is set up before proceeding
+	const hasApiKey = await context.secrets.get('openaiApiKey');
+	if (!hasApiKey) {
+		const action = await vscode.window.showWarningMessage(
+			'OpenAI API key is not set up. AI features will be disabled.',
+			'Setup API Key',
+			'Continue Without API Key'
+		);
+		
+		if (action === 'Setup API Key') {
+			const success = await promptForApiKey(context);
+			if (!success) {
+				vscode.window.showInformationMessage('Continuing without API key. AI features will be disabled.');
+			}
+		}
+	}
+
 	await createVsCodeSettings(currentDir);
 	await createProfileScripts(currentDir);
+
 	// call selectTerminalProfile to open the terminal
 	await vscode.commands.executeCommand('codeHistories.selectTerminalProfile');
 	extensionActivated = true;

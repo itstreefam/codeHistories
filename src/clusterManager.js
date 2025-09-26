@@ -20,10 +20,6 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 app.use(express.json())
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
-
 const geminiAPIKey = process.env.GEMINI_API_KEY;
 const genAI = new GoogleGenerativeAI(geminiAPIKey);
 
@@ -76,6 +72,21 @@ class ClusterManager {
         this.activeDecorations = []; // Task active decorations/highlights
         this.hasRestoredFromLastSession = false; // Track if we restored from last session
         this.chatResponseHTML = null;
+
+        this.initializeOpenAI(context);
+    }
+
+    async initializeOpenAI(context) {
+        const apiKey = await context.secrets.get('openaiApiKey') || process.env.OPENAI_API_KEY;
+
+        if (!apiKey) {
+            vscode.window.showWarningMessage('OpenAI API key not set. Please set it using the "Code Histories: Set OpenAI API Key" command.');
+            return;
+        }
+
+        const openai = new OpenAI({
+            apiKey: apiKey,
+        });
     }
 
     initializeTemporaryTest() {
