@@ -14,7 +14,7 @@ const express = require("express");
 require('dotenv').config({ path: __dirname + '/../.env' });
 const { OpenAI } = require("openai");
 const app = express();
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+// const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 app.use(express.json());
 
@@ -24,28 +24,19 @@ const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
 
-const geminiAPIKey = process.env.GEMINI_API_KEY;
-const genAI = new GoogleGenerativeAI(geminiAPIKey);
+// const geminiAPIKey = process.env.GEMINI_API_KEY;
+// const genAI = new GoogleGenerativeAI(geminiAPIKey);
 
-const model = genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
-    system_instruction: "you are like a middle man for user and openAI, determine whether the user questions need further processing for OpenAI to answer user questions. There you are to differentiate between two types: implicit and explicit questions. If it is explicit, it needs no further processing and can be passed to OpenAI direct. If it is implicit, you need to come up with a question that makes it explicit. If it is explicit, just say yes, dont further explain it. if not, just simply state the new generate question. "
-});
-
-const model_unanswered = genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
-    system_instruction: "you are here to help determine whether the given JSON answers the given question. Determine whether there are unanswered part of the question, if so, please state what it is. If not, say no, all the questions are answered."
-});
-
-const model_history_or_resources = genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
-    system_instruction: "you are here to help determine whether the given question is focusing on the code or online resources. please do as the prompt says. "
-});
-
-// const model_check_repeats = genAI.getGenerativeModel({
+// const model = genAI.getGenerativeModel({
 //     model: "gemini-1.5-flash",
-//     system_instruction: "You are here to help determine whether the question asked by user has already been asked before. You should return a parsible array with no additional formating. For example, if the question has been asked, return [true, repeated_question_in_the_cached_array_with_no_wording_changes], if no, return [false]. If the cached question is empty, reutrn [false] as well"
+//     system_instruction: "you are like a middle man for user and openAI, determine whether the user questions need further processing for OpenAI to answer user questions. There you are to differentiate between two types: implicit and explicit questions. If it is explicit, it needs no further processing and can be passed to OpenAI direct. If it is implicit, you need to come up with a question that makes it explicit. If it is explicit, just say yes, dont further explain it. if not, just simply state the new generate question. "
 // });
+
+// const model_history_or_resources = genAI.getGenerativeModel({
+//     model: "gemini-1.5-flash",
+//     system_instruction: "you are here to help determine whether the given question is focusing on the code or online resources. please do as the prompt says. "
+// });
+
 
 class ClusterManager {
     constructor(context, gitTracker, stayPersistent) {
@@ -2217,7 +2208,8 @@ Rules:
             // console.log("filtered array code events: ", filteredArray);
             // console.log("filtered array resources", filteredArrayResources);
 
-            const reduceLoad = await this.isHistoryOrResource(question);
+            // const reduceLoad = await this.isHistoryOrResource(question);
+            let reduceLoad = "history";
             // console.log("history or resources? ", reduceLoad);
 
             // const natural_language_indicator = await this.generateNLResponse(question);
@@ -2407,265 +2399,6 @@ Rules:
             return `<p style="color:red;">Error: ${err.message}</p>`;
         }
     }
-
-    // async generateHistoryChatGPTResponseHTML(question) {
-
-    //     if (question == 'undefined') {
-    //         return '';
-    //     }
-
-    //     const startTime = performance.now();
-
-    //     try {
-    //         // let reduceLoad = await this.isHistoryOrResource(question);
-    //         let reduceLoad = "history";
-
-    //         // if (!reduceLoad.includes("history") || !reduceLoad.includes("resource")) {
-    //         //     reduceLoad = "history";
-    //         // }
-
-    //         const generator = this.generatePastAnswerStream(question, reduceLoad);
-    //         let streamedResponse = "";
-
-    //         for await (const chunk of generator) {
-    //             let chunkStr = typeof chunk === "string" ? chunk : JSON.stringify(chunk);
-    //             streamedResponse += chunkStr;
-    //         }
-
-    //         if (streamedResponse.trim() === "no question") {
-    //             return `<p>No question detected.</p>`;
-    //         }
-
-    //         let parsed = JSON.parse(streamedResponse);
-    //         //here is the response in a array format!!!!!!
-
-    //         parsed = parsed.map(entry => ({
-    //             ...entry,
-    //             id: parseInt(entry.id, 10) // or: id: +entry.id
-    //         }));
-
-    //         // console.log("generateChatGPTResponseHTML PARSED: ", parsed);
-    //         // console.log("Here is the list of ids that we can then send to chatGPT: ", this.findActivities(this.codeActivities, parsed));
-
-    //         let extra_filter = await this.generateRelevantInfo(question, this.findActivities(this.codeActivities, parsed));
-    //         let parsed_extra = JSON.parse(extra_filter);
-
-    //         console.log("HERE IS THE EXTRA FILTERED ARRAY: ", parsed_extra);
-
-    //         //loop here to grab every smaller subgoal --> save it in an array and then pass it parallelly to api
-    //         let array_for_parallel = [];
-    //         for (let groupKey = 0; groupKey < this.codeActivities.length; groupKey++) {
-    //             const group = this.codeActivities[groupKey];
-    //             const links = this.codeResources[groupKey];
-    //             console.log("check id", group);
-
-    //             let contains = parsed.some(entry => entry.id == group.id);
-    //             if (!contains) {
-    //                 continue;
-    //             }
-    //             else {
-    //                 for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
-    //                     const subgoal = group.codeChanges[subgoalKey];
-    //                     array_for_parallel.push(JSON.stringify({
-    //                         ...subgoal,
-    //                         groupTitle: group.title
-    //                     }));
-    //                 }
-    //             }
-    //         }
-    //         console.log("array_for_parallel", array_for_parallel);
-
-    //         const results = await Promise.all(
-    //             array_for_parallel.map(async jsonStr => {
-    //                 const parsed = JSON.parse(jsonStr);
-    //                 const subgoal = parsed.title;
-    //                 const most_relevant = parsed;
-    //                 return this.generateNLResponse(question, subgoal, most_relevant);
-    //             })
-    //         );
-    //         const responses = results.map(pair => pair[0]);
-
-    //         console.log("HERE IS THE PARALLELISM RESULT FOR RESPONSE: ", responses);
-
-    //         const promises = {
-    //             story: this.generateStoryResponse(question, results),
-    //             summary: this.generateSummary(question, results)
-    //         };
-
-    //         const [storyResult, summaryResult] = await Promise.all([promises.story, promises.summary]);
-
-    //         let story = storyResult;
-    //         const summary = summaryResult;
-
-    //         story = JSON.parse(story);
-    //         console.log("HERE IS THE STORY: ", story);
-
-    //         let html = `<h2>Summary: </h2>
-    //         <p>${summary}</p>
-    //         <hr>
-    //         <h2>Your process: </h2>
-    //         `;
-
-    //         let index = 1;
-    //         for (let groupKey = 0; groupKey < this.codeActivities.length; groupKey++) {
-
-    //             const group = this.codeActivities[groupKey];
-    //             const links = this.codeResources[groupKey];
-    //             let contains = parsed.some(entry => entry.id == group.id);
-    //             console.log(group.id);
-
-    //             console.log(contains);
-    //             if (!contains) {
-    //                 continue;
-    //             }
-    //             else {
-    //                 let count = 0;
-    //                 //check for most relevant information: parsed_extra
-    //                 const targetIDs = new Set(parsed_extra.map(t => String(t.id)));
-
-    //                 for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
-    //                     const subgoal = group.codeChanges[subgoalKey];
-    //                     // console.log("LINE 2275: ", subgoal);
-
-    //                     // if (targetIDs.has(String(subgoal.id))) {
-
-    //                     // } else {
-
-    //                     html += `
-    //                     <div class="stories">
-    //                             <p><strong>${index}: </strong> 
-    //                                 ${story[index-1]}
-    //                             </p>
-    //                     </div>
-    //                     `;
-    //                     // }
-    //                     index ++;
-
-    //                     const diffHTML = this.generateDiffHTMLGroup(subgoal);
-    //                     if (links.resources.length != 0 && count < links.resources.length) {
-    //                         html += `
-
-    //                     <li data-eventid="${subgoalKey}">
-    //                         <!-- Editable title for the code activity -->
-    //                                 <div class="li-header">
-    //                             <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
-    //                             <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
-    //                             <!-- <i class="bi bi-pencil-square"></i> -->
-    //                             <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
-    //                                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
-    //                                             <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
-    //                                             <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
-    //                                         </svg>
-    //                                     </button>
-    //                             <b>in ${subgoal.file} </b> `
-    //                         const link = links.resources[count];
-    //                         // console.log(link.actions.length);
-    //                         html += `
-    //                                     <div class="container">
-    //                                         <i class="bi bi-bookmark"></i>
-    //                         <div class="centered">${link.actions.length}</div>
-    //                     </div>`
-    //                         html += `
-    //                                 </div>
-
-    //                                 <div class="content">
-    //                         <div class="left-container">
-    //                                         ${diffHTML}
-    //                                     </div>
-    //                         <div class="resources">
-    //                     `
-    //                         if (count < links.resources.length) {
-    //                             const link = links.resources[count];
-    //                             // html += `<ul class="link_list">`
-    //                             for (let i = 0; i < link.actions.length; i++) {
-    //                                 const eachLink = links.resources[count].actions[i];
-    //                                 html += `   
-    //                                     <div class="tooltip">
-    //                                         <a href="${eachLink.webpage}">${eachLink.webTitle}</a><br>
-
-    //                                         <br>
-
-
-
-
-
-    //                                         </div>
-    //                                     <br>
-    //                                 `
-    //                             }
-    //                             html += `
-
-    //                             </div>`
-    //                         } else {
-    //                             html += `</div>`
-    //                         }
-    //                     } else {
-    //                         html += `
-    //                     <li data-eventid="${subgoalKey}">
-    //                         <!-- Editable title for the code activity -->
-    //                         <div class="li-header">
-    //                             <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
-    //                             <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
-    //                             <!-- <i class="bi bi-pencil-square"></i> -->
-    //                             <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
-    //                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
-    //                                 <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
-    //                                 <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
-    //                                 </svg>
-    //                             </button>
-    //                             <b>in ${subgoal.file} </b>
-    //                             <div class="placeholder">
-    //                                                         </div>
-    //                                         </div>
-    //                         <div class="content">
-    //                             <div class="full-container">
-    //                                 ${diffHTML}
-    //                                 </div>
-    //                         </div>`
-    //                     }
-    //                     count++;
-    //                     html += `
-    //                             </li>
-    //                             <hr>
-    //                             </div>
-    //                     <script> 
-    //                         document.addEventListener('DOMContentLoaded', () => {
-    //                             const button = document.getElementById('plusbtn-${groupKey}-${subgoalKey}');
-
-    //                             button.addEventListener('click', () => {
-    //                                 button.textContent = button.textContent === '+' ? '-' : '+';
-    //                             });
-    //                         });
-    //                         document.getElementById('button-${groupKey}-${subgoalKey}').addEventListener('click', function() {
-    //                             document.getElementById('code-title-${groupKey}-${subgoalKey}').focus();
-    //                                         });  
-    //                             </script>
-    //                         `;
-    //                 }
-    //             }
-
-    //         }
-
-    //         const endTime = performance.now();
-    //         console.log(`THE ENTIRE HISTORY HTML GENERATING took ${endTime - startTime} milliseconds`);
-    //         this.webviewPanel.webview.postMessage({
-    //             command: 'updateChatResponse',
-    //             response: html
-    //         });
-
-    //         console.log('Sending setupCollapsibleButtons message');
-
-    //         // Attach collapsible functionality via JS within the webview
-    //         this.webviewPanel.webview.postMessage({
-    //             command: 'setupCollapsibleButtons'
-    //         });
-
-    //         return html;
-    //     } catch (err) {
-    //         console.error("Error generating response:", err);
-    //         return `<p style="color:red;">Error: ${err.message}</p>`;
-    //     }
-    // }
 
     async generateHistoryChatGPTResponseHTML(question) {
         if (!question || question === "undefined") return "";
