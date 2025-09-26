@@ -14,29 +14,10 @@ const express = require("express");
 require('dotenv').config({ path: __dirname + '/../.env' });
 const { OpenAI } = require("openai");
 const app = express();
-const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // console.log(process.env.OPENAI_API_KEY);
 
 app.use(express.json())
-
-const geminiAPIKey = process.env.GEMINI_API_KEY;
-const genAI = new GoogleGenerativeAI(geminiAPIKey);
-
-const model = genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
-    system_instruction: "you are like a middle man for user and openAI, determine whether the user questions need further processing for OpenAI to answer user questions. There you are to differentiate between two types: implicit and explicit questions. If it is explicit, it needs no further processing and can be passed to OpenAI direct. If it is implicit, you need to come up with a question that makes it explicit. If it is explicit, just say yes, dont further explain it. if not, just simply state the new generate question. "
-});
-
-const model_unanswered = genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
-    system_instruction: "you are here to help determine whether the given JSON answers the given question. Determine whether there are unanswered part of the question, if so, please state what it is. If not, say no, all the questions are answered."
-});
-
-const model_history_or_resources = genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
-    system_instruction: "you are here to help determine whether the given question is focusing on the code or online resources. please do as the prompt says. "
-});
 
 class ClusterManager {
     constructor(context, gitTracker, stayPersistent) {
@@ -73,24 +54,27 @@ class ClusterManager {
         this.hasRestoredFromLastSession = false; // Track if we restored from last session
         this.chatResponseHTML = null;
 
-        this.initializeOpenAI(context);
+        this.initializeOpenAI(context); // Initialize OpenAI API
+
+        //map to document asked user questions and to store answers for faster regeneration when user asks a similar question again 
+        this.questionCache = new Map();
     }
 
     async initializeOpenAI(context) {
         const apiKey = await context.secrets.get('openaiApiKey') || process.env.OPENAI_API_KEY;
 
         if (!apiKey) {
-            vscode.window.showWarningMessage('OpenAI API key not set. Please set it using the "Code Histories: Set OpenAI API Key" command.');
+            vscode.window.showErrorMessage('OpenAI API key is not set. Please set it in the extension settings.');
             return;
         }
-
-        const openai = new OpenAI({
-            apiKey: apiKey,
+        
+        this.openai = new OpenAI({
+            apiKey: apiKey
         });
     }
 
     initializeTemporaryTest() {
-        const testData = new temporaryTest(String.raw`C:\Users\Pham\Downloads\tileMakingPuzzle.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\Users\Tin Pham\Downloads\tileMakingPuzzle.json`); // change path of test data here
         // codeActivities has id, title, and code changes
         // the focus atm would be code changes array which contains smaller codeActivity objects
         // for eg, to access before_code, we would do this.codeActivities[0].codeChanges[0].before_code
@@ -103,7 +87,7 @@ class ClusterManager {
     }
 
     initializeResourcesTemporaryTest() {
-        const testData = new temporaryTest(String.raw`C:\Users\Pham\Downloads\tileMakingPuzzle.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\Users\Tin Pham\Downloads\tileMakingPuzzle.json`); // change path of test data here
         this.codeResources = testData.processResources(testData.data);
         console.log("Resources", this.codeResources);
     }
@@ -801,8 +785,8 @@ class ClusterManager {
 
             // console.log('Prompt:', prompt);
 
-            const completions = await openai.chat.completions.create({
-                model: 'gpt-3.5-turbo',
+            const completions = await this.openai.chat.completions.create({
+                model: 'gpt-4o-mini',
                 max_tokens: 25,
                 messages: [
                     {
@@ -857,7 +841,7 @@ Your job is to summarize what is happening — what the user is asking, what the
 - This is not a conversation; don’t say things like “feel free to ask.”
             `;
 
-            const completions = await openai.chat.completions.create({
+            const completions = await this.openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 max_tokens: 500,
                 messages: [
@@ -868,57 +852,6 @@ Your job is to summarize what is happening — what the user is asking, what the
                         2. overall goal for this smaller code change, and 
                         3. the specific change happened in the code that partially contribute to the overall goal, it will also have a smaller subgoal here, the overall goal was breaked into smaller subgoal such as the one provided here. 
                         It is your job to summarize what the user asked, what the user's goal is here, and what they edited in the code to work toward that overall goal. It has to clearly convey what the user serached for and it is also an opportunity to demonstrate that the user question is being processed by a LLM and is a hint that natural language can be understanderstood here, meaning users are able to treat the search function as a chat with a LLM. If the user asked a definition question, provide the definite also in the response. Please also describe the information with short and easy to understand language and like also a small piece of "story" that contribute to the overall goal.`
-                    },
-                    { role: "user", content: prompt }
-                ]
-            });
-
-            let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
-
-            return `${summary}`;
-
-
-        } catch (error) {
-            console.error("Error generating answer:", error.message);
-            return "response generation failed";
-        }
-    }
-
-    async generateHint(question, subgoal, most_relevant) {
-        try {
-
-            if (!question.trim()) {
-                return "no question";
-            }
-
-            let prompt = `You are given 3 things:
-1. A user question: ${question}
-2. An overall goal for this section: ${subgoal}
-3. A detailed edit made toward the goal: ${JSON.stringify(most_relevant)}
-
-Your job is to write a **single sentence** that directs the reader to this section of the code edit.
-
-your job is to provide a one sentence response in the format of "Read this section to learn more about [what this edits was]."
-
-Guidelines:
-- Focus on the exact logic or behavior that was changed or added.
-- Be precise and concrete (e.g., mention the function or visual behavior if relevant).
-- Avoid praise or general statements.
-- Do not refer to the fact that an edit was made—just what it teaches or explains.
-- Do not include quotes or code block formatting.
-- Don’t mention backend IDs.`;
-
-            const completions = await openai.chat.completions.create({
-                model: "gpt-4o-mini",
-                max_tokens: 500,
-                messages: [
-                    {
-                        role: "system",
-                        content: `You are a code history comprehension helpter. you will be given 3 different informations: 
-                        1. a question asked by the user, 
-                        2. overall goal for this smaller code change, and 
-                        3. the specific change happened in the code that partially contribute to the overall goal, it will also have a smaller subgoal here, the overall goal was breaked into smaller subgoal such as the one provided here. 
-                        your job here is to write little "hints" for the user as to which area they should be looking at. the hints you write will allow them to quickly skip anything that is not related to their user question. `
                     },
                     { role: "user", content: prompt }
                 ]
@@ -960,9 +893,10 @@ Requirements:
 - Output only the revised array as valid array ready to parse (do not wrap in extra text).`;
 
 
-            const completions = await openai.chat.completions.create({
+            const completions = await this.openai.chat.completions.create({
                 model: "gpt-4o-mini",
-                max_tokens: 1500,
+                max_completion_tokens: null,
+                max_tokens: null,
                 messages: [
                     {
                         role: "system",
@@ -973,7 +907,7 @@ Requirements:
             });
             console.log("generateStoryResponse: ", completions);
             let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
-            summary = summary.trim().replace(/^```json/, "").replace(/^```/, "").replace(/```$/, "").trim();
+            // summary = summary.trim().replace(/^```json/, "").replace(/^```/, "").replace(/```$/, "").trim();
 
             // console.log("generateStoryResponse: ", summary);
             return `${summary}`;
@@ -1030,7 +964,7 @@ Chronological coding steps:
 ${JSON.stringify(parallelled_array)}`;
 
 
-            const completions = await openai.chat.completions.create({
+            const completions = await this.openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 max_tokens: 1000,
                 messages: [
@@ -1044,6 +978,9 @@ ${JSON.stringify(parallelled_array)}`;
             console.log("generateSummary: ", completions);
             let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
             // console.log("generateStoryResponse: ", summary);
+
+            // summary = summary.trim().replace(/^```json/, "").replace(/^```/, "").replace(/```$/, "").trim();
+
             return `${summary}`;
 
 
@@ -1086,7 +1023,7 @@ ${JSON.stringify(parallelled_array)}`;
 
             let prompt = `Here is the user question: ${question}, and here is the filtered code change information: ${JSON.stringify(relevant_info)}. Please use the given question and information provided to find the most relevant piece of information, the rest are background information that might not seem important but it is still relevant.`;
 
-            const completions = await openai.chat.completions.create({
+            const completions = await this.openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 max_tokens: 500,
                 messages: [
@@ -1103,6 +1040,8 @@ ${JSON.stringify(parallelled_array)}`;
 
             let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
             // console.log('In generateRelevantInfo, filtered API Response:', completions);
+
+            // summary = summary.trim().replace(/^```json/, "").replace(/^```/, "").replace(/```$/, "").trim();
 
             return `${summary}`;
 
@@ -1121,21 +1060,77 @@ ${JSON.stringify(parallelled_array)}`;
             }
 
             let prompt = 'Here is the question: "' + question + '". Please help me determine whether the quesion needs user accessed resource list or user code editing list. If the question focues on the resources, just simply say "resources"; if the question focuses on the history of the code, just simply say "history". ';
-            const request = {
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            };
+            
+            const completions = await this.openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                max_tokens: 50,
+                messages: [
+                    {
+                        role: "system",
+                        content: "you are here to help determine whether the given question is focusing on the code or online resources. please do as the prompt says."
+                    },
+                    { role: "user", content: prompt }
+                ]
+            });
 
-            const result = await model_history_or_resources.generateContent(request);
-            let summary = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text || "Summary not available";
+            let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
             // console.log("in isHistoryOrResource: ", summary)
             return summary.trim().toLowerCase();
 
         } catch (error) {
-            // console.error("Error generating questions:", error.message);
+            console.error("Error generating questions:", error.message);
             return `response generation failed`;
         }
 
     }
+
+    async checkQuestionRepeat(question) {
+        try {
+
+            if (!question.trim()) {
+                return "no question";
+            }
+
+            let prompt = `New question: "${question}".
+Cached questions: ${Array.from(this.questionCache.keys()).join(", ")}`
+
+            const completions = await this.openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                max_tokens: 500,
+                messages: [
+                    {
+                        role: "system",
+                        content: `You are a duplicate question detector. 
+Always respond with a strict JSON array and nothing else.
+
+Rules:
+- Compare the new question against the cached questions.
+- If the new question is a duplicate (even if rephrased, synonyms, or word order changes), return [true, "exact_cached_question_string"]. 
+  IMPORTANT: The second element must be copied exactly from the cached questions list, never the new question.
+- If no duplicate is found, or the cache is empty, return [false].`
+                    },
+                    { role: "user", content: prompt }
+                ]
+            });
+
+            let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
+            console.log("checkQuestionRepeat: ", summary)
+
+            // this.chatGPTInvoked = true;
+            // return summary;
+            try {
+                return JSON.parse(summary);
+            } catch {
+                return [false]; // fallback if parsing fails
+            }
+
+
+        } catch (error) {
+            console.error("Error generating answer:", error.message);
+            return "response generation failed";
+        }
+    }
+
 
     async *generateAnswerStream(question, whichOne, codeEvents, uniqueVisits) {
 
@@ -1155,7 +1150,7 @@ ${JSON.stringify(parallelled_array)}`;
                 : `The user will ask you to filter the database based on the history the user has accessed: "${JSON.stringify(uniqueVisits)}", and here is the question: "${question}". If the user question is just "", simply say no question.`;
 
             // console.log("in generateAnswerStream, prompt: ", prompt);
-            const stream = await openai.chat.completions.create({
+            const stream = await this.openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 max_tokens: 1000,
                 stream: true, // Enable streaming
@@ -1221,7 +1216,7 @@ ${JSON.stringify(parallelled_array)}`;
                 : `The user will ask you to filter the database based on the history the user has accessed: "${JSON.stringify(filteredArrayResources)}", and here is the question: "${question}". If the user question is just "", simply say no question.`;
 
             // console.log("in generatePastAnswerStream, prompt: ", prompt);
-            const stream = await openai.chat.completions.create({
+            const stream = await this.openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 max_tokens: 1000,
                 stream: true, // Enable streaming
@@ -1663,9 +1658,6 @@ ${JSON.stringify(parallelled_array)}`;
             console.error("codeResources is undefined or empty");
             return '<li>No resources for you :(.</li>';
         }
-
-        // console.log('In generateGroupedEventsHTML, codeActivities', this.codeActivities);
-        // console.log('In generateGroupedEventsHTML, codeActivities in string version: ', JSON.stringify(this.codeActivities));
 
         for (let groupKey = 0; groupKey < this.codeActivities.length; groupKey++) {
             const group = this.codeActivities[groupKey];
@@ -2223,10 +2215,23 @@ ${JSON.stringify(parallelled_array)}`;
                 return ``;
             }
 
+            // if (streamedResponse.trim() === "response generation failed") {
+            //     console.error("OpenAI filtering failed, returning error message.");
+            //     return `<p style="color:red;">Error: Response generation failed during history filtering.</p>`;
+            // }
+
             console.log("generateChatGPTResponseHTML RESPONSE: ", streamedResponse);
 
             let parsed = JSON.parse(streamedResponse);
             console.log("generateChatGPTResponseHTML PARSED: ", parsed);
+
+            // let parsed;
+            // try {
+            //     parsed = JSON.parse(streamedResponse);
+            // } catch (e) {
+            //     console.error("Failed to parse JSON response:", e, streamedResponse);
+            //     return `<p style="color:red;">Error: Failed to parse API response as JSON.</p>`;
+            // }
 
             parsed = parsed.map(entry => ({
                 ...entry,
@@ -2389,244 +2394,209 @@ ${JSON.stringify(parallelled_array)}`;
     }
 
     async generateHistoryChatGPTResponseHTML(question) {
+        if (!question || question === "undefined") return "";
 
-        if (question == 'undefined') {
-            return '';
-        }
-
-        const startTime = performance.now();
+        //check if the question has been asked before: 
+        //if true (repeated), return the answer from cache, otherwise proceed to the next step
+        // if (checkRepeat[0]) {
+        //     console.log("CHECK REPEATS: ", this.questionCache.get(checkRepeat[1]));
+        // }
 
         try {
-            // let reduceLoad = await this.isHistoryOrResource(question);
-            let reduceLoad = "history";
-
-            // if (!reduceLoad.includes("history") || !reduceLoad.includes("resource")) {
-            //     reduceLoad = "history";
-            // }
-
+            const startTime = performance.now();
+            const reduceLoad = await this.isHistoryOrResource(question);
             const generator = this.generatePastAnswerStream(question, reduceLoad);
-            let streamedResponse = "";
-
-            for await (const chunk of generator) {
-                let chunkStr = typeof chunk === "string" ? chunk : JSON.stringify(chunk);
-                streamedResponse += chunkStr;
+            const checkRepeat = await this.checkQuestionRepeat(question);
+            console.log("checkRepeat: ", checkRepeat);
+            if (checkRepeat[0]) {
+                // console.log("CHECK REPEATS: ", this.questionCache.get(checkRepeat[1]));
+                let html = this.questionCache.get(checkRepeat[1]);
+                this.webviewPanel.webview.postMessage({ command: "updateChatResponse", response: html });
+                return html;
             }
-
-            if (streamedResponse.trim() === "no question") {
-                return `<p>No question detected.</p>`;
-            }
-
-            let parsed = JSON.parse(streamedResponse);
-            //here is the response in a array format!!!!!!
-
-            parsed = parsed.map(entry => ({
-                ...entry,
-                id: parseInt(entry.id, 10) // or: id: +entry.id
-            }));
-
-            // console.log("generateChatGPTResponseHTML PARSED: ", parsed);
-            // console.log("Here is the list of ids that we can then send to chatGPT: ", this.findActivities(this.codeActivities, parsed));
-
-            let extra_filter = await this.generateRelevantInfo(question, this.findActivities(this.codeActivities, parsed));
-            let parsed_extra = JSON.parse(extra_filter);
-
-            console.log("HERE IS THE EXTRA FILTERED ARRAY: ", parsed_extra);
-
-            //loop here to grab every smaller subgoal --> save it in an array and then pass it parallelly to api
-            let array_for_parallel = [];
-            for (let groupKey = 0; groupKey < this.codeActivities.length; groupKey++) {
-                const group = this.codeActivities[groupKey];
-                const links = this.codeResources[groupKey];
-                console.log("check id", group);
-
-                let contains = parsed.some(entry => entry.id == group.id);
-                if (!contains) {
-                    continue;
+            else {
+                let streamedResponse = "";
+                for await (const chunk of generator) {
+                    streamedResponse += typeof chunk === "string" ? chunk : JSON.stringify(chunk);
                 }
-                else {
-                    for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
-                        const subgoal = group.codeChanges[subgoalKey];
-                        array_for_parallel.push(JSON.stringify({
-                            ...subgoal,
-                            groupTitle: group.title
-                        }));
-                    }
+
+                if (streamedResponse.trim() === "no question") {
+                    return `<p>No question detected.</p>`;
                 }
-            }
-            console.log("array_for_parallel", array_for_parallel);
 
-            const results = await Promise.all(
-                array_for_parallel.map(async jsonStr => {
-                    const parsed = JSON.parse(jsonStr);
-                    const subgoal = parsed.title;
-                    const most_relevant = parsed;
-                    return this.generateNLResponse(question, subgoal, most_relevant);
-                })
-            );
-            const responses = results.map(pair => pair[0]);
+                let rawJson = streamedResponse.trim();
+            
+                // Remove markdown code fences (e.g., ```json or ```)
+                rawJson = rawJson.replace(/^```json\s*/i, '').replace(/\s*```$/, '');
+                
+                // Safely parse the JSON with a try-catch block
+                let parsed;
+                try {
+                    parsed = JSON.parse(rawJson);
+                } catch (error) {
+                    console.error("Error parsing JSON from generatePastAnswerStream:", error, rawJson.substring(0, 200) + '...');
+                    return `<p style="color:red;">Error: AI returned invalid JSON format for filtering. Please try rephrasing your question.</p>`;
+                }
 
-            console.log("HERE IS THE PARALLELISM RESULT FOR RESPONSE: ", responses);
+                parsed = parsed.map(entry => ({
+                    ...entry,
+                    id: +entry.id
+                }));
 
-            const promises = {
-                story: this.generateStoryResponse(question, results),
-                summary: this.generateSummary(question, results)
-            };
+                // let parsed = JSON.parse(streamedResponse).map(entry => ({
+                //     ...entry,
+                //     id: +entry.id
+                // }));
 
-            const [storyResult, summaryResult] = await Promise.all([promises.story, promises.summary]);
+                const extraFilter = await this.generateRelevantInfo(
+                    question,
+                    this.findActivities(this.codeActivities, parsed)
+                );
+                
+                let parsedExtra;
+                try {
+                    parsedExtra = JSON.parse(extraFilter); // Ensure extraFilter is clean JSON
+                } catch (error) {
+                    console.error("Error parsing JSON from generateRelevantInfo:", error, extraFilter.substring(0, 200) + '...');
+                    // Handle the error (e.g., skip filtering or use a default)
+                    parsedExtra = []; 
+                }
+                // const parsedExtra = JSON.parse(extraFilter);
 
-            let story = storyResult;
-            const summary = summaryResult;
+                const targetIDs = new Set(parsedExtra.map(t => String(t.id)));
 
-            story = JSON.parse(story);
-            console.log("HERE IS THE STORY: ", story);
+                // Build subgoal jobs
+                const arrayForParallel = this.codeActivities.flatMap((group, groupKey) =>
+                    parsed.some(entry => entry.id == group.id)
+                        ? group.codeChanges.map(subgoal =>
+                            JSON.stringify({ ...subgoal, groupTitle: group.title })
+                        )
+                        : []
+                );
 
-            let html = `<h2>Summary: </h2>
+                const results = await Promise.all(
+                    arrayForParallel.map(async jsonStr => {
+                        const parsed = JSON.parse(jsonStr);
+                        return this.generateNLResponse(question, parsed.title, parsed);
+                    })
+                );
+
+                const responses = results.map(r => r[0]);
+                console.log("HERE IS THE PARALLELISM RESULT FOR RESPONSE:", responses);
+
+                const [storyResult, summary] = await Promise.all([
+                    this.generateStoryResponse(question, results),
+                    this.generateSummary(question, results)
+                ]);
+
+                let story;
+                try {
+                    console.log("STORY RESULT BEFORE PARSING:", storyResult);
+                    story = JSON.parse(storyResult);
+                } catch (error) {
+                    console.error("Error parsing story JSON:", error);
+                }
+
+                // const story = JSON.parse(storyResult);
+                console.log("HERE IS THE STORY:", story);
+
+                let html = `
+            <h2>Summary: </h2>
             <p>${summary}</p>
             <hr>
             <h2>Your process: </h2>
-            `;
+        `;
 
-            let index = 1;
-            for (let groupKey = 0; groupKey < this.codeActivities.length; groupKey++) {
+                let index = 1;
+                for (let groupKey = 0; groupKey < this.codeActivities.length; groupKey++) {
+                    const group = this.codeActivities[groupKey];
+                    const links = this.codeResources[groupKey];
+                    if (!parsed.some(entry => entry.id == group.id)) continue;
 
-                const group = this.codeActivities[groupKey];
-                const links = this.codeResources[groupKey];
-                let contains = parsed.some(entry => entry.id == group.id);
-                console.log(group.id);
-
-                console.log(contains);
-                if (!contains) {
-                    continue;
-                }
-                else {
                     let count = 0;
-                    //check for most relevant information: parsed_extra
-                    const targetIDs = new Set(parsed_extra.map(t => String(t.id)));
-
                     for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
                         const subgoal = group.codeChanges[subgoalKey];
-                        // console.log("LINE 2275: ", subgoal);
-
-                        // if (targetIDs.has(String(subgoal.id))) {
-
-                        // } else {
-
-                        html += `
-                        <div class="stories">
-                                <p><strong>${index}: </strong> 
-                                    ${story[index-1]}
-                                </p>
-                        </div>
-                        `;
-                        // }
-                        index ++;
-
                         const diffHTML = this.generateDiffHTMLGroup(subgoal);
-                        if (links.resources.length != 0 && count < links.resources.length) {
-                            html += `
-                            
-                        <li data-eventid="${subgoalKey}">
-                            <!-- Editable title for the code activity -->
-                                    <div class="li-header">
-                                <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
-                                <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
-                                <!-- <i class="bi bi-pencil-square"></i> -->
-                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
-                                                <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
-                                                <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
-                                            </svg>
-                                        </button>
-                                <b>in ${subgoal.file} </b> `
-                            const link = links.resources[count];
-                            // console.log(link.actions.length);
-                            html += `
-                                        <div class="container">
-                                            <i class="bi bi-bookmark"></i>
-                            <div class="centered">${link.actions.length}</div>
-                        </div>`
-                            html += `
-                                    </div>
 
-                                    <div class="content">
-                            <div class="left-container">
-                                            ${diffHTML}
-                                        </div>
-                            <div class="resources">
-                        `
-                            if (count < links.resources.length) {
-                                const link = links.resources[count];
-                                // html += `<ul class="link_list">`
-                                for (let i = 0; i < link.actions.length; i++) {
-                                    const eachLink = links.resources[count].actions[i];
-                                    html += `   
-                                        <div class="tooltip">
-                                            <a href="${eachLink.webpage}">${eachLink.webTitle}</a><br>
-        
-                                            <br>
-
-
-
-
-
-                                            </div>
-                                        <br>
-                                    `
-                                }
-                                html += `
-                                
-                                </div>`
-                            } else {
-                                html += `</div>`
-                            }
-                        } else {
-                            html += `
-                        <li data-eventid="${subgoalKey}">
-                            <!-- Editable title for the code activity -->
-                            <div class="li-header">
-                                <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
-                                <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
-                                <!-- <i class="bi bi-pencil-square"></i> -->
-                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
-                                    <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
-                                    <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
-                                    </svg>
-                                </button>
-                                <b>in ${subgoal.file} </b>
-                                <div class="placeholder">
-                                                            </div>
-                                            </div>
-                            <div class="content">
-                                <div class="full-container">
-                                    ${diffHTML}
-                                    </div>
-                            </div>`
-                        }
-                        count++;
                         html += `
-                                </li>
-                                <hr>
+                    <div class="stories">
+                        <p><strong>${index}:</strong> ${story[index - 1]}</p>
+                    </div>
+                `;
+                        index++;
+
+                        const hasLinks = links.resources?.length > 0 && count < links.resources.length;
+                        const linkBlock = hasLinks
+                            ? `
+                        <div class="container">
+                            <i class="bi bi-bookmark"></i>
+                            <div class="centered">${links.resources[count].actions.length}</div>
+                        </div>
+                    `
+                            : `<div class="placeholder"></div>`;
+
+                        const resourceLinks = hasLinks
+                            ? links.resources[count].actions
+                                .map(
+                                    eachLink => `
+                                <div class="tooltip">
+                                    <a href="${eachLink.webpage}">${eachLink.webTitle}</a><br><br>
                                 </div>
-                            `;
+                              `
+                                )
+                                .join("")
+                            : "";
+
+                        html += `
+                    <li data-eventid="${subgoalKey}">
+                        <div class="li-header">
+                            <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
+                            <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" 
+                                   value="${subgoal.title}" 
+                                   onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
+                            <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" 
+                                     fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
+                                    <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293z"/>
+                                    <path fill-rule="evenodd" 
+                                          d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 
+                                          0 0 1-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 
+                                          0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 
+                                          0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"/>
+                                </svg>
+                            </button>
+                            <b>in ${subgoal.file}</b>
+                            ${linkBlock}
+                        </div>
+                        <div class="content">
+                            <div class="${hasLinks ? "left-container" : "full-container"}">
+                                ${diffHTML}
+                            </div>
+                            ${hasLinks ? `<div class="resources">${resourceLinks}</div>` : ""}
+                        </div>
+                    </li>
+                    <hr>
+                `;
+                        count++;
                     }
                 }
 
+                console.log(`THE ENTIRE HISTORY HTML GENERATING took ${performance.now() - startTime} ms`);
+                this.webviewPanel.webview.postMessage({ command: "updateChatResponse", response: html });
+
+                //store it in the cache map: 
+                this.questionCache.set(question, html);
+
+                return html;
+
             }
 
-            const endTime = performance.now();
-            console.log(`THE ENTIRE HISTORY HTML GENERATING took ${endTime - startTime} milliseconds`);
-            this.webviewPanel.webview.postMessage({
-                command: 'updateChatResponse',
-                response: html
-            });
-
-            return html;
         } catch (err) {
             console.error("Error generating response:", err);
             return `<p style="color:red;">Error: ${err.message}</p>`;
         }
     }
+
 
 
     generateDiffHTMLGroup(codeActivity) {
