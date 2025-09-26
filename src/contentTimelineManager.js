@@ -2,7 +2,9 @@ const vscode = require('vscode');
 const Diff = require('diff');
 const diff2html = require('diff2html');
 const path = require('path');
+const fs = require('fs');
 const { contentTimelineStyles } = require('./webViewStyles');
+const { getCurrentDir } = require('./helpers');
 
 class ContentTimelineManager {
     constructor(context, gitTracker, stayPersistent) {
@@ -18,13 +20,50 @@ class ContentTimelineManager {
         this.isInitialized = false;
         this.isPanelClosed = false;
         this.stayPersistent = stayPersistent;
+        this.hasRestoredFromLastSession = false; // Track if we restored from last session
+    }
+
+    async restoreStateFromFile() {
+        if (this.hasRestoredFromLastSession) return; // Prevent re-loading
+
+        try {
+            const currentDir = getCurrentDir();
+            const statePath = path.join(currentDir, 'CH_cfg_and_logs', 'content_timeline_session_state.json');
+
+            if (fs.existsSync(statePath)) {
+                const stateJSON = fs.readFileSync(statePath, 'utf8');
+                const state = JSON.parse(stateJSON);
+
+                this.contentTimeline = state.contentTimeline || [];
+                this.eventHtmlMap = state.eventHtmlMap || {};
+                this.previousSaveContent = state.previousSaveContent || {};
+                this.idCounter = state.idCounter || 0;
+                this.currentEvent = state.currentEvent || null;
+
+                this.hasRestoredFromLastSession = true;
+                console.log(`Successfully restored content timeline state from last session`);
+            }
+        } catch (error) {
+            console.error('Could not restore content timeline session state, starting fresh:', error);
+        
+            this.contentTimeline = [];
+            this.eventHtmlMap = {};
+            this.previousSaveContent = {};
+            this.idCounter = 0;
+            this.currentEvent = null;
+        }
     }
 
     async initializeContentTimelineManager() {
-        const initialCodeEntries = await this.gitTracker.grabAllLatestCommitFiles();
-        for (const entry of initialCodeEntries) {
-            await this.processEvent(entry);
+        await this.restoreStateFromFile(); // Restore state if available
+        
+        if (!this.hasRestoredFromLastSession) {
+            const initialCodeEntries = await this.gitTracker.grabAllLatestCommitFiles();
+            for (const entry of initialCodeEntries) {
+                await this.processEvent(entry);
+            }
         }
+        
         this.isInitialized = true;
     }
 
@@ -39,9 +78,6 @@ class ContentTimelineManager {
             return;
         }
 
-        // Retrieve the previous state from globalState
-        this.previousState = this.context.globalState.get('contentTimelineWebviewState', null);
-
         this.webviewPanel = vscode.window.createWebviewPanel(
             'contentTimelineWebview',
             'Content Timeline Webview',
@@ -52,39 +88,12 @@ class ContentTimelineManager {
             }
         );
 
-        // If there's a previous state, restore it
-        if (this.previousState) {
-            this.webviewPanel.webview.html = this.previousState.html;
-            this.webviewPanel.webview.postMessage({ type: 'restoreState', state: this.previousState });
-        } else {
-            // Set the initial HTML content if no previous state exists
-            await this.updateWebPanel();
-        }
+        await this.updateWebPanel();
 
         // Save the state when the webview is closed
         this.webviewPanel.onDidDispose(() => {
-            if(this.stayPersistent === false) this.isPanelClosed = true;
+            if (this.stayPersistent === false) this.isPanelClosed = true;
             this.webviewPanel = null; // Clean up the reference
-        });
-
-        // Send a message to the webview just before it is closed
-        this.webviewPanel.onDidDispose(() => {
-            // Request the webview to send its current state before closing
-            this.webviewPanel.webview.postMessage({ type: 'saveStateRequest' });
-
-            // Set a small timeout to ensure the state is sent before we consider it disposed
-            setTimeout(() => {
-                if(this.stayPersistent === false) this.isPanelClosed = true;
-                this.webviewPanel = null;
-            }, 1000); // Adjust timeout if necessary
-        });
-
-        // Listen for messages from the webview to save the state
-        this.webviewPanel.webview.onDidReceiveMessage(async message => {
-            if (message.type === 'saveState') {
-                // Save the state returned by the webview (including scroll positions)
-                await this.context.globalState.update('contentTimelineWebviewState', message.state);
-            }
         });
     }
 
@@ -100,16 +109,6 @@ class ContentTimelineManager {
             await this.handleSaveEvent(this.currentEvent);
         } else if (event.type === 'execution') {
             await this.handleExecutionEvent(this.currentEvent);
-        } else if (event.type === 'selection') {
-            await this.handleSelectionEvent(this.currentEvent);
-            
-            // always update silently
-            // if webview is open, update it; but if not still update but don't open it
-            if(this.webviewPanel){
-                await this.updateWebPanel();
-            } else {
-                await this.updateWebPanelSilently();
-            }
         }
 
         if(!this.isInitialized){
@@ -125,51 +124,104 @@ class ContentTimelineManager {
         }
     }
 
-    async handleSelectionEvent(event) {
-        const fileName = this.getFilename(event.data.document);
-        let htmlLines = '';
+    async processWebEvents(webEventsList) {
+        if (!webEventsList || webEventsList.length === 0) {
+            return;
+        }
 
-        const startLine = event.data.range[0];
-        const endLine = event.data.range[1];
-        const startChar = event.data.charRange[0];
-        const endChar = event.data.charRange[1];
-        const documentText = event.data.allText.split('\n');
+        console.log('In processWebEvents', webEventsList);
 
-        htmlLines = documentText.slice(startLine - 1, endLine).map((line, index) => {
-            const lineNumber = startLine + index;
-    
-            if (lineNumber === startLine && lineNumber === endLine) {
-                // The selection is only on one line
-                const highlightedLine = line.substring(0, startChar) +
-                    `<strong>${line.substring(startChar, endChar)}</strong>` +
-                    line.substring(endChar);
-                return `<span class="clickable-line" data-line-number="${lineNumber - 1}" data-filename="${fileName}">${lineNumber}: ${highlightedLine}</span>`;
-            } else if (lineNumber === startLine) {
-                // The selection starts on this line
-                const highlightedLine = line.substring(0, startChar) +
-                    `<strong>${line.substring(startChar)}</strong>`;
-                return `<span class="clickable-line" data-line-number="${lineNumber - 1}" data-filename="${fileName}">${lineNumber}: ${highlightedLine}</span>`;
-            } else if (lineNumber === endLine) {
-                // The selection ends on this line
-                const highlightedLine = `<strong>${line.substring(0, endChar)}</strong>` +
-                    line.substring(endChar);
-                return `<span class="clickable-line" data-line-number="${lineNumber - 1}" data-filename="${fileName}">${lineNumber}: ${highlightedLine}</span>`;
-            } else {
-                // Entire line is part of the selection
-                return `<span class="clickable-line" data-line-number="${lineNumber - 1}" data-filename="${fileName}">${lineNumber}: <strong>${line}</strong></span>`;
+        // Remove duplicate visits within 3 seconds
+        const filteredEvents = this.removeDuplicateVisits(webEventsList);
+
+        for (const entry of filteredEvents) {
+            const webEvent = {
+                id: this.idCounter++,
+                time: entry.time,
+                type: this.getWebEventType(entry.notes),
+                data: entry
+            };
+
+            await this.handleWebEvent(webEvent);
+        }
+
+        if (!this.isInitialized) {
+            return;
+        }
+
+        // Trigger webview if not opened
+        if (!this.webviewPanel) {
+            await this.initializeWebview();
+        } else {
+            // If webview is already opened, just update the content
+            await this.updateWebPanel();
+        }
+    }
+
+    removeDuplicateVisits(webEventsList) {
+        const filtered = [];
+        const visitTracker = new Map(); // Track URL -> last visit time
+
+        for (const event of webEventsList) {
+            const eventType = this.getWebEventType(event.notes);
+            
+            const url = event.timed_url;
+            const currentTime = event.time;
+            
+            // Check if we've seen this URL recently (within 3 seconds)
+            if (visitTracker.has(url)) {
+                const lastVisitTime = visitTracker.get(url);
+                if (currentTime - lastVisitTime < 3) {
+                    // Skip this duplicate visit
+                    console.log(`Skipping duplicate visit to ${url} within 3 seconds`);
+                    continue;
+                }
             }
-        }).join('<br>');
+            
+            // Update the tracker with current visit time
+            visitTracker.set(url, currentTime);
+            
+            filtered.push(event);
+        }
 
-        event.data.notes = `Click: ${new Date(event.time * 1000).toLocaleDateString()} ${new Date(event.time * 1000).toLocaleTimeString()}`;
-        event.data.diffHtml = htmlLines;
+        return filtered;
+    }
+
+    getWebEventType(notes) {
+        if (notes.startsWith('search:')) {
+            return 'search';
+        } else if (notes.startsWith('visit:')) {
+            return 'visit';
+        } else if (notes.startsWith('revisit:')) {
+            return 'revisit';
+        }
+        return 'unknown';
+    }
+
+    async handleWebEvent(event) {
+        const eventType = event.type;
+        
+        // Clean up the notes to extract just the essential information
+        let cleanedInfo = '';
+        
+        if (eventType === 'search') {
+            // Extract just the search query (remove "search:" and trailing ";")
+            cleanedInfo = event.data.notes.replace('search:', '').replace(';', '').trim();
+        } else if (eventType === 'visit' || eventType === 'revisit') {
+            // Extract just the page title (remove "visit:"/"revisit:" and trailing ";")
+            cleanedInfo = event.data.notes.replace(/^(visit:|revisit:)/, '').replace(/;$/, '').trim();
+        }
+
+        // Store the cleaned info for display
+        event.data.cleanedInfo = cleanedInfo;
+        event.data.formattedTime = `${new Date(event.time * 1000).toLocaleDateString()} ${new Date(event.time * 1000).toLocaleTimeString()}`;
 
         this.contentTimeline.push(event);
-        this.eventHtmlMap[event.id] = await this.generateEventHTML(event);
+        this.eventHtmlMap[event.id] = await this.generateWebEventHTML(event);
     }
 
     async handleSaveEvent(event) {
         console.log('In handleSaveEvent:', event);
-
 
         const documentPath = event.data.document;
         const newContent = event.data.code_text;
@@ -177,10 +229,23 @@ class ContentTimelineManager {
     
         let diffHtml = '';
         if (this.previousSaveContent[fileName]) {
+            // File has previous content, show normal diff
             const diff = Diff.createTwoFilesPatch(
                 'Previous Version',
                 'Current Version',
                 this.previousSaveContent[fileName],
+                newContent,
+                '',
+                ''
+            );
+    
+            diffHtml = await this.generateDiffHTML(diff, fileName);
+        } else {
+            // First save of file (or no previous content), show entire content as additions
+            const diff = Diff.createTwoFilesPatch(
+                'Empty File',
+                'New File',
+                '', // Empty previous content
                 newContent,
                 '',
                 ''
@@ -250,6 +315,38 @@ class ContentTimelineManager {
         return `<div class="diff-container">${finalHtml}</div>`;
     }    
 
+    async generateWebEventHTML(event) {
+        const eventType = event.type;
+        let displayContent = '';
+        const url = event.data.timed_url || '';
+        const cleanedInfo = event.data.cleanedInfo || '';
+        const timestamp = event.data.formattedTime || '';
+
+        if (eventType === 'search') {
+            // Show only the search query in bold
+            displayContent = `<div class="web-event">
+                <strong>${cleanedInfo}</strong>
+            </div>`;
+        } else if (eventType === 'visit' || eventType === 'revisit') {
+            // Show page title in bold + clickable URL
+            displayContent = `<div class="web-event">
+                <strong>${cleanedInfo}</strong>
+                ${url ? `<br><a href="${url}" target="_blank">${url}</a>` : ''}
+            </div>`;
+        }
+
+        return `
+            <div class="event" id="event-${event.id}">
+                <div class="event-content">
+                    ${displayContent}
+                </div>
+                <div class="event-timestamp">
+                    ${timestamp}
+                </div>
+            </div>
+        `;
+    }
+
     async generateEventHTML(event) {
         const fileName = this.getFilename(event.data.document);
 
@@ -263,18 +360,7 @@ class ContentTimelineManager {
                     ${event.data.diffHtml || ''}
                 </div>
                 ${event.data.notes}
-
             </div>
-        `;
-    }
-
-    async generateBuildHTML(event) {
-        return `
-            <hr>
-            <div id="event-${event.id}">
-                <strong>${event.data.notes}</strong>
-            </div>
-            <hr>
         `;
     }
 
@@ -333,114 +419,6 @@ class ContentTimelineManager {
                                 command: 'navigateToLine',
                                 line: lineNumber,
                                 fileName: fileName
-                            });
-                        }
-                    });
-
-                    // Listen for messages from the extension
-                    window.addEventListener('message', event => {
-                        const message = event.data;
-
-                        if (message.type === 'restoreState') {
-                            const previousState = message.state;
-                            if (previousState) {
-                                document.body.innerHTML = previousState.html || '';
-
-                                // Restore scroll position
-                                window.scrollTo(previousState.scrollX || 0, previousState.scrollY || 0);
-                            }
-                        } else if (message.type === 'saveStateRequest') {
-                            // Send the current state (HTML content and scroll positions) back to the extension
-                            vscode.postMessage({
-                                type: 'saveState',
-                                state: {
-                                    html: document.body.innerHTML,
-                                    scrollX: window.scrollX,
-                                    scrollY: window.scrollY
-                                }
-                            });
-                        }
-                    });
-                })();
-            </script>
-            </html>
-        `;
-
-        this.webviewPanel.webview.onDidReceiveMessage(async (message) => {
-            if (message.command === 'navigateToLine') {
-                await this.navigateToLine(message.fileName, message.line);
-            }
-        });
-    }
-
-    async updateWebPanelSilently() {
-        this.webviewPanel.webview.html = `
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="UTF-8">
-                <title>Content Timeline</title>
-                <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/diff2html/bundles/css/diff2html.min.css" />
-                <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/diff2html/bundles/js/diff2html.min.js"></script>
-                <style>
-                    ${this.styles}
-                </style>
-            </head>
-            <body>
-                <h1>Content Timeline</h1>
-                <div id="content">
-                    ${Object.values(this.eventHtmlMap).join('')}
-                </div>
-            </body>
-            <script>
-                (function() {
-                    const vscode = acquireVsCodeApi();
-
-                    window.addEventListener('click', function(event) {
-                        const target = event.target;
-
-                        // Find the closest clickable-line SPAN or DIV (for both line content and line numbers)
-                        const lineElement = target.closest('.clickable-line');
-                        if (lineElement) {
-                            // Print out the HTML tag of the clicked element for debugging
-                            console.log("Clicked element:", lineElement.outerHTML);
-
-                            // Continue with the existing logic (optional)
-                            const lineNumber = lineElement.getAttribute('data-line-number');
-                            const fileName = lineElement.getAttribute('data-filename');
-
-                            console.log('Line Number:', lineNumber);
-                            console.log('File Name:', fileName);
-
-                            vscode.postMessage({
-                                command: 'navigateToLine',
-                                line: lineNumber,
-                                fileName: fileName
-                            });
-                        }
-                    });
-
-                    // Listen for messages from the extension
-                    window.addEventListener('message', event => {
-                        const message = event.data;
-
-                        if (message.type === 'restoreState') {
-                            const previousState = message.state;
-                            if (previousState) {
-                                document.body.innerHTML = previousState.html || '';
-
-                                // Restore scroll position
-                                window.scrollTo(previousState.scrollX || 0, previousState.scrollY || 0);
-                            }
-                        } else if (message.type === 'saveStateRequest') {
-                            // Send the current state (HTML content and scroll positions) back to the extension
-                            vscode.postMessage({
-                                type: 'saveState',
-                                state: {
-                                    html: document.body.innerHTML,
-                                    scrollX: window.scrollX,
-                                    scrollY: window.scrollY
-                                }
                             });
                         }
                     });

@@ -14,29 +14,10 @@ const express = require("express");
 require('dotenv').config({ path: __dirname + '/../.env' });
 const { OpenAI } = require("openai");
 const app = express();
-// const { GoogleGenerativeAI } = require("@google/generative-ai");
-
-app.use(express.json());
 
 // console.log(process.env.OPENAI_API_KEY);
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
-
-// const geminiAPIKey = process.env.GEMINI_API_KEY;
-// const genAI = new GoogleGenerativeAI(geminiAPIKey);
-
-// const model = genAI.getGenerativeModel({
-//     model: "gemini-1.5-flash",
-//     system_instruction: "you are like a middle man for user and openAI, determine whether the user questions need further processing for OpenAI to answer user questions. There you are to differentiate between two types: implicit and explicit questions. If it is explicit, it needs no further processing and can be passed to OpenAI direct. If it is implicit, you need to come up with a question that makes it explicit. If it is explicit, just say yes, dont further explain it. if not, just simply state the new generate question. "
-// });
-
-// const model_history_or_resources = genAI.getGenerativeModel({
-//     model: "gemini-1.5-flash",
-//     system_instruction: "you are here to help determine whether the given question is focusing on the code or online resources. please do as the prompt says. "
-// });
-
+app.use(express.json())
 
 class ClusterManager {
     constructor(context, gitTracker, stayPersistent) {
@@ -67,15 +48,33 @@ class ClusterManager {
         this.initialSaves = {}; // Tracks the first save for comparison
         this.currentDiffView = 'line-by-line'; //default view
         this.generateJSON = [];
-        this.chatGPTInvoked = false;
         this.userQuestion = '';
+        this.queryHistory = []; // Store previous queries and responses
+        this.activeDecorations = []; // Task active decorations/highlights
+        this.hasRestoredFromLastSession = false; // Track if we restored from last session
+        this.chatResponseHTML = null;
+
+        this.initializeOpenAI(context); // Initialize OpenAI API
 
         //map to document asked user questions and to store answers for faster regeneration when user asks a similar question again 
         this.questionCache = new Map();
     }
 
+    async initializeOpenAI(context) {
+        const apiKey = await context.secrets.get('openaiApiKey') || process.env.OPENAI_API_KEY;
+
+        if (!apiKey) {
+            vscode.window.showErrorMessage('OpenAI API key is not set. Please set it in the extension settings.');
+            return;
+        }
+        
+        this.openai = new OpenAI({
+            apiKey: apiKey
+        });
+    }
+
     initializeTemporaryTest() {
-        const testData = new temporaryTest(String.raw`C:\users\zhouh\Downloads\tileMakingPuzzle.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\Users\Tin Pham\Downloads\tileMakingPuzzle.json`); // change path of test data here
         // codeActivities has id, title, and code changes
         // the focus atm would be code changes array which contains smaller codeActivity objects
         // for eg, to access before_code, we would do this.codeActivities[0].codeChanges[0].before_code
@@ -88,15 +87,74 @@ class ClusterManager {
     }
 
     initializeResourcesTemporaryTest() {
-        const testData = new temporaryTest(String.raw`C:\users\zhouh\Downloads\tileMakingPuzzle.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\Users\Tin Pham\Downloads\tileMakingPuzzle.json`); // change path of test data here
         this.codeResources = testData.processResources(testData.data);
         console.log("Resources", this.codeResources);
     }
 
+    async restoreStateFromFile() {
+        if (this.hasRestoredFromLastSession) return; // Prevent re-loading
+
+        try {
+            const currentDir = getCurrentDir();
+            const statePath = path.join(currentDir, 'CH_cfg_and_logs', 'history_session_state.json');
+
+            if (fs.existsSync(statePath)) {
+                const stateJSON = fs.readFileSync(statePath, 'utf8');
+                const state = JSON.parse(stateJSON);
+
+                this.displayForGroupedEvents = state.groupedEvents || [];
+                this.strayEvents = state.strayEvents || [];
+                this.currentDiffView = state.currentDiffView || 'line-by-line';
+				this.allSaves = state.allSaves || {};
+				this.initialSaves = state.initialSaves || {};
+                this.allPastEvents = state.allPastEvents || {};
+                this.prevCommittedEvents = state.prevCommittedEvents || [];
+                this.currentGroup = state.currentGroup || null;
+
+                this.inCluster = state.inCluster || {};
+                this.clusterStartTime = state.clusterStartTime || {};
+                this.pastEvents = state.pastEvents || null;
+                this.currentCodeEvent = state.currentCodeEvent || null;
+                this.currentWebEvent = state.currentWebEvent || null;
+                this.idCounter = state.idCounter || 0;
+
+                this.hasRestoredFromLastSession = true;
+                console.log(`Successfully restored state from last session`);
+            }
+        } catch (error) {
+            // console.error('Error restoring session state:', error);
+            // // In case of error, start with a fresh state
+            // this.displayForGroupedEvents = [];
+            // this.strayEvents = [];
+
+            console.error('Could not restore session state, starting fresh:', error);
+        
+            this.displayForGroupedEvents = [];
+            this.strayEvents = [];
+            this.currentDiffView = 'line-by-line';
+            this.allSaves = {};
+            this.initialSaves = {};
+            this.allPastEvents = {};
+            this.prevCommittedEvents = [];
+            this.currentGroup = null;
+            this.inCluster = {};
+            this.clusterStartTime = {};
+            this.pastEvents = [];
+            this.currentCodeEvent = null;
+            this.currentWebEvent = null;
+            this.idCounter = 0;
+        }
+    }
+
     async initializeClusterManager() {
-        // Grab the initial commit data without displaying it in the web panel
-        const initialCodeEntries = await this.gitTracker.grabAllLatestCommitFiles();
-        await this.processCodeEvents(initialCodeEntries);
+        await this.restoreStateFromFile(); // if there is data to restore
+        
+        if(!this.hasRestoredFromLastSession) {
+            const initialCodeEntries = await this.gitTracker.grabAllLatestCommitFiles();
+            await this.processCodeEvents(initialCodeEntries);
+        }
+
         this.isInitialized = true;
     }
 
@@ -110,10 +168,7 @@ class ClusterManager {
             this.webviewPanel.reveal(vscode.ViewColumn.Beside);
             return;
         }
-
-        // Retrieve the previous state from globalState
-        this.previousState = this.context.globalState.get('historyWebviewState', null);
-
+        
         this.webviewPanel = vscode.window.createWebviewPanel(
             'historyWebview',
             'History Webview',
@@ -124,15 +179,7 @@ class ClusterManager {
             }
         );
 
-        // If there's a previous state, restore it
-        if (this.previousState) {
-            this.webviewPanel.webview.html = this.previousState.html;
-            this.webviewPanel.webview.postMessage({ command: 'restoreState', state: this.previousState });
-        } else {
-            // Set the initial HTML content if no previous state exists
-            console.log("ERROR IN INITIALIZEWEBVIEW LINE 135!")
-            await this.updateWebPanel();
-        }
+        await this.updateWebPanel();
 
         // Save the state when the webview is closed
         this.webviewPanel.onDidDispose(() => {
@@ -140,10 +187,9 @@ class ClusterManager {
             this.webviewPanel = null; // Clean up the reference
         });
 
-        // Send a message to the webview just before it is closed
+        // Save webview's html just before it is closed
         this.webviewPanel.onDidDispose(() => {
-            // Request the webview to send its current state before closing
-            this.webviewPanel.webview.postMessage({ type: 'saveStateRequest' });
+            // this.context.workspaceState.update('previousWebviewState', this.webviewPanel.webview.html);
 
             // Set a small timeout to ensure the state is sent before we consider it disposed
             setTimeout(() => {
@@ -154,11 +200,6 @@ class ClusterManager {
 
         // Listen for messages from the webview to save the state
         this.webviewPanel.webview.onDidReceiveMessage(async message => {
-            if (message.type === 'saveState') {
-                // Save the state returned by the webview
-                await this.context.globalState.update('historyWebviewState', message.state);
-            }
-
             if (message.command === 'updateCodeTitle') {
                 await this.updateCodeTitle(message.groupKey, message.eventId, message.title);
             }
@@ -173,13 +214,13 @@ class ClusterManager {
                 console.log("Received askChatGPT message:", message);
                 this.userQuestion = message.question;
                 await this.handleChatGPTRequest(message.question);
-                // await this.updateWebPanel(message);
             }
 
             if (message.command === "resetPanel") {
                 console.log("ERROR IN INITIALIZEWEBVIEW, LINE 181!")
-                await this.updateWebPanel("");
-                await this.updateWebPanel("");
+                this.chatResponseHTML = null;
+                this.userQuestion = '';
+                await this.updateWebPanel('');
             }
         });
     }
@@ -266,7 +307,7 @@ class ClusterManager {
         } else {
             // If webview is already opened, just update the content
             console.log("ERROR IN PROCESSWEBEVENTS, LINE 269!")
-            await this.updateWebPanel(this.userQuestion);
+            await this.updateWebPanel();
         }
     }
 
@@ -327,13 +368,15 @@ class ClusterManager {
             return;
         }
 
-        // Trigger webview if not opened
-        if (!this.webviewPanel) {
-            await this.initializeWebview();
-        } else {
-            // If webview is already opened, just update the content
-            console.log("ERROR IN HANDLESAVEEVENT, LINE 336!")
-            await this.updateWebPanel();
+        // Instead of a full refresh, generate just the stray events HTML
+        const strayEventsHTML = await this.generateStrayEventsHTML();
+
+        if (this.webviewPanel) {
+            // Send a partial update for only the "in-progress" section
+            this.webviewPanel.webview.postMessage({
+                command: 'updateStrayEvents',
+                response: strayEventsHTML
+            });
         }
     }
 
@@ -603,58 +646,43 @@ class ClusterManager {
         let startCodeEvent = this.strayEvents.find(event => event.type === "code" && event.file === filename);
 
         // grab the last code event from the stray events
+        // update: the "end" state is the last code event from the current session's in-progress work.
         let endCodeEvent = [...this.strayEvents].reverse().find(event => event.type === "code" && event.file === filename);
 
-        if (endCodeEvent) {
-            this.initialSaves[filename] = {
-                file: filename,
-                time: endCodeEvent.time,
-                code_text: endCodeEvent.code_text,
-            };
+        // if there's no code event to process, we can't create a subgoal
+        if (!endCodeEvent) {
+            return;
         }
 
-        // console.log('Finalizing group:', filename, startCodeEvent, endCodeEvent);
+        // find the true "before" state by looking at the last event in the history
+        const lastHistoricalEvent = this.allPastEvents[filename] ? this.allPastEvents[filename].slice(-1)[0] : null;
 
-        let codeActivity = {};
+        // if there's a history, use its text; if not, this is a new file, so "before" is an empty string
+        const beforeCodeText = lastHistoricalEvent ? lastHistoricalEvent.code_text : '';
+        const afterCodeText = endCodeEvent.code_text;
 
-        if (startCodeEvent.code_text !== endCodeEvent.code_text) {
-            // grab any stray code events that's not the filename
-            // const strayCodeEvents = this.strayEvents.filter(event => event.type === "code" && event.file !== filename);
-
-            codeActivity = {
-                type: "code",
-                id: (++this.idCounter).toString(),
-                file: filename,
-                startTime: this.clusterStartTime[filename],
-                endTime: endCodeEvent.time,
-                before_code: startCodeEvent.code_text,
-                after_code: endCodeEvent.code_text,
-                // title: `Code changes in ${filename}`
-            };
-
-            codeActivity.title = await this.generateSubGoalTitle(codeActivity);
+        // only form a subgoal if there is an actual change
+        if (beforeCodeText === afterCodeText) {
+            console.log(`FinalizeGroup: No meaningful change for ${filename}, skipping subgoal.`);
+            // clean up the events for this file as they don't form a valid diff
+            this.strayEvents = this.strayEvents.filter(event => event.file !== filename);
+            delete this.initialSaves[filename];
+            return;
         }
 
-        // if both events are the same, this means that this file had clustering occurred before
-        // and so the startCodeEvent should be from allPastEvents instead
-        else {
-            // grab the last code event from all past events
-            startCodeEvent = this.allPastEvents[filename].slice(-1)[0];
+        console.log('Finalizing group:', filename, startCodeEvent, endCodeEvent);
 
-            codeActivity = {
-                type: "code",
-                id: (++this.idCounter).toString(),
-                file: filename,
-                startTime: this.clusterStartTime[filename],
-                endTime: endCodeEvent.time,
-                before_code: startCodeEvent.code_text,
-                after_code: endCodeEvent.code_text,
-                related: {},
-                // title: `Code changes in ${filename}`
-            };
-
-            codeActivity.title = await this.generateSubGoalTitle(codeActivity);
-        }
+        let codeActivity = {
+            type: "code",
+            id: (++this.idCounter).toString(),
+            file: filename,
+            startTime: this.clusterStartTime[filename],
+            endTime: endCodeEvent.time,
+            before_code: beforeCodeText, // use the historically accurate "before" state
+            after_code: afterCodeText,   // use the latest "after" state
+        };
+        
+        codeActivity.title = await this.generateSubGoalTitle(codeActivity);
 
         // grab only the web events from the stray events that has time before the endCodeEvent
         let webEvents = this.strayEvents.filter(event => event.type !== "code" && event.time <= endCodeEvent.time);
@@ -665,7 +693,8 @@ class ClusterManager {
         // Temporary storage for the current search event being structured
         let currentSearchEvent = null;
 
-        // Sort stray events by time to
+
+        // sort stray events by time to ensure chronological order
         const sortedWebEvents = webEvents.sort((a, b) => a.time - b.time);
 
         for (const event of sortedWebEvents) {
@@ -731,6 +760,9 @@ class ClusterManager {
 
         // Once the stray events have been processed, reset the currentGroup
         this.currentGroup = null;
+
+        // Clean up the initial save tracker now that this work has been grouped
+        delete this.initialSaves[filename];
     }
 
     async generateSubGoalTitle(activity) {
@@ -753,8 +785,8 @@ class ClusterManager {
 
             // console.log('Prompt:', prompt);
 
-            const completions = await openai.chat.completions.create({
-                model: 'gpt-3.5-turbo',
+            const completions = await this.openai.chat.completions.create({
+                model: 'gpt-4o-mini',
                 max_tokens: 25,
                 messages: [
                     {
@@ -809,7 +841,7 @@ Your job is to summarize what is happening — what the user is asking, what the
 - This is not a conversation; don’t say things like “feel free to ask.”
             `;
 
-            const completions = await openai.chat.completions.create({
+            const completions = await this.openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 max_tokens: 500,
                 messages: [
@@ -827,7 +859,6 @@ Your job is to summarize what is happening — what the user is asking, what the
 
             let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
 
-            this.chatGPTInvoked = true;
             return `${summary}`;
 
 
@@ -846,7 +877,7 @@ Your job is to summarize what is happening — what the user is asking, what the
                 return "no question";
             }
 
-            let prompt = `You are a technical summarization assistant. Given a chronological array of coding events:"${JSON.stringify(parallelled_array)}", answering the question: "${question}", rewrite each event as a concise, HTML-formatted summary.
+let prompt = `You are a technical summarization assistant. Given a chronological array of coding events:"${JSON.stringify(parallelled_array)}", answering the question: "${question}", rewrite each event as a concise, HTML-formatted summary.
 
 Requirements:
 - Don't repeat what the user is asking or inquiring about.
@@ -862,9 +893,10 @@ Requirements:
 - Output only the revised array as valid array ready to parse (do not wrap in extra text).`;
 
 
-            const completions = await openai.chat.completions.create({
+            const completions = await this.openai.chat.completions.create({
                 model: "gpt-4o-mini",
-                max_tokens: 1500,
+                max_completion_tokens: null,
+                max_tokens: null,
                 messages: [
                     {
                         role: "system",
@@ -875,10 +907,9 @@ Requirements:
             });
             console.log("generateStoryResponse: ", completions);
             let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
-            summary = summary.trim().replace(/^```json/, "").replace(/^```/, "").replace(/```$/, "").trim();
+            // summary = summary.trim().replace(/^```json/, "").replace(/^```/, "").replace(/```$/, "").trim();
 
             // console.log("generateStoryResponse: ", summary);
-            this.chatGPTInvoked = true;
             return `${summary}`;
 
 
@@ -895,25 +926,25 @@ Requirements:
                 return "no question";
             }
 
-            //             let prompt = `You are given a user question and a chronological sequence of summarized coding events. These events represent the user's step-by-step progress toward a specific coding goal.
+//             let prompt = `You are given a user question and a chronological sequence of summarized coding events. These events represent the user's step-by-step progress toward a specific coding goal.
 
-            // Your job is to answer the question based on the coding events.
+// Your job is to answer the question based on the coding events.
 
-            // Instructions:
-            // - Begin with a direct, one-sentence answer to the question. besure to put <strong> tag around it
-            // - Then include a <ul style="padding-top: 0px;list-style: circle;margin-left: 40px;"> with each key point wrapped in an <li> tag.
-            // - Be precise, specific, and technical where appropriate.
-            // - Avoid general summaries or vague commentary.
-            // - IMPORTANT! put <code> tag around ANY object your are quoting from the code, DO NOT use quatation marks. 
-            // - Do not compliment or praise the user.
-            // - Do not repeat the question in your answer.
-            // - Output only the final answer, no preamble or list formatting.
+// Instructions:
+// - Begin with a direct, one-sentence answer to the question. besure to put <strong> tag around it
+// - Then include a <ul style="padding-top: 0px;list-style: circle;margin-left: 40px;"> with each key point wrapped in an <li> tag.
+// - Be precise, specific, and technical where appropriate.
+// - Avoid general summaries or vague commentary.
+// - IMPORTANT! put <code> tag around ANY object your are quoting from the code, DO NOT use quatation marks. 
+// - Do not compliment or praise the user.
+// - Do not repeat the question in your answer.
+// - Output only the final answer, no preamble or list formatting.
 
-            // Question: ${question}
+// Question: ${question}
 
-            // Chronological coding steps:
-            // ${JSON.stringify(parallelled_array)}`;
-            let prompt = `You are given a user question and a chronological sequence of summarized coding events. These events represent the user's step-by-step progress toward a specific coding goal.
+// Chronological coding steps:
+// ${JSON.stringify(parallelled_array)}`;
+let prompt = `You are given a user question and a chronological sequence of summarized coding events. These events represent the user's step-by-step progress toward a specific coding goal.
 
 Your task is to answer the question based solely on these coding events.
 
@@ -933,7 +964,7 @@ Chronological coding steps:
 ${JSON.stringify(parallelled_array)}`;
 
 
-            const completions = await openai.chat.completions.create({
+            const completions = await this.openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 max_tokens: 1000,
                 messages: [
@@ -947,7 +978,9 @@ ${JSON.stringify(parallelled_array)}`;
             console.log("generateSummary: ", completions);
             let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
             // console.log("generateStoryResponse: ", summary);
-            this.chatGPTInvoked = true;
+
+            // summary = summary.trim().replace(/^```json/, "").replace(/^```/, "").replace(/```$/, "").trim();
+
             return `${summary}`;
 
 
@@ -957,21 +990,21 @@ ${JSON.stringify(parallelled_array)}`;
         }
     }
 
-    findActivities(codeList, targets) {
+    findActivities (codeList, targets) {
         const memoization = new Map();
-        for (const item of codeList) {
+        for (const item of codeList) { 
             memoization.set(String(item.id), item.codeChanges);
         }
         let result = [];
 
-        for (const target of targets) {
+        for(const target of targets) {
             const key = String(target.id);
-            const codeChanges = memoization.get(key);
+            const codeChanges = memoization.get(key); 
 
-            if (Array.isArray(codeChanges)) {
-                for (const change of codeChanges) {
+            if(Array.isArray(codeChanges)) {
+                for(const change of codeChanges) {
                     result.push({
-                        id: change.id,
+                        id: change.id, 
                         title: change.title
                     });
                 }
@@ -990,7 +1023,7 @@ ${JSON.stringify(parallelled_array)}`;
 
             let prompt = `Here is the user question: ${question}, and here is the filtered code change information: ${JSON.stringify(relevant_info)}. Please use the given question and information provided to find the most relevant piece of information, the rest are background information that might not seem important but it is still relevant.`;
 
-            const completions = await openai.chat.completions.create({
+            const completions = await this.openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 max_tokens: 500,
                 messages: [
@@ -1008,7 +1041,8 @@ ${JSON.stringify(parallelled_array)}`;
             let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
             // console.log('In generateRelevantInfo, filtered API Response:', completions);
 
-            this.chatGPTInvoked = true;
+            // summary = summary.trim().replace(/^```json/, "").replace(/^```/, "").replace(/```$/, "").trim();
+
             return `${summary}`;
 
 
@@ -1026,17 +1060,25 @@ ${JSON.stringify(parallelled_array)}`;
             }
 
             let prompt = 'Here is the question: "' + question + '". Please help me determine whether the quesion needs user accessed resource list or user code editing list. If the question focues on the resources, just simply say "resources"; if the question focuses on the history of the code, just simply say "history". ';
-            const request = {
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            };
+            
+            const completions = await this.openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                max_tokens: 50,
+                messages: [
+                    {
+                        role: "system",
+                        content: "you are here to help determine whether the given question is focusing on the code or online resources. please do as the prompt says."
+                    },
+                    { role: "user", content: prompt }
+                ]
+            });
 
-            const result = await model_history_or_resources.generateContent(request);
-            let summary = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text || "Summary not available";
+            let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
             // console.log("in isHistoryOrResource: ", summary)
             return summary.trim().toLowerCase();
 
         } catch (error) {
-            // console.error("Error generating questions:", error.message);
+            console.error("Error generating questions:", error.message);
             return `response generation failed`;
         }
 
@@ -1052,7 +1094,7 @@ ${JSON.stringify(parallelled_array)}`;
             let prompt = `New question: "${question}".
 Cached questions: ${Array.from(this.questionCache.keys()).join(", ")}`
 
-            const completions = await openai.chat.completions.create({
+            const completions = await this.openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 max_tokens: 500,
                 messages: [
@@ -1089,6 +1131,7 @@ Rules:
         }
     }
 
+
     async *generateAnswerStream(question, whichOne, codeEvents, uniqueVisits) {
 
         // console.log("in generateAnswerStream, code events: ", codeEvents);
@@ -1107,7 +1150,7 @@ Rules:
                 : `The user will ask you to filter the database based on the history the user has accessed: "${JSON.stringify(uniqueVisits)}", and here is the question: "${question}". If the user question is just "", simply say no question.`;
 
             // console.log("in generateAnswerStream, prompt: ", prompt);
-            const stream = await openai.chat.completions.create({
+            const stream = await this.openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 max_tokens: 1000,
                 stream: true, // Enable streaming
@@ -1133,8 +1176,6 @@ Rules:
                 // console.log("response text here: ", responseText);
                 yield content;
             }
-
-            this.chatGPTInvoked = true;
 
         } catch (error) {
             console.error("Error generating answer:", error.message);
@@ -1175,7 +1216,7 @@ Rules:
                 : `The user will ask you to filter the database based on the history the user has accessed: "${JSON.stringify(filteredArrayResources)}", and here is the question: "${question}". If the user question is just "", simply say no question.`;
 
             // console.log("in generatePastAnswerStream, prompt: ", prompt);
-            const stream = await openai.chat.completions.create({
+            const stream = await this.openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 max_tokens: 1000,
                 stream: true, // Enable streaming
@@ -1226,28 +1267,16 @@ Rules:
             );
         }
 
-        if (!this.webviewPanel) {
-            this.webviewPanel = vscode.window.createWebviewPanel(
-                "chatPanel",
-                "Chat Panel",
-                vscode.ViewColumn.One,
-                { enableScripts: true }
-            );
+        let groupedEventsHTML;
 
-            this.webviewPanel.onDidDispose(() => {
-                this.webviewPanel = null;
-            });
+        // If a chat response exists in our state, use it. Otherwise, generate the default view.
+        if (this.chatResponseHTML) {
+            groupedEventsHTML = this.chatResponseHTML;
+        } else {
+            // This is the default view when no chat is active.
+            groupedEventsHTML = await this.generateGroupedEventsHTMLTest() + await this.generateGroupedEventsHTML();
         }
 
-
-        let editHistoryHTML = await this.generateGroupedEventsHTMLTest();
-
-        let groupedEventsHTML = await this.generateGroupedEventsHTMLTest() + await this.generateGroupedEventsHTML();
-        if (this.chatGPTInvoked) {
-            console.log("chatGPT invoked!!!!!!!!!!!!!!!!!")
-            groupedEventsHTML = await this.generateHistoryChatGPTResponseHTML(question) + await this.generateChatGPTResponseHTML(question);
-            this.chatGPTInvoked = false;
-        }
         const strayEventsHTML = await this.generateStrayEventsHTML();
 
         this.webviewPanel.webview.html = `
@@ -1275,7 +1304,7 @@ Rules:
                         <form id="chat-form" class="form-container">
                             <div class="question-area">
                                 <label style="font-weight: bold; margin: auto; margin-right: 5px;">Search within your history: </label>
-                                <input type="text" id="question" name="user_question" placeholder="Where did I...">
+                                <input type="text" id="question" name="user_question" placeholder="Where did I..." value="${this.userQuestion || ''}">
                                 <button type="submit" class="btn">Submit</button>
                                 <button type="button" id="reset-button" class="btn">Reset</button>
                             </div>
@@ -1361,15 +1390,20 @@ Rules:
             // Attach collapsible event listeners
             function attachCollapsibleListeners() {
                 document.querySelectorAll('.collapsible').forEach(button => {
+                    // Check if the listener has already been added to prevent duplicates
+                    if (button.dataset.listenerAttached) return;
+
                     button.addEventListener('click', function () {
                         this.classList.toggle('active');
                         const content = this.parentElement.nextElementSibling;
-                        console.log('clicked!!!!!!');
+                        // console.log('clicked!!!!!!');
                         if (content) {
                             content.style.display = content.style.display === 'flex' ? 'none' : 'flex';
                             this.textContent = this.textContent === '+' ? '-' : '+';
                         }
                     });
+
+                    button.dataset.listenerAttached = 'true'; // Mark the button so we don't add the listener again
                 });
             }
 
@@ -1386,7 +1420,7 @@ Rules:
             const responseArea = document.getElementById("grouped-events");
             const questionInput = document.getElementById("question");
             const chatForm = document.getElementById("chat-form");
-
+            const strayEvents = document.getElementById("stray-events");
 
 
             chatForm.addEventListener("submit", async function(event) {
@@ -1410,26 +1444,17 @@ Rules:
                 if (event.data.command === "updateChatResponse") {
                     const response = event.data.response;
                     responseArea.innerHTML = response; // Update the response
-                }
-            });
+                    attachCollapsibleListeners(); // Reattach listeners to new content
 
-            window.addEventListener("message", (event) => {
-                console.log("Received message:", event.data);
-
-                if (event.data.command === 'setupCollapsibleButtons') {
-                    console.log('Setting up collapsible buttons'); // Check if this log appears
-                    document.querySelectorAll('.collapsible').forEach(button => {
-                        button.addEventListener('click', function() {
-                            this.classList.toggle('active');
-                            const content = this.parentElement.nextElementSibling;
-                            console.log('clicked!!!!!!');
-                            if (content) {
-                                content.style.display = content.style.display === 'flex' ? 'none' : 'flex';
-                                this.textContent = this.textContent === '+' ? '-' : '+';
-                            }
-                        });
-                    });
+                    // After updating the content, restore the collapsible state
+                    const collapsibleState = getCollapsibleState();
+                    restoreCollapsibleState(collapsibleState);
                 }
+                
+                if (event.data.command === 'updateStrayEvents') {
+                    const response = event.data.response;
+                    strayEvents.innerHTML = response;
+                }   
             });
 
             function handleMouseMove(e) {
@@ -1544,12 +1569,15 @@ Rules:
             const response = await this.generateChatGPTResponseHTML(question);
             const historyResponse = await this.generateHistoryChatGPTResponseHTML(question);
 
-            const combined = response + historyResponse;
+            const newContentHTML= response + historyResponse;
 
-            // Once the HTML content is injected, update the webview
+            // 1. Update the persistent state
+            this.chatResponseHTML = newContentHTML;
+
+            // 2. Once the HTML content is injected, update the webview
             this.webviewPanel.webview.postMessage({
-                // command: "updateChatResponse",
-                response: historyResponse
+                command: "updateChatResponse",
+                response: newContentHTML
             });
         } catch (error) {
             console.error("Error generating response:", error);
@@ -1559,8 +1587,7 @@ Rules:
             });
         }
     }
-
-
+    
     async navigateToLine(fileName, lineNumber) {
         // console.log(fileName);
 
@@ -1727,25 +1754,11 @@ Rules:
 
                 html += `
                         </li>
-                        <script> 
-                            document.addEventListener('DOMContentLoaded', () => {
-                                const button = document.getElementById('plusbtn-${groupKey}-${subgoalKey}');
-
-                                button.addEventListener('click', () => {
-                                    button.textContent = button.textContent === '+' ? '-' : '+';
-                                });
-                            });
-
-                            document.getElementById('button-${groupKey}-${subgoalKey}').addEventListener('click', function() {
-                                document.getElementById('code-title-${groupKey}-${subgoalKey}').focus();
-                            });  
-                        </script>
                     `;
             }
         }
         return html;
     }
-
 
     async generateGroupedEventsHTML() {
         // this.displayForGroupedEvents is an array of objects, each object is a group
@@ -1783,8 +1796,7 @@ Rules:
                 }
             });
 
-            // Co
-            // nvert unique sets to arrays
+            // Convert unique sets to arrays
             const searchQueries = Array.from(uniqueSearches);
             const visitResources = Array.from(uniqueVisits).map(item => JSON.parse(item));
 
@@ -1964,7 +1976,6 @@ Rules:
         }
     }
 
-
     async generateStrayEventsHTMLTest() {
         return '<li>Your future changes goes here.</li>';
     }
@@ -1972,17 +1983,29 @@ Rules:
     // This happens after a "save" occurrence (comparing two versions of file save)
     async generateDiffHtmlSave(filename) {
         try {
-            const initialSave = this.initialSaves[filename];
             const allSavesForFile = this.allSaves[filename] || [];
             const latestSave = allSavesForFile[allSavesForFile.length - 1];
 
-            // If no initial or latest save exists, return an empty string
-            if (!initialSave || !latestSave) {
+            // If there are no saves recorded for this file, do nothing.
+            if (!latestSave) {
                 return '';
             }
 
-            const initialContent = initialSave.code_text || '';
+            let initialContent = ''; // Default to an empty string for the "before" state.
+
+            // If there is more than one save event, it means the file is not new.
+            // In this case, use the content from the very first save for comparison.
+            if (allSavesForFile.length > 1) {
+                const initialSave = this.initialSaves[filename];
+                initialContent = initialSave.code_text || '';
+            }
+
             const latestContent = latestSave.code_text || '';
+
+            // If the content hasn't changed (e.g., saving without changes), don't show a diff.
+            if (initialContent === latestContent) {
+                return '';
+            }
 
             const diffString = Diff.createTwoFilesPatch(
                 'Initial Save',
@@ -1993,14 +2016,6 @@ Rules:
                 filename,
                 { ignoreWhitespace: true } // Ignore whitespace-only changes
             );
-
-            // Check if there are real content changes (e.g., additions or deletions)
-            const hasRealChanges = diffString.includes('@@') && (diffString.includes('+') || diffString.includes('-'));
-            if (!hasRealChanges) {
-                // If no real content changes, return an empty string
-                // Indicating we should skip displaying this event in the webview
-                return '';
-            }
 
             const diffHtml = diff2html.html(diffString, {
                 outputFormat: this.currentDiffView,
@@ -2134,33 +2149,7 @@ Rules:
         return html;  // Return the generated HTML
     }
 
-
-    findActivities(codeList, targets) {
-        const memoization = new Map();
-        for (const item of codeList) {
-            memoization.set(String(item.id), item.codeChanges);
-        }
-        let result = [];
-
-        for (const target of targets) {
-            const key = String(target.id);
-            const codeChanges = memoization.get(key);
-
-            if (Array.isArray(codeChanges)) {
-                for (const change of codeChanges) {
-                    result.push({
-                        id: change.id,
-                        title: change.title
-                    });
-                }
-            }
-        }
-
-        return result;
-    }
-
     async generateChatGPTResponseHTML(question) {
-
 
         const startTime = performance.now();
 
@@ -2208,8 +2197,7 @@ Rules:
             // console.log("filtered array code events: ", filteredArray);
             // console.log("filtered array resources", filteredArrayResources);
 
-            // const reduceLoad = await this.isHistoryOrResource(question);
-            let reduceLoad = "history";
+            const reduceLoad = await this.isHistoryOrResource(question);
             // console.log("history or resources? ", reduceLoad);
 
             // const natural_language_indicator = await this.generateNLResponse(question);
@@ -2227,10 +2215,23 @@ Rules:
                 return ``;
             }
 
+            // if (streamedResponse.trim() === "response generation failed") {
+            //     console.error("OpenAI filtering failed, returning error message.");
+            //     return `<p style="color:red;">Error: Response generation failed during history filtering.</p>`;
+            // }
+
             console.log("generateChatGPTResponseHTML RESPONSE: ", streamedResponse);
 
             let parsed = JSON.parse(streamedResponse);
             console.log("generateChatGPTResponseHTML PARSED: ", parsed);
+
+            // let parsed;
+            // try {
+            //     parsed = JSON.parse(streamedResponse);
+            // } catch (e) {
+            //     console.error("Failed to parse JSON response:", e, streamedResponse);
+            //     return `<p style="color:red;">Error: Failed to parse API response as JSON.</p>`;
+            // }
 
             parsed = parsed.map(entry => ({
                 ...entry,
@@ -2281,8 +2282,7 @@ Rules:
                         }
                     });
 
-                    // Co
-                    // nvert unique sets to arrays
+                    // Convert unique sets to arrays
                     const searchQueries = Array.from(uniqueSearches);
                     const visitResources = Array.from(uniqueVisits).map(item => JSON.parse(item));
 
@@ -2386,13 +2386,6 @@ Rules:
                 response: html
             });
 
-            console.log('Sending setupCollapsibleButtons message');
-
-            // Attach collapsible functionality via JS within the webview
-            this.webviewPanel.webview.postMessage({
-                command: 'setupCollapsibleButtons'
-            });
-
             return html;
         } catch (err) {
             console.error("Error generating response:", err);
@@ -2403,17 +2396,15 @@ Rules:
     async generateHistoryChatGPTResponseHTML(question) {
         if (!question || question === "undefined") return "";
 
-
         //check if the question has been asked before: 
         //if true (repeated), return the answer from cache, otherwise proceed to the next step
         // if (checkRepeat[0]) {
         //     console.log("CHECK REPEATS: ", this.questionCache.get(checkRepeat[1]));
         // }
 
-
         try {
             const startTime = performance.now();
-            const reduceLoad = "history"; // placeholder, could re-enable isHistoryOrResource
+            const reduceLoad = await this.isHistoryOrResource(question);
             const generator = this.generatePastAnswerStream(question, reduceLoad);
             const checkRepeat = await this.checkQuestionRepeat(question);
             console.log("checkRepeat: ", checkRepeat);
@@ -2421,8 +2412,6 @@ Rules:
                 // console.log("CHECK REPEATS: ", this.questionCache.get(checkRepeat[1]));
                 let html = this.questionCache.get(checkRepeat[1]);
                 this.webviewPanel.webview.postMessage({ command: "updateChatResponse", response: html });
-                this.webviewPanel.webview.postMessage({ command: "setupCollapsibleButtons" });
-
                 return html;
             }
             else {
@@ -2435,16 +2424,45 @@ Rules:
                     return `<p>No question detected.</p>`;
                 }
 
-                let parsed = JSON.parse(streamedResponse).map(entry => ({
+                let rawJson = streamedResponse.trim();
+            
+                // Remove markdown code fences (e.g., ```json or ```)
+                rawJson = rawJson.replace(/^```json\s*/i, '').replace(/\s*```$/, '');
+                
+                // Safely parse the JSON with a try-catch block
+                let parsed;
+                try {
+                    parsed = JSON.parse(rawJson);
+                } catch (error) {
+                    console.error("Error parsing JSON from generatePastAnswerStream:", error, rawJson.substring(0, 200) + '...');
+                    return `<p style="color:red;">Error: AI returned invalid JSON format for filtering. Please try rephrasing your question.</p>`;
+                }
+
+                parsed = parsed.map(entry => ({
                     ...entry,
                     id: +entry.id
                 }));
+
+                // let parsed = JSON.parse(streamedResponse).map(entry => ({
+                //     ...entry,
+                //     id: +entry.id
+                // }));
 
                 const extraFilter = await this.generateRelevantInfo(
                     question,
                     this.findActivities(this.codeActivities, parsed)
                 );
-                const parsedExtra = JSON.parse(extraFilter);
+                
+                let parsedExtra;
+                try {
+                    parsedExtra = JSON.parse(extraFilter); // Ensure extraFilter is clean JSON
+                } catch (error) {
+                    console.error("Error parsing JSON from generateRelevantInfo:", error, extraFilter.substring(0, 200) + '...');
+                    // Handle the error (e.g., skip filtering or use a default)
+                    parsedExtra = []; 
+                }
+                // const parsedExtra = JSON.parse(extraFilter);
+
                 const targetIDs = new Set(parsedExtra.map(t => String(t.id)));
 
                 // Build subgoal jobs
@@ -2471,7 +2489,15 @@ Rules:
                     this.generateSummary(question, results)
                 ]);
 
-                const story = JSON.parse(storyResult);
+                let story;
+                try {
+                    console.log("STORY RESULT BEFORE PARSING:", storyResult);
+                    story = JSON.parse(storyResult);
+                } catch (error) {
+                    console.error("Error parsing story JSON:", error);
+                }
+
+                // const story = JSON.parse(storyResult);
                 console.log("HERE IS THE STORY:", story);
 
                 let html = `
@@ -2550,18 +2576,6 @@ Rules:
                         </div>
                     </li>
                     <hr>
-                    <script> 
-                        document.addEventListener('DOMContentLoaded', () => {
-                            const button = document.getElementById('plusbtn-${groupKey}-${subgoalKey}');
-                            button.addEventListener('click', () => {
-                                button.textContent = button.textContent === '+' ? '-' : '+';
-                            });
-                        });
-                        document.getElementById('button-${groupKey}-${subgoalKey}')
-                                .addEventListener('click', () => {
-                                    document.getElementById('code-title-${groupKey}-${subgoalKey}').focus();
-                                });  
-                    </script>
                 `;
                         count++;
                     }
@@ -2569,7 +2583,6 @@ Rules:
 
                 console.log(`THE ENTIRE HISTORY HTML GENERATING took ${performance.now() - startTime} ms`);
                 this.webviewPanel.webview.postMessage({ command: "updateChatResponse", response: html });
-                this.webviewPanel.webview.postMessage({ command: "setupCollapsibleButtons" });
 
                 //store it in the cache map: 
                 this.questionCache.set(question, html);
@@ -2583,6 +2596,7 @@ Rules:
             return `<p style="color:red;">Error: ${err.message}</p>`;
         }
     }
+
 
 
     generateDiffHTMLGroup(codeActivity) {

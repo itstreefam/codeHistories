@@ -83,6 +83,10 @@
           "light": "assets/code-svgrepo-com.svg",
           "dark": "assets/code-svgrepo-com.svg"
         }
+      },
+      {
+        "command": "codeHistories.setOpenAIApiKey",
+        "title": "Code Histories: Set OpenAI API key"
       }
     ],
     "keybindings": [

@@ -49,6 +49,8 @@ var contentTimelineManager = null;
 // this controls whether one wants to always show webview (even if it is closed) or not
 var persist = true;
 
+var executionInfo = {}; // global variable to store info from both onDidStartTerminalShellExecution and onDidEndTerminalShellExecution
+
 function updateContextKeys() {
     vscode.commands.executeCommand('setContext', 'codeHistories.usingContentTimelineView', usingContentTimelineView);
     vscode.commands.executeCommand('setContext', 'codeHistories.usingHistoryWebview', usingHistoryView);
@@ -57,8 +59,28 @@ function updateContextKeys() {
 /**
  * @param {vscode.ExtensionContext} context
  */
-function activate(context) {
+async function activate(context) {
 	console.log('Congratulations, your extension "codeHistories" is now active!');
+
+	// Check if this is the first time the extension is running
+	const hasApiKey = await context.secrets.get('openaiApiKey');
+	const isFirstRun = context.globalState.get('isFirstRun', true);
+
+	// Handle API key setup FIRST, before any other initialization
+	if (isFirstRun && !hasApiKey) {
+		const action = await vscode.window.showInformationMessage(
+			'Welcome to Code Histories! Set up your OpenAI API key to enable AI-powered summarization features.',
+			'Setup Now',
+			'Setup Later'
+		);
+		
+		if (action === 'Setup Now') {
+			await promptForApiKey(context);
+		}
+		
+		await context.globalState.update('isFirstRun', false);
+	}
+
 	const currentDir = getCurrentDir();
 	if (!currentDir) return;
 
@@ -121,7 +143,11 @@ function activate(context) {
 	contentTimelineManager.initializeContentTimelineManager();
 
 	vscode.window.onDidStartTerminalShellExecution(async event => {
-		await onDidExecuteShellCommandHelper(event, clusterManager, contentTimelineManager);
+		await onDidStartTerminalShellExecutionHelper(event, clusterManager, contentTimelineManager); // for grabbing command, cwd, time and cleaning up output
+	});
+
+	vscode.window.onDidEndTerminalShellExecution(async event => {
+		await onDidEndTerminalShellExecutionHelper(event, clusterManager, contentTimelineManager); // for grabbing exit code and performing git actions
 	});
 
 	myCustomEmitter.on('save', async (entry) => {
@@ -148,16 +174,37 @@ function activate(context) {
 	// 	console.log('event: ', event);
 	// });
 
-	let activateCodeHistories = vscode.commands.registerCommand('codeHistories.codeHistories', activateCodeHistoriesHelper);
-	let executeCheckAndCommit = vscode.commands.registerCommand('codeHistories.checkAndCommit', executeCheckAndCommitHelper);
-	let selectGitRepo = vscode.commands.registerCommand('codeHistories.selectGitRepo', selectGitRepoHelper);
-	let setNewCmd = vscode.commands.registerCommand('codeHistories.setNewCmd', setNewCmdHelper);
-	let undoCommit = vscode.commands.registerCommand('codeHistories.undoCommit', undoCommitHelper);
-	let enterGoal = vscode.commands.registerCommand('codeHistories.enterGoal', enterGoalHelper);
-	let quickAutoCommit = vscode.commands.registerCommand('codeHistories.quickAutoCommit', quickAutoCommitHelper);
-	let selectTerminalProfile = vscode.commands.registerCommand('codeHistories.selectTerminalProfile', showTerminalProfileQuickPick);
-	let testRunPythonScript = vscode.commands.registerCommand('codeHistories.testRunPythonScript', testRunPythonScriptHelper);
-	let testDBConstructor = vscode.commands.registerCommand('codeHistories.testDBConstructor', testDBConstructorHelper);
+	let activateCodeHistories = vscode.commands.registerCommand('codeHistories.codeHistories', async () => {
+		await activateCodeHistoriesHelper(context);
+	});
+	let executeCheckAndCommit = vscode.commands.registerCommand('codeHistories.checkAndCommit', async () => {
+		await executeCheckAndCommitHelper();
+	});
+	let selectGitRepo = vscode.commands.registerCommand('codeHistories.selectGitRepo', async () => {
+		await selectGitRepoHelper();
+	});
+	let setNewCmd = vscode.commands.registerCommand('codeHistories.setNewCmd', async () => {
+		await setNewCmdHelper();
+	});
+	let undoCommit = vscode.commands.registerCommand('codeHistories.undoCommit', async () => {
+		await undoCommitHelper();
+	});
+	let enterGoal = vscode.commands.registerCommand('codeHistories.enterGoal', async () => {
+		await enterGoalHelper();
+	});
+	let quickAutoCommit = vscode.commands.registerCommand('codeHistories.quickAutoCommit', async () => {
+		await quickAutoCommitHelper();
+	});
+	let selectTerminalProfile = vscode.commands.registerCommand('codeHistories.selectTerminalProfile', async () => {
+		await showTerminalProfileQuickPick();
+	});
+	let testRunPythonScript = vscode.commands.registerCommand('codeHistories.testRunPythonScript', async () => {
+		await testRunPythonScriptHelper();
+	});
+	let testDBConstructor = vscode.commands.registerCommand('codeHistories.testDBConstructor', async () => {
+		await testDBConstructorHelper();
+	});
+
 	let historyWebview = vscode.commands.registerCommand('codeHistories.historyWebview', function () {
 		clusterManager.isPanelClosed = !clusterManager.isPanelClosed;
 		if(persist === true){
@@ -332,6 +379,12 @@ function activate(context) {
 					// let currentTime = Math.floor(Date.now() / 1000);
 					// console.log('currentTime: ', currentTime);
 				}
+
+				if(contentTimelineWebview && nonLocalWebEntries.length > 0){
+					let webEntriesForHistory = processWebData(nonLocalWebEntries);
+					console.log('webEntriesForHistory: ', webEntriesForHistory);
+					await contentTimelineManager.processWebEvents(webEntriesForHistory);
+				}
 			}
 		} catch (error) {
 			console.log('Error performing Git actions:', error);
@@ -342,7 +395,9 @@ function activate(context) {
 	intervalId = setTimeout(checkAppSwitch, 500);
 
 	// call activateCodeHistoriesHelper on startup
-	activateCodeHistoriesHelper();
+	await activateCodeHistoriesHelper(context);
+
+	registerSetApiKeyCommand(context);
 }
 
 async function testRunPythonScriptHelper() {
@@ -381,7 +436,7 @@ function removeNonASCIICharsHelper(txt) {
 	return processedTxt;
 }
 
-async function onDidExecuteShellCommandHelper(event, clusterManager, contentTimelineManager) {
+async function onDidStartTerminalShellExecutionHelper(event, clusterManager, contentTimelineManager) {
 	try {
 		// console.log('event.terminal', event.terminal);
 		// console.log('event.shellIntegration', event.shellIntegration);
@@ -406,8 +461,8 @@ async function onDidExecuteShellCommandHelper(event, clusterManager, contentTime
 				output = output.replace(weirdRegex, '\\');
 			}
 
-			// Regex to grab between ]633;C and ]633;D including multiple lines (in the case of errors)
-			const outputRegex = /\]633;C([\s\S]*?)\]633;D/g;
+			// Regex to grab between ]633;C and (optional) ]633;D including multiple lines (in the case of errors)
+			const outputRegex = /\]633;C([\s\S]*?)(?=\]633;D|$)/g;
 			let outputMatch = output.match(outputRegex);
 			let finalOutput = '';
 			if(outputMatch){
@@ -428,16 +483,6 @@ async function onDidExecuteShellCommandHelper(event, clusterManager, contentTime
 				}
 			}
 
-			// Regex to check exit code
-			const exitCodeRegex = /\]633;D(?:;(\d+))?/g;
-			let exitCodeMatch = output.match(exitCodeRegex);
-			let exitCode = '';
-			if(exitCodeMatch){
-				exitCode = exitCodeMatch[0];
-				exitCode = exitCode.replace(']633;D;', '');
-				// console.log('exitCodeMatch:', exitCode);
-			}
-
 			// grab cwd from shellIntegration event
 			let cwd = '';
 			if(event.shellIntegration.cwd && event.shellIntegration.cwd.path){
@@ -447,16 +492,7 @@ async function onDidExecuteShellCommandHelper(event, clusterManager, contentTime
 				}
 			}
 
-			// Regex to match cmd executed
-			const execCmdRegex = /\]633;E;(.*?);/g;
-			let execCmdMatch = output.match(execCmdRegex);
-			let command = '';
-			if(execCmdMatch){
-				command = execCmdMatch[0];
-				command = command.replace(']633;E;', '');
-				command = command.replace(';', '');
-				// console.log('execCmdMatch:', command);
-			}
+			let command = event.execution.commandLine.value;
 
 			if (user && hostname) {
 				// Define regular expressions with word boundaries
@@ -477,51 +513,13 @@ async function onDidExecuteShellCommandHelper(event, clusterManager, contentTime
 					finalOutput = finalOutput.replace(userRegex, 'user');
 				}
 			}
-	
-			// console.log('command:', command);
-			// console.log('output:', finalOutput);
-			// console.log('cwd:', cwd);
-			// console.log('exitCode:', exitCode);
 
-			let executionInfo = {
-				type: 'execution',
-				command: command,
-				output: finalOutput,
-				exitCode: exitCode,
-				cwd: cwd,
-				time: time
-			};
-
-			console.log('executionInfo:', executionInfo);
-	
-			// Log the execution info to JSON file
-			const currentDir = getCurrentDir();
-			const ndjsonString = JSON.stringify(executionInfo) + '\n'; // Convert to JSON string and add newline
-			const outputPath = path.join(currentDir, 'CH_cfg_and_logs', 'CH_terminal_data.ndjson');
-			await fs.promises.appendFile(outputPath, ndjsonString);
-
-			await tracker.gitAdd();
-	
-			// if command contains "codehistories" then we should commit
-			if (command.includes("codehistories")) {
-				const outputTxtFilePath = path.join(currentDir, 'output.txt');
-				await fs.promises.appendFile(outputTxtFilePath, `${finalOutput}\n`);
-				await tracker.gitAddOutput();
-				await tracker.checkWebData();
-				if(usingHistoryView) {
-					await tracker.gitCommit();
-					let codeEntries = await tracker.grabLatestCommitFiles();
-					await clusterManager.processCodeEvents(codeEntries);
-				} else if(usingContentTimelineView) {
-					// await tracker.gitCommit();
-					await contentTimelineManager.processEvent(executionInfo);
-				} else {
-					await tracker.gitCommit();
-				}
-				// vscode.window.showInformationMessage('Commit supposedly executed successfully!');
-			} else {
-				await tracker.gitReset();
-			}
+			executionInfo.type = 'execution';
+			executionInfo.command = command;
+			executionInfo.output = finalOutput;
+			executionInfo.exitCode =  '';
+			executionInfo.cwd = cwd;
+			executionInfo.time = time;
 		}
 	} catch (error) {
 		console.log("Error occurred:", error);
@@ -530,12 +528,126 @@ async function onDidExecuteShellCommandHelper(event, clusterManager, contentTime
 	}
 }
 
+async function onDidEndTerminalShellExecutionHelper(event, clusterManager, contentTimelineManager) {
+	try{
+		let exitCode = '';
+		if (event.exitCode === undefined) {
+			exitCode = -1; //'Command finished but exit code is unknown';
+		} else if (event.exitCode === 0) {
+			exitCode = 0; //'Command succeeded';
+		} else {
+			exitCode = 1; //'Command failed';
+		}
+
+		executionInfo.exitCode = exitCode;
+		// console.log('executionInfo:', executionInfo);
+
+		//Log the execution info to JSON file
+		const currentDir = getCurrentDir();
+		const ndjsonString = JSON.stringify(executionInfo) + '\n'; // Convert to JSON string and add newline
+		const outputPath = path.join(currentDir, 'CH_cfg_and_logs', 'CH_terminal_data.ndjson');
+		await fs.promises.appendFile(outputPath, ndjsonString);
+
+		await tracker.gitAdd();
+
+		// if command contains "codehistories" then we should commit
+		if (executionInfo.command.includes("codehistories")) {
+			const outputTxtFilePath = path.join(currentDir, 'output.txt');
+			await fs.promises.appendFile(outputTxtFilePath, `${executionInfo.output}\n`);
+			await tracker.gitAddOutput();
+			await tracker.checkWebData();
+			if(usingHistoryView) {
+				await tracker.gitCommit();
+				let codeEntries = await tracker.grabLatestCommitFiles();
+				await clusterManager.processCodeEvents(codeEntries);
+			} else if(usingContentTimelineView) {
+				// await tracker.gitCommit();
+				await contentTimelineManager.processEvent(executionInfo);
+			} else {
+				await tracker.gitCommit();
+			}
+			// vscode.window.showInformationMessage('Commit supposedly executed successfully!');
+		} else {
+			await tracker.gitReset();
+		}
+
+		// wait for a second then reset executionInfo
+		await new Promise(resolve => setTimeout(resolve, 1000));
+		executionInfo = {};
+	} catch (error) {
+		console.log("Error occurred in onDidEndTerminalShellExecutionHelper:", error);
+		await tracker.gitReset();
+		await vscode.window.showInformationMessage('Error committing to git. Please wait a few seconds and try again.');
+	}
+}
+
+async function promptForApiKey(context) {
+	const apiKey = await vscode.window.showInputBox({
+			prompt: 'Enter your OpenAI API key',
+			ignoreFocusOut: true,
+			placeHolder: 'sk-...',
+			validateInput: text => text.trim() === '' ? 'API key cannot be empty' : null
+		});
+
+	if (apiKey) {
+		try {
+			await context.secrets.store('openaiApiKey', apiKey);
+			vscode.window.showInformationMessage('OpenAI API key saved successfully!');
+			return true;
+		} catch (error) {
+			vscode.window.showErrorMessage('Failed to save API key: ' + error.message);
+			return false;
+		}
+	} else {
+		vscode.window.showWarningMessage('API key setup skipped. You can set it up later using the "Set OpenAI API Key" command.');
+		return false;
+	}
+}
+
+// Add a command to allow users to set/update their API key later
+function registerSetApiKeyCommand(context) {
+	let setOpenAIApiKey = vscode.commands.registerCommand('codeHistories.setOpenAIApiKey', async () => {
+		const currentKey = await context.secrets.get('openaiApiKey');
+		const action = currentKey ? 
+			await vscode.window.showInformationMessage(
+				'You already have an OpenAI API key set. Do you want to update it?',
+				'Update Key',
+				'Cancel'
+			) : 'Update Key';
+		
+		if (action === 'Update Key') {
+			await promptForApiKey(context);
+		}
+	});
+	
+	context.subscriptions.push(setOpenAIApiKey);
+}
+
 /* Activate the extension */
-async function activateCodeHistoriesHelper() {
-	vscode.window.showInformationMessage('Code histories activated!');
+async function activateCodeHistoriesHelper(context) {
+	// vscode.window.showInformationMessage('Code histories activated!');
 	const currentDir = getCurrentDir();
+
+	// Ensure API key is set up before proceeding
+	const hasApiKey = await context.secrets.get('openaiApiKey');
+	if (!hasApiKey) {
+		const action = await vscode.window.showWarningMessage(
+			'OpenAI API key is not set up. AI features will be disabled.',
+			'Setup API Key',
+			'Continue Without API Key'
+		);
+		
+		if (action === 'Setup API Key') {
+			const success = await promptForApiKey(context);
+			if (!success) {
+				vscode.window.showInformationMessage('Continuing without API key. AI features will be disabled.');
+			}
+		}
+	}
+
 	await createVsCodeSettings(currentDir);
 	await createProfileScripts(currentDir);
+
 	// call selectTerminalProfile to open the terminal
 	await vscode.commands.executeCommand('codeHistories.selectTerminalProfile');
 	extensionActivated = true;
@@ -828,38 +940,67 @@ function deactivate() {
 	terminalOpenedFirstTime = new Object();
 
 	try{
-		if(usingHistoryView){
+		if(usingHistoryView && clusterManager){
 			// save webview inside CH_cfg_and_logs
 			const currentDir = getCurrentDir();
+			const statePath = path.join(currentDir, 'CH_cfg_and_logs', 'history_session_state.json');
 
-			let date = new Date();
-			let dateStr = date.toISOString().split('T')[0];
-			let epochTimeInSeconds = Math.floor(date.getTime() / 1000);  // Get the current time in seconds
+			// Create a state object with the data needed to rebuild the view
+			const sessionState = {
+				groupedEvents: clusterManager.displayForGroupedEvents,
+				strayEvents: clusterManager.strayEvents,
+				currentDiffView: clusterManager.currentDiffView,
+				allSaves: clusterManager.allSaves,
+				initialSaves: clusterManager.initialSaves,
+				allPastEvents: clusterManager.allPastEvents,
+				prevCommittedEvents: clusterManager.prevCommittedEvents,
+				currentGroup: clusterManager.currentGroup,
+				inCluster: clusterManager.inCluster,
+				clusterStartTime: clusterManager.clusterStartTime,
+				pastEvents: clusterManager.pastEvents,
+				currentCodeEvent: clusterManager.currentCodeEvent,
+				currentWebEvent: clusterManager.currentWebEvent,
+				idCounter: clusterManager.idCounter,
+				hasRestoredFromLastSession: clusterManager.hasRestoredFromLastSession
+			};
 
-			const webviewPath = path.join(currentDir, 'CH_cfg_and_logs', `history_webview_${dateStr}_${epochTimeInSeconds}.html`);
-			// console.log('webviewPath:', webviewPath);
+			// Write the state object to a JSON file
+			fs.writeFileSync(statePath, JSON.stringify(sessionState, null, 4));
+			console.log('History view state saved successfully.');
 
-			let webviewContent = clusterManager.getWebviewContent();
-			// webviewContent = clusterManager.commentOutVSCodeApi(webviewContent); // Comment out the VS Code API script so html can run as standalone in browser
-			// // console.log('webviewContent:', webviewContent);
-
-			fs.writeFileSync(webviewPath, webviewContent);			
+			// let date = new Date();
+			// let dateStr = date.toISOString().split('T')[0];
+			// let epochTimeInSeconds = Math.floor(date.getTime() / 1000);  // Get the current time in seconds
+			// const webviewPath = path.join(currentDir, 'CH_cfg_and_logs', `history_webview_${dateStr}_${epochTimeInSeconds}.html`);
+			// let webviewContent = clusterManager.getWebviewContent();
+			// fs.writeFileSync(webviewPath, webviewContent);
 		} 
 		
-		if(usingContentTimelineView){
+		if(usingContentTimelineView && contentTimelineManager){
 			// save webview inside CH_cfg_and_logs
 			const currentDir = getCurrentDir();
+			const statePath = path.join(currentDir, 'CH_cfg_and_logs', 'content_timeline_session_state.json');
 
-			let date = new Date();
-			let dateStr = date.toISOString().split('T')[0];
-			let epochTimeInSeconds = Math.floor(date.getTime() / 1000);  // Get the current time in seconds
+			// Create a state object with the data needed to rebuild the view
+			const sessionState = {
+				contentTimeline: contentTimelineManager.contentTimeline,
+				eventHtmlMap: contentTimelineManager.eventHtmlMap,
+				previousSaveContent: contentTimelineManager.previousSaveContent,
+				idCounter: contentTimelineManager.idCounter,
+				currentEvent: contentTimelineManager.currentEvent,
+				hasRestoredFromLastSession: contentTimelineManager.hasRestoredFromLastSession
+			};
 
-			const webviewPath = path.join(currentDir, 'CH_cfg_and_logs', `content_timeline_webview_${dateStr}_${epochTimeInSeconds}.html`);
-			// console.log('webviewPath:', webviewPath);
+			// Write the state object to a JSON file
+			fs.writeFileSync(statePath, JSON.stringify(sessionState, null, 4));
+			console.log('Content timeline view state saved successfully.');
 
-			let webviewContent = contentTimelineManager.getWebviewContent();
-
-			fs.writeFileSync(webviewPath, webviewContent);
+			// let date = new Date();
+			// let dateStr = date.toISOString().split('T')[0];
+			// let epochTimeInSeconds = Math.floor(date.getTime() / 1000);
+			// const webviewPath = path.join(currentDir, 'CH_cfg_and_logs', `content_timeline_webview_${dateStr}_${epochTimeInSeconds}.html`);
+			// let webviewContent = contentTimelineManager.getWebviewContent();
+			// fs.writeFileSync(webviewPath, webviewContent);
 		}
 	} catch (error) {
 		console.error('Error saving webview:', error);
