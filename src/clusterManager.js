@@ -573,13 +573,6 @@ class ClusterManager {
             }
         }
         // only white space changes, no edits or additions/deletions
-        // else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length === 0 && currentLines.length !== pastLines.length) {
-        //     console.log("case 5");
-        //     if (this.debug) console.log("\twhitespace changes only; start new cluster");
-        //     if (!this.inCluster[filename]) {
-        //         this.inCluster[filename] = true;
-        //         this.clusterStartTime[filename] = pastEvt.time;
-        //     }
         else if (this.onlyWhitespaceChanges(pastLines, currentLines)) {
             console.log("case 5");
             if (this.debug) console.log("\twhitespace changes only; start new cluster");
@@ -605,18 +598,6 @@ class ClusterManager {
                 this.clusterStartTime[filename] = pastEvt.time;
                 this.startNewGroup();
             }
-
-            // if there's a big clump that's come in, then we should start another cluster immediately
-            // const pastEvtFile = this.getFilename(pastEvt.notes);
-            // if ((filename === pastEvtFile) && (perfectMatches.length > 0) && (currentLines.length - pastLines.length > this.MAX_NEW_LINES)) {
-            //     console.log(`\t starting new cluster ${pastEvt.time}`)
-            //     this.clusterStartTime[filename] = pastEvt.time;
-            //     this.inCluster[filename] = true;
-            //     this.startNewGroup();
-            // }
-            // else {
-            //     this.inCluster[filename] = false;
-            // }
         }
     }
 
@@ -1897,85 +1878,6 @@ Rules:
         return html;
     }
 
-    // Generate the HTML for the diff view of a code activity
-    // This happens after a "test" occurrence (comparing two versions of commit)
-    async generateDiffHtmlStray(anEvent) {
-        try {
-            const currentDir = getCurrentDir();
-            const gitDir = path.join(currentDir, 'codeHistories.git');
-            const workTree = currentDir;
-
-            // Get the second-to-last commit hash
-            const logCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" log -2 --format="%H"`;
-            const { stdout: logOutput } = await exec(logCmd, { cwd: workTree });
-            const commitHashes = logOutput.trim().split('\n');
-            const previousCommitHash = commitHashes[1];  // HEAD~1 is the second hash
-
-            // Get the content of the file from the previous commit
-            const previousFilePath = path.join(currentDir, anEvent.file);
-            let previousFileContent = '';
-
-            try {
-                // Simulating reading the file content from the previous commit using fs.promises.readFile
-                const showCmd = `git --git-dir="${gitDir}" --work-tree="${workTree}" show ${previousCommitHash}:${anEvent.file}`;
-                const { stdout: previousFileOutput } = await exec(showCmd, { cwd: workTree });
-                previousFileContent = previousFileOutput;
-            } catch (err) {
-                // If the file did not exist in the previous commit, treat it as a newly created file
-                console.log(`File didn't exist in the previous commit. Treating as a new file: ${anEvent.file}`);
-                previousFileContent = '';  // No content in previous commit
-            }
-
-            const currentFileContent = await fs.promises.readFile(previousFilePath, 'utf8')
-
-            const diffString = Diff.createTwoFilesPatch(
-                `start`,
-                `end`,
-                previousFileContent,
-                currentFileContent,
-                anEvent.file,
-                anEvent.file,
-                { ignoreWhitespace: true } // this is important
-            );
-
-            // Check if there are real content changes (e.g., additions or deletions)
-            const hasRealChanges = diffString.includes('@@') && (diffString.includes('+') || diffString.includes('-'));
-            if (!hasRealChanges) {
-                // If no real content changes, return an empty string
-                // Indicating we should skip displaying this event in the webview
-                return '';
-            }
-
-            const diffHtml = diff2html.html(diffString, {
-                outputFormat: this.currentDiffView,
-                drawFileList: false,
-                colorScheme: 'light',
-                showFiles: false,
-            });
-
-            let modifiedHtml = '';
-
-            if (this.currentDiffView === 'line-by-line') {
-                modifiedHtml = diffHtml.replace(/<div class="line-num2">(.*?)<\/div>/g, (match) => {
-                    const lineNumber = match.match(/<div class="line-num2">(.*?)<\/div>/)[1];
-                    return `<div class="line-num2" data-linenumber="${lineNumber - 1}" data-filename="${anEvent.file}">${lineNumber}</div>`;
-                });
-            }
-
-            if (this.currentDiffView === 'side-by-side') {
-                modifiedHtml = diffHtml.replace(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/g, (match) => {
-                    const lineNumber = match.match(/<td class="d2h-code-side-linenumber(?: [\w-]+)*">\s*(\d+)\s*<\/td>/)[1];
-                    return `<td class="d2h-code-side-linenumber clickable-line" data-linenumber="${lineNumber - 1}" data-filename="${anEvent.file}">${lineNumber}</td>`;
-                });
-            }
-
-            return modifiedHtml;
-        } catch (err) {
-            console.error(`Error generating diff for ${anEvent.file}: ${err}`);
-            return 'Error generating diff';
-        }
-    }
-
     async generateStrayEventsHTMLTest() {
         return '<li>Your future changes goes here.</li>';
     }
@@ -2051,9 +1953,9 @@ Rules:
         let html = '';
         let idx = 0;
 
-        // if (this.strayEvents.length === 0) {
-        //     return '<li>Your future changes go here.</li>';
-        // }
+        if (this.strayEvents.length === 0) {
+            return '<li>Your future changes go here.</li>';
+        }
 
         // Track the most recent change for each file
         const fileDiffs = {};
@@ -2063,30 +1965,7 @@ Rules:
         const uniqueSearches = new Set();
 
         for (const event of this.strayEvents) {
-            if (event.type === "code") {
-                // Uncomment this if comparing code test events
-                // const diffHTMLForStrayChanges = await this.generateDiffHtmlStray(event);
-
-                // // Only store the diff if there's content to display
-                // if (diffHTMLForStrayChanges.trim()) {
-                //     // Store the latest diff for this file, replacing any previous entry
-                //     fileDiffs[event.file] = `
-                //         <li class="stray-event" id="code-stray-${idx}">
-                //             <div class="li-header">
-                //                 <button type="button" class="collapsible active" id="plusbtn-code-stray-${idx}">-</button>
-                //                 You made changes to <em>${event.file}</em>
-                //                 <div class="placeholder"></div>
-                //             </div>
-                //             <div class="content" id="content-code-stray-${idx}" style="display: flex;">
-                //                 <div class="full-container">
-                //                     ${diffHTMLForStrayChanges}
-                //                 </div>
-                //             </div>
-                //         </li>
-                //     `;
-                // }
-                continue;
-            } else if (event.type === "search") {
+            if (event.type === "search") {
                 // Handle search events and avoid duplicates
                 const searchedTitle = event.webTitle.substring(event.webTitle.indexOf(":") + 1, event.webTitle.lastIndexOf("-")).trim();
                 if (!uniqueSearches.has(searchedTitle)) {
@@ -2215,23 +2094,10 @@ Rules:
                 return ``;
             }
 
-            // if (streamedResponse.trim() === "response generation failed") {
-            //     console.error("OpenAI filtering failed, returning error message.");
-            //     return `<p style="color:red;">Error: Response generation failed during history filtering.</p>`;
-            // }
-
             console.log("generateChatGPTResponseHTML RESPONSE: ", streamedResponse);
 
             let parsed = JSON.parse(streamedResponse);
             console.log("generateChatGPTResponseHTML PARSED: ", parsed);
-
-            // let parsed;
-            // try {
-            //     parsed = JSON.parse(streamedResponse);
-            // } catch (e) {
-            //     console.error("Failed to parse JSON response:", e, streamedResponse);
-            //     return `<p style="color:red;">Error: Failed to parse API response as JSON.</p>`;
-            // }
 
             parsed = parsed.map(entry => ({
                 ...entry,
@@ -2597,8 +2463,6 @@ Rules:
         }
     }
 
-
-
     generateDiffHTMLGroup(codeActivity) {
         // Get the event at startTime
         let startCodeEventLines = this.get_code_lines(codeActivity.before_code);
@@ -2655,17 +2519,6 @@ Rules:
         await this.updateWebPanel();
     }
 
-    // getHighlightedCode () {
-    //     const editor = vscode.window.activeTextEditor;
-    //     const selection = editor.selection;
-    //     if (selection && !selection.isEmpty) {
-    //         const selectionRange = new vscode.Range(selection.start.line, selection.start.character, selection.end.line, selection.end.character);
-    //         const highlighted = editor.document.getText(selectionRange);
-    //         console.log(highlighted);
-    //         return highlighted;
-    //     }
-    // }
-
     best_match(target, lines) {
         if (target.length > 0) {
             let match = null;
@@ -2705,35 +2558,6 @@ Rules:
         if (this.webviewPanel) {
             this.webviewPanel.dispose();
         }
-    }
-
-    // Function to comment out VS Code API calls before saving the HTML
-    commentOutVSCodeApi(htmlContent) {
-        // Comment out 'const vscode = acquireVsCodeApi();'
-        htmlContent = htmlContent.replace(/const vscode = acquireVsCodeApi\(\);/, '// const vscode = acquireVsCodeApi();');
-
-        // Comment out 'vscode.postMessage({...})' related to 'updateTitle'
-        htmlContent = htmlContent.replace(
-            /vscode\.postMessage\(\s*\{\s*command:\s*'updateTitle'[\s\S]*?\}\s*\);/g,
-            `// vscode.postMessage({ 
-                // command: 'updateTitle', 
-                // groupKey: groupKey, 
-                // title: titleInput 
-            // });`
-        );
-
-        // Comment out 'vscode.postMessage({...})' related to 'updateCodeTitle'
-        htmlContent = htmlContent.replace(
-            /vscode\.postMessage\(\s*\{\s*command:\s*'updateCodeTitle'[\s\S]*?\}\s*\);/g,
-            `// vscode.postMessage({ 
-                // command: 'updateCodeTitle', 
-                // groupKey: groupKey, 
-                // eventId: eventId, 
-                // title: codeTitleInput 
-            // });`
-        );
-
-        return htmlContent;
     }
 }
 
