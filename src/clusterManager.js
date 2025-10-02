@@ -13,10 +13,8 @@ const { getCurrentDir, extractText } = require('./helpers');
 const express = require("express");
 require('dotenv').config({ path: __dirname + '/../.env' });
 const { OpenAI } = require("openai");
+const { ADDRGETNETWORKPARAMS } = require('dns');
 const app = express();
-
-// console.log(process.env.OPENAI_API_KEY);
-
 app.use(express.json())
 
 class ClusterManager {
@@ -220,7 +218,18 @@ class ClusterManager {
                 console.log("ERROR IN INITIALIZEWEBVIEW, LINE 181!")
                 this.chatResponseHTML = null;
                 this.userQuestion = '';
-                await this.updateWebPanel('');
+                
+                // Generate the default history HTML explicitly
+                const defaultHistoryHTML = await this.generateFullHistoryHTML();
+                
+                // 1. Update the webview's internal HTML (in case of a full refresh)
+                await this.updateWebPanel(''); 
+                
+                // 2. Explicitly send the default HTML via the message channel to update the inner content
+                this.webviewPanel.webview.postMessage({
+                    command: "updateChatResponse", // Reuse this command
+                    response: defaultHistoryHTML
+                });
             }
         });
     }
@@ -799,178 +808,6 @@ class ClusterManager {
         }
     }
 
-    async generateNLResponse(question, subgoal, most_relevant) {
-        try {
-
-            if (!question.trim()) {
-                return "no question";
-            }
-
-            let prompt = `
-You are given 3 things:
-1. A user question: ${question}
-2. An overall goal for this section: ${subgoal}
-3. A detailed edit made toward the goal: ${JSON.stringify(most_relevant)}
-
-Your job is to summarize what is happening — what the user is asking, what their coding goal is, and how this edit connects to that goal.
-
-- If the code change clearly relates to the question, describe how.
-- If the change doesn’t answer or connect to the question, just summarize the edit and the subgoal it supports. Don’t mention the question.
-- Avoid praise, exaggeration, or cheerleading.
-- Don’t mention backend IDs.
-- Be concise and neutral.
-- This is not a conversation; don’t say things like “feel free to ask.”
-            `;
-
-            const completions = await this.openai.chat.completions.create({
-                model: "gpt-4o-mini",
-                max_tokens: 500,
-                messages: [
-                    {
-                        role: "system",
-                        content: `You are a code history comprehension helpter. you will be given 3 different informations: 
-                        1. a question asked by the user, 
-                        2. overall goal for this smaller code change, and 
-                        3. the specific change happened in the code that partially contribute to the overall goal, it will also have a smaller subgoal here, the overall goal was breaked into smaller subgoal such as the one provided here. 
-                        It is your job to summarize what the user asked, what the user's goal is here, and what they edited in the code to work toward that overall goal. It has to clearly convey what the user serached for and it is also an opportunity to demonstrate that the user question is being processed by a LLM and is a hint that natural language can be understanderstood here, meaning users are able to treat the search function as a chat with a LLM. If the user asked a definition question, provide the definite also in the response. Please also describe the information with short and easy to understand language and like also a small piece of "story" that contribute to the overall goal.`
-                    },
-                    { role: "user", content: prompt }
-                ]
-            });
-
-            let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
-
-            return `${summary}`;
-
-
-        } catch (error) {
-            console.error("Error generating answer:", error.message);
-            return "response generation failed";
-        }
-    }
-
-    async generateStoryResponse(question, parallelled_array) {
-        try {
-
-            console.log("generateStoryResponse parallel array: ", parallelled_array)
-
-            if (!question.trim()) {
-                return "no question";
-            }
-
-let prompt = `You are a technical summarization assistant. Given a chronological array of coding events:"${JSON.stringify(parallelled_array)}", answering the question: "${question}", rewrite each event as a concise, HTML-formatted summary.
-
-Requirements:
-- Don't repeat what the user is asking or inquiring about.
-- The number of output items must exactly match the input array length. For each input entry, generate one corresponding summary.
-- Keep the array length and order exactly the same.
-- Start each entry with a short bolded label in HTML, like "<strong>a small phrase that describes the edits:</strong>".
-- Then include a <ul style="padding-top: 0px;list-style: circle;margin-left: 40px;"> with each key point wrapped in an <li> tag.
-- Focus on what was implemented, changed, or fixed. Mention key functions or elements.
-- Instead of putting quotation around objects from the code, put <code> tag.
-- Avoid filler language, compliments, or repetition.
-- Combine minor or low-value steps into one line when needed.
-- Use clear, direct language.
-- Output only the revised array as valid array ready to parse (do not wrap in extra text).`;
-
-
-            const completions = await this.openai.chat.completions.create({
-                model: "gpt-4o-mini",
-                max_completion_tokens: null,
-                max_tokens: null,
-                messages: [
-                    {
-                        role: "system",
-                        content: `You are a code summarization assistant. Given a chronological array of user changes and a guiding question, rewrite the array to improve clarity, story flow, and structure. Keep the same length and order, and return only the updated array as valid JSON. Avoid repetitive phrasing and focus on how each step contributes to the goal.`
-                    },
-                    { role: "user", content: prompt }
-                ]
-            });
-            console.log("generateStoryResponse: ", completions);
-            let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
-            // summary = summary.trim().replace(/^```json/, "").replace(/^```/, "").replace(/```$/, "").trim();
-
-            // console.log("generateStoryResponse: ", summary);
-            return `${summary}`;
-
-
-        } catch (error) {
-            console.error("Error generating answer:", error.message);
-            return "response generation failed";
-        }
-    }
-
-    async generateSummary(question, parallelled_array) {
-        try {
-
-            if (!question.trim()) {
-                return "no question";
-            }
-
-//             let prompt = `You are given a user question and a chronological sequence of summarized coding events. These events represent the user's step-by-step progress toward a specific coding goal.
-
-// Your job is to answer the question based on the coding events.
-
-// Instructions:
-// - Begin with a direct, one-sentence answer to the question. besure to put <strong> tag around it
-// - Then include a <ul style="padding-top: 0px;list-style: circle;margin-left: 40px;"> with each key point wrapped in an <li> tag.
-// - Be precise, specific, and technical where appropriate.
-// - Avoid general summaries or vague commentary.
-// - IMPORTANT! put <code> tag around ANY object your are quoting from the code, DO NOT use quatation marks. 
-// - Do not compliment or praise the user.
-// - Do not repeat the question in your answer.
-// - Output only the final answer, no preamble or list formatting.
-
-// Question: ${question}
-
-// Chronological coding steps:
-// ${JSON.stringify(parallelled_array)}`;
-let prompt = `You are given a user question and a chronological sequence of summarized coding events. These events represent the user's step-by-step progress toward a specific coding goal.
-
-Your task is to answer the question based solely on these coding events.
-
-FORMAT REQUIREMENTS (STRICTLY FOLLOW):
-1. Start with a single-sentence direct answer wrapped in <strong> tags.
-2. Then include a <ul style="padding-top: 0px;list-style: circle;margin-left: 40px;">.
-3. Each key point must be in an <li> tag.
-4. Use <code> tags ONLY for **all references to code elements** — this includes variable names, functions, file names, keywords, code snippets, and anything the user wrote in code.
-5. DO NOT use quotation marks around code references — use ONLY <code>.
-6. Be specific and technical; do NOT include any general praise or restate the question.
-
-FAILURE TO FOLLOW THE FORMAT IS AN ERROR.
-
-Question: ${question}
-
-Chronological coding steps:
-${JSON.stringify(parallelled_array)}`;
-
-
-            const completions = await this.openai.chat.completions.create({
-                model: "gpt-4o-mini",
-                max_tokens: 1000,
-                messages: [
-                    {
-                        role: "system",
-                        content: `You are a question answerer. You are given a user question and a list of events done by the user. Try to answer the question using the events given to you. `
-                    },
-                    { role: "user", content: prompt }
-                ]
-            });
-            console.log("generateSummary: ", completions);
-            let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
-            // console.log("generateStoryResponse: ", summary);
-
-            // summary = summary.trim().replace(/^```json/, "").replace(/^```/, "").replace(/```$/, "").trim();
-
-            return `${summary}`;
-
-
-        } catch (error) {
-            console.error("Error generating answer:", error.message);
-            return "response generation failed";
-        }
-    }
-
     findActivities (codeList, targets) {
         const memoization = new Map();
         for (const item of codeList) { 
@@ -993,44 +830,6 @@ ${JSON.stringify(parallelled_array)}`;
         }
 
         return result;
-    }
-
-    async generateRelevantInfo(question, relevant_info) {
-        try {
-
-            if (!question.trim()) {
-                return "no question";
-            }
-
-            let prompt = `Here is the user question: ${question}, and here is the filtered code change information: ${JSON.stringify(relevant_info)}. Please use the given question and information provided to find the most relevant piece of information, the rest are background information that might not seem important but it is still relevant.`;
-
-            const completions = await this.openai.chat.completions.create({
-                model: "gpt-4o-mini",
-                max_tokens: 500,
-                messages: [
-                    {
-                        role: "system",
-                        content: `You are a code history reviewer. You will be provided with a user question and a list of already sorted out information about code changes. These information is grouped together with a larger overall goal therefore it is why some information listed does not seem relevant to the user question. 
-                        Return me an array of most relevant {id: entry.id} based on the question asked by the user, you can include as many as possible.
-                        There will be instances where all information seem relevant, if so, send everthing. 
-                        The array you have returned to me should not have extra formatting and should be ready to parse. `
-                    },
-                    { role: "user", content: prompt }
-                ]
-            });
-
-            let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
-            // console.log('In generateRelevantInfo, filtered API Response:', completions);
-
-            // summary = summary.trim().replace(/^```json/, "").replace(/^```/, "").replace(/```$/, "").trim();
-
-            return `${summary}`;
-
-
-        } catch (error) {
-            console.error("Error generating answer:", error.message);
-            return "response generation failed";
-        }
     }
 
     async isHistoryOrResource(question) {
@@ -1096,16 +895,11 @@ Rules:
 
             let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
             console.log("checkQuestionRepeat: ", summary)
-
-            // this.chatGPTInvoked = true;
-            // return summary;
             try {
                 return JSON.parse(summary);
             } catch {
                 return [false]; // fallback if parsing fails
             }
-
-
         } catch (error) {
             console.error("Error generating answer:", error.message);
             return "response generation failed";
@@ -1165,8 +959,6 @@ Rules:
     }
 
     async *generatePastAnswerStream(question, whichOne) {
-        // const startTime = performance.now();
-
         try {
             // console.log("User Question:", question);
 
@@ -1223,12 +1015,6 @@ Rules:
                 // console.log("response text here: ", responseText);
                 yield content;
             }
-
-            // const endTime = performance.now();
-            // console.log(`Call to generatePastAnswerStream() took ${endTime - startTime} milliseconds`);
-
-            this.chatGPTInvoked = true;
-
         } catch (error) {
             console.error("Error generating answer:", error.message);
             yield "response generation failed";
@@ -1236,26 +1022,14 @@ Rules:
     }
 
     async updateWebPanel(question) {
-
-        const startTime = performance.now()
-
-        if (!this.webviewPanel) {
-            this.webviewPanel = vscode.window.createWebviewPanel(
-                'historyWebview',
-                'History Webview',
-                vscode.ViewColumn.Beside,
-                { enableScripts: true }
-            );
-        }
-
         let groupedEventsHTML;
 
-        // If a chat response exists in our state, use it. Otherwise, generate the default view.
-        if (this.chatResponseHTML) {
-            groupedEventsHTML = this.chatResponseHTML;
+        // If chat is NOT active, generate the default view
+        if (!this.chatResponseHTML) {
+            groupedEventsHTML = await this.generateFullHistoryHTML();
         } else {
-            // This is the default view when no chat is active.
-            groupedEventsHTML = await this.generateGroupedEventsHTMLTest() + await this.generateGroupedEventsHTML();
+            // Otherwise, use the chat response
+            groupedEventsHTML = this.chatResponseHTML;
         }
 
         const strayEventsHTML = await this.generateStrayEventsHTML();
@@ -1532,11 +1306,6 @@ Rules:
                 await this.navigateToLine(message.fileName, message.line);
             }
         });
-
-        const endTime = performance.now()
-
-        console.log(`Call to updateWebPanel took ${endTime - startTime} milliseconds`)
-
     }
 
 
@@ -1547,10 +1316,7 @@ Rules:
         }
 
         try {
-            const response = await this.generateChatGPTResponseHTML(question);
-            const historyResponse = await this.generateHistoryChatGPTResponseHTML(question);
-
-            const newContentHTML= response + historyResponse;
+            let newContentHTML = await this.generateHistoryChatGPTResponseHTML(question);
 
             // 1. Update the persistent state
             this.chatResponseHTML = newContentHTML;
@@ -2028,434 +1794,242 @@ Rules:
         return html;  // Return the generated HTML
     }
 
-    async generateChatGPTResponseHTML(question) {
-
-        const startTime = performance.now();
-
+    async generateUnifiedResponse(question, relevant_subgoals) {
         try {
-            const filteredArray = [];
-            const filteredArrayResources = [];
-
-            for (const group of this.displayForGroupedEvents) {
-                const groupId = group.id;
-                const groupTitle = group.title;
-
-                // Filter code events (you can adjust to push all instead of just the first)
-                const codeEvent = group.actions.find(action => action.type === 'code');
-                if (codeEvent) {
-                    filteredArray.push({
-                        id: groupId,
-                        title: codeEvent.title,
-                        file: codeEvent.file
-                    });
-                }
-
-                // Collect web resources
-                const uniqueVisitsSet = new Set();
-
-                for (const action of group.actions) {
-                    if (action.type && action.type.includes('visit') && !action.webTitle?.toLowerCase().includes("search")) {
-                        uniqueVisitsSet.add(JSON.stringify({
-                            webpage: action.webpage,
-                            webTitle: extractText(action.webTitle, "visit:", ";")
-                        }));
-                    }
-                }
-
-                const visitResources = Array.from(uniqueVisitsSet).map(item => JSON.parse(item));
-
-                if (visitResources.length > 0) {
-                    filteredArrayResources.push({
-                        id: groupId,
-                        title: groupTitle,
-                        resources: visitResources
-                    });
-                }
+            if (!question.trim()) {
+                return { summary: "No question detected.", process: [] };
             }
 
-            // console.log("filtered array code events: ", filteredArray);
-            // console.log("filtered array resources", filteredArrayResources);
-
-            const reduceLoad = await this.isHistoryOrResource(question);
-            // console.log("history or resources? ", reduceLoad);
-
-            // const natural_language_indicator = await this.generateNLResponse(question);
-            // console.log("natural_language_indicator: ", natural_language_indicator);
-
-            const generator = this.generateAnswerStream(question, reduceLoad, filteredArray, filteredArrayResources);
-            let streamedResponse = "";
-
-            for await (const chunk of generator) {
-                let chunkStr = typeof chunk === "string" ? chunk : JSON.stringify(chunk);
-                streamedResponse += chunkStr;
-            }
-
-            if (streamedResponse.trim() === "no question") {
-                return ``;
-            }
-
-            console.log("generateChatGPTResponseHTML RESPONSE: ", streamedResponse);
-
-            let parsed = JSON.parse(streamedResponse);
-            console.log("generateChatGPTResponseHTML PARSED: ", parsed);
-
-            parsed = parsed.map(entry => ({
-                ...entry,
-                id: parseInt(entry.id, 10) // or: id: +entry.id
+            // Create a concise, structured input for the LLM
+            const inputForLLM = relevant_subgoals.map(subgoal => ({
+                id: subgoal.id,
+                title: subgoal.title,
+                file: subgoal.file
             }));
-            console.log("generateChatGPTResponseHTML PARSED: ", parsed);
-            let html = '';
+            
+            let prompt = `You are a code history analysis expert. The user asked: "${question}".
 
-            if (!this.codeResources || this.codeResources.length === 0) {
-                console.error("codeResources is undefined or empty");
-                return '<li>No resources for you :(.</li>';
+            Below is a chronological list of *all* relevant code change titles and files (subgoals) identified in the codebase history:
+
+            ${JSON.stringify(inputForLLM, null, 2)}
+
+            Your final output MUST be a strict JSON object with two keys: "summary" and "process".
+
+            JSON Structure:
+            {
+                "summary": "[The direct, concise answer in HTML format for the 'Summary' section]",
+                "process": [
+                    "[HTML-formatted narrative for Subgoal 1]",
+                    "[HTML-formatted narrative for Subgoal 2]",
+                    // ... one entry for every subgoal in the input list.
+                ]
             }
 
-            console.log("generateChatGPTResponseHTML: ", this.displayForGroupedEvents);
-            for (const [groupKey, group] of this.displayForGroupedEvents.entries()) {
+            'summary' Key Formatting:
+            - Start with a single-sentence direct answer wrapped in <strong> tags.
+            - Follow with a <ul style="padding-top: 0px;list-style: circle;margin-left: 40px;">, with each key point in an <li> tag.
+            
+            'process' Key Formatting (for each array entry):
+            - Reformat the corresponding subgoal into a concise, narrative HTML summary, focusing on what was implemented/changed to answer the user's question.
+            - Start each entry with a bolded label in HTML, like "<strong>A concise phrase:</strong>".
+            - Follow with a <ul style="padding-top: 0px;list-style: circle;margin-left: 40px;">, with key points in an <li> tag.
+            `;
 
-                // const group = this.codeActivities[groupKey];
-                // const links = this.codeResources[groupKey];
-                let contains = parsed.some(entry => entry.id == group.id);
-                console.log(group.id);
-
-                console.log(contains);
-                if (!contains) {
-                    continue;
-                }
-                else {
-                    const webResources = group.actions.filter(
-                        action => action.type === 'search' || action.type.includes('visit')
-                    );
-
-                    // Track unique web visits and searches
-                    const uniqueSearches = new Set();
-                    const uniqueVisits = new Set();
-
-                    webResources.forEach(resource => {
-                        if (resource.type === 'search') {
-                            const searchQuery = extractText(resource.webTitle, "search:", "- Google Search;");
-                            uniqueSearches.add(searchQuery);
-                        } else if (resource.type.includes('visit')) {
-                            // Skip visits that are just Google Search revisits
-                            if (!resource.webTitle.toLowerCase().includes("search")) {
-                                uniqueVisits.add(JSON.stringify({
-                                    webpage: resource.webpage,
-                                    webTitle: extractText(resource.webTitle, "visit:", ";"),
-                                    img: resource.img || 'default-image.jpg'
-                                }));
-                            }
-                        }
-                    });
-
-                    // Convert unique sets to arrays
-                    const searchQueries = Array.from(uniqueSearches);
-                    const visitResources = Array.from(uniqueVisits).map(item => JSON.parse(item));
-
-                    for (const [index, event] of group.actions.entries()) {
-                        if (event.type === 'code') {
-                            // Generate diff HTML for code event
-                            const diffHTML = this.generateDiffHTMLGroup(event);
-
-                            // Determine if resources exist
-                            const resourcesExist = webResources.length > 0;
-                            const containerClass = resourcesExist ? 'left-container' : 'full-container';
-
-                            // Start HTML generation for code event
-                            const title = event.title || "Untitled";
-                            html += `
-                                <li data-eventid="${index}">
-                                    <div class="li-header">
-                                        <button type="button" class="collapsible" id="plusbtn-${groupKey}-${index}">+</button>
-                                        <input class="editable-title" id="code-title-${groupKey}-${index}" 
-                                            value="${title}" 
-                                            onchange="updateCodeTitle('${groupKey}', '${index}')" 
-                                            size="50">
-                                        <button type="button" class="btn btn-secondary" id="button-${groupKey}-${index}">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
-                                                <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
-                                                <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
-                                            </svg>
-                                        </button>
-                                        <b>in ${event.file} </b>
-                                        ${resourcesExist ? `
-                                        <div class="container">
-                                            <i class="bi bi-bookmark"></i>
-                                            <div class="centered">${visitResources.length}</div>
-                                        </div>
-                                        ` : ''}
-                                    </div>
-        
-                                    <div class="content">
-                                        <div class="${containerClass}">
-                                            ${diffHTML}
-                                        </div>
-        
-                                        ${resourcesExist ? `
-                                        <div class="resources">
-                                            <h4>Helpful Resources</h4>
-        
-                                            ${searchQueries.length > 0 ? `
-                                            <div class="search-resources">
-                                                <p>
-                                                    You searched for 
-                                                    ${searchQueries.map(query => `<i>${query}</i>`).join(', ')}.
-                                                </p>
-                                            </div>
-                                            ` : ''}
-        
-                                            ${visitResources.length > 0 ? `
-                                            <div class="visit-resources">
-                                                <p>You visited the following resources:</p>
-                                                <ul class="resource-list">
-                                                    ${visitResources.map(resource => `
-                                                        <li>
-                                                            <div class="resource-item tooltip">
-                                                                <a href="${resource.webpage}" target="_blank">
-                                                                    ${resource.webTitle}
-                                                                </a>
-                                                                <!-- <span class="tooltiptext">
-                                                                    <img class="thumbnail" src="${resource.img}" alt="Thumbnail">
-                                                                </span> -->
-                                                            </div>
-                                                        </li>
-                                                    `).join('')}
-                                                </ul>
-                                            </div>
-                                            ` : ''}
-                                        </div>
-                                        ` : ''}
-                                    </div>
-                                </li>
-        
-                                <script> 
-                                    (() => {
-                                        const editButton = document.getElementById('button-${groupKey}-${index}');
-                                        if (editButton) {
-                                            editButton.addEventListener('click', function() {
-                                                const titleInput = document.getElementById('code-title-${groupKey}-${index}');
-                                                if (titleInput) {
-                                                    titleInput.focus();
-                                                }
-                                            });  
-                                        }
-                                    })();
-                                </script>
-                            `;
-                        }
-                    }
-
-                }
-            }
-            this.webviewPanel.webview.postMessage({
-                command: 'updateChatResponse',
-                response: html
+            const completions = await this.openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                max_tokens: 2500, // Significantly increase token count for the complex structured response
+                messages: [
+                    {
+                        role: "system",
+                        content: `You are a precise JSON response generator for code history analysis. Your only output is a single JSON object structured exactly as defined by the user's prompt. You must use <code> tags for all code references.`
+                    },
+                    { role: "user", content: prompt }
+                ]
             });
 
-            return html;
-        } catch (err) {
-            console.error("Error generating response:", err);
-            return `<p style="color:red;">Error: ${err.message}</p>`;
+            const rawJson = completions?.choices?.[0]?.message?.content || "{}";
+            const cleanedJson = rawJson.trim().replace(/^```json\s*/i, '').replace(/\s*```$/, '');
+            return JSON.parse(cleanedJson);
+        } catch (error) {
+            console.error("Error generating unified response:", error.message);
+            return { summary: `<p style="color:red;">Error: Unified response generation failed.</p>`, process: [] };
         }
     }
 
     async generateHistoryChatGPTResponseHTML(question) {
         if (!question || question === "undefined") return "";
 
-        //check if the question has been asked before: 
-        //if true (repeated), return the answer from cache, otherwise proceed to the next step
-        // if (checkRepeat[0]) {
-        //     console.log("CHECK REPEATS: ", this.questionCache.get(checkRepeat[1]));
-        // }
-
         try {
             const startTime = performance.now();
-            const reduceLoad = await this.isHistoryOrResource(question);
-            const generator = this.generatePastAnswerStream(question, reduceLoad);
             const checkRepeat = await this.checkQuestionRepeat(question);
             console.log("checkRepeat: ", checkRepeat);
+            
             if (checkRepeat[0]) {
-                // console.log("CHECK REPEATS: ", this.questionCache.get(checkRepeat[1]));
                 let html = this.questionCache.get(checkRepeat[1]);
                 this.webviewPanel.webview.postMessage({ command: "updateChatResponse", response: html });
                 return html;
             }
-            else {
-                let streamedResponse = "";
-                for await (const chunk of generator) {
-                    streamedResponse += typeof chunk === "string" ? chunk : JSON.stringify(chunk);
-                }
-
-                if (streamedResponse.trim() === "no question") {
-                    return `<p>No question detected.</p>`;
-                }
-
-                let rawJson = streamedResponse.trim();
             
-                // Remove markdown code fences (e.g., ```json or ```)
-                rawJson = rawJson.replace(/^```json\s*/i, '').replace(/\s*```$/, '');
-                
-                // Safely parse the JSON with a try-catch block
-                let parsed;
-                try {
-                    parsed = JSON.parse(rawJson);
-                } catch (error) {
-                    console.error("Error parsing JSON from generatePastAnswerStream:", error, rawJson.substring(0, 200) + '...');
-                    return `<p style="color:red;">Error: AI returned invalid JSON format for filtering. Please try rephrasing your question.</p>`;
-                }
+            // Determine if we need to reduce load by filtering history/resources
+            const reduceLoad = await this.isHistoryOrResource(question);
 
-                parsed = parsed.map(entry => ({
-                    ...entry,
-                    id: +entry.id
-                }));
-
-                // let parsed = JSON.parse(streamedResponse).map(entry => ({
-                //     ...entry,
-                //     id: +entry.id
-                // }));
-
-                const extraFilter = await this.generateRelevantInfo(
-                    question,
-                    this.findActivities(this.codeActivities, parsed)
-                );
-                
-                let parsedExtra;
-                try {
-                    parsedExtra = JSON.parse(extraFilter); // Ensure extraFilter is clean JSON
-                } catch (error) {
-                    console.error("Error parsing JSON from generateRelevantInfo:", error, extraFilter.substring(0, 200) + '...');
-                    // Handle the error (e.g., skip filtering or use a default)
-                    parsedExtra = []; 
-                }
-                // const parsedExtra = JSON.parse(extraFilter);
-
-                const targetIDs = new Set(parsedExtra.map(t => String(t.id)));
-
-                // Build subgoal jobs
-                const arrayForParallel = this.codeActivities.flatMap((group, groupKey) =>
-                    parsed.some(entry => entry.id == group.id)
-                        ? group.codeChanges.map(subgoal =>
-                            JSON.stringify({ ...subgoal, groupTitle: group.title })
-                        )
-                        : []
-                );
-
-                const results = await Promise.all(
-                    arrayForParallel.map(async jsonStr => {
-                        const parsed = JSON.parse(jsonStr);
-                        return this.generateNLResponse(question, parsed.title, parsed);
-                    })
-                );
-
-                const responses = results.map(r => r[0]);
-                console.log("HERE IS THE PARALLELISM RESULT FOR RESPONSE:", responses);
-
-                const [storyResult, summary] = await Promise.all([
-                    this.generateStoryResponse(question, results),
-                    this.generateSummary(question, results)
-                ]);
-
-                let story;
-                try {
-                    console.log("STORY RESULT BEFORE PARSING:", storyResult);
-                    story = JSON.parse(storyResult);
-                } catch (error) {
-                    console.error("Error parsing story JSON:", error);
-                }
-
-                // const story = JSON.parse(storyResult);
-                console.log("HERE IS THE STORY:", story);
-
-                let html = `
-            <h2>Summary: </h2>
-            <p>${summary}</p>
-            <hr>
-            <h2>Your process: </h2>
-        `;
-
-                let index = 1;
-                for (let groupKey = 0; groupKey < this.codeActivities.length; groupKey++) {
-                    const group = this.codeActivities[groupKey];
-                    const links = this.codeResources[groupKey];
-                    if (!parsed.some(entry => entry.id == group.id)) continue;
-
-                    let count = 0;
-                    for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
-                        const subgoal = group.codeChanges[subgoalKey];
-                        const diffHTML = this.generateDiffHTMLGroup(subgoal);
-
-                        html += `
-                    <div class="stories">
-                        <p><strong>${index}:</strong> ${story[index - 1]}</p>
-                    </div>
-                `;
-                        index++;
-
-                        const hasLinks = links.resources?.length > 0 && count < links.resources.length;
-                        const linkBlock = hasLinks
-                            ? `
-                        <div class="container">
-                            <i class="bi bi-bookmark"></i>
-                            <div class="centered">${links.resources[count].actions.length}</div>
-                        </div>
-                    `
-                            : `<div class="placeholder"></div>`;
-
-                        const resourceLinks = hasLinks
-                            ? links.resources[count].actions
-                                .map(
-                                    eachLink => `
-                                <div class="tooltip">
-                                    <a href="${eachLink.webpage}">${eachLink.webTitle}</a><br><br>
-                                </div>
-                              `
-                                )
-                                .join("")
-                            : "";
-
-                        html += `
-                    <li data-eventid="${subgoalKey}">
-                        <div class="li-header">
-                            <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
-                            <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" 
-                                   value="${subgoal.title}" 
-                                   onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
-                            <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" 
-                                     fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
-                                    <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293z"/>
-                                    <path fill-rule="evenodd" 
-                                          d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 
-                                          0 0 1-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 
-                                          0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 
-                                          0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"/>
-                                </svg>
-                            </button>
-                            <b>in ${subgoal.file}</b>
-                            ${linkBlock}
-                        </div>
-                        <div class="content">
-                            <div class="${hasLinks ? "left-container" : "full-container"}">
-                                ${diffHTML}
-                            </div>
-                            ${hasLinks ? `<div class="resources">${resourceLinks}</div>` : ""}
-                        </div>
-                    </li>
-                    <hr>
-                `;
-                        count++;
-                    }
-                }
-
-                console.log(`THE ENTIRE HISTORY HTML GENERATING took ${performance.now() - startTime} ms`);
-                this.webviewPanel.webview.postMessage({ command: "updateChatResponse", response: html });
-
-                //store it in the cache map: 
-                this.questionCache.set(question, html);
-
-                return html;
-
+            // First LLM Call: Generate filtered relevant subgoals
+            const generator = this.generatePastAnswerStream(question, reduceLoad);
+            let streamedResponse = "";
+            for await (const chunk of generator) {
+                streamedResponse += typeof chunk === "string" ? chunk : JSON.stringify(chunk);
             }
+
+            if (streamedResponse.trim() === "no question") {
+                return `<p>No question detected.</p>`;
+            }
+
+            let rawJson = streamedResponse.trim().replace(/^```json\s*/i, '').replace(/\s*```$/, '');
+            let parsed;
+            try {
+                parsed = JSON.parse(rawJson);
+            } catch (error) {
+                console.error("Error parsing JSON from generatePastAnswerStream:", error, rawJson.substring(0, 200) + '...');
+                return `<p style="color:red;">Error: AI returned invalid JSON format for filtering. Please try rephrasing your question.</p>`;
+            }
+
+            parsed = parsed.map(entry => ({ ...entry, id: +entry.id }));
+
+            // Identify relevant subgoals based on filtered IDs
+            let relevantSubgoals = this.codeActivities.flatMap(group => 
+                parsed.some(entry => entry.id == group.id) ? group.codeChanges : []
+            );
+
+            // Set a soft limit for what a user likely wants for a broad summary
+            const MAX_SUBGOALS_FOR_NARRATIVE = 5; 
+
+            if (relevantSubgoals.length > MAX_SUBGOALS_FOR_NARRATIVE) {
+                const difference = relevantSubgoals.length - MAX_SUBGOALS_FOR_NARRATIVE;
+                console.log(`Query is too broad. Cutting ${difference} subgoals. Displaying only the last ${MAX_SUBGOALS_FOR_NARRATIVE} subgoals.`);
+                relevantSubgoals = relevantSubgoals.slice(-MAX_SUBGOALS_FOR_NARRATIVE);
+            }
+
+            // Unified Generation (replaces generateNLResponse, generateStoryResponse, generateSummary)
+            const unifiedResponse = await this.generateUnifiedResponse(question, relevantSubgoals);
+
+            const summary = unifiedResponse.summary || `<p style="color:red;">Summary failed to generate.</p>`;
+            const story = unifiedResponse.process || [];
+
+            let html = `
+                <div class="chat-response-container">
+                    <h2>Summary: </h2>
+                    <div>${summary}</div>
+                    <hr>
+                    <h2>Your process: </h2>
+            `;
+
+            let index = 0;
+            for (let groupKey = 0; groupKey < this.codeActivities.length; groupKey++) {
+                const group = this.codeActivities[groupKey];
+                
+                // Only process groups identified as relevant
+                // IMPORTANT: This check ensures we only iterate over relevant groups, but
+                // the inner loop still iterates over ALL subgoals in that group.
+                if (!parsed.some(entry => entry.id == group.id)) continue;
+
+                const links = this.codeResources[groupKey];
+
+                let count = 0;
+                for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
+                    const subgoal = group.codeChanges[subgoalKey];
+                    const diffHTML = this.generateDiffHTMLGroup(subgoal);
+
+                    // 1. Get the narrative content, or fall back to the original title
+                    let narrativeContent = subgoal.title; // Default to original title
+                    
+                    if (story[index]) {
+                        // If an AI narrative exists, use it for the title area
+                        // The AI generated HTML: <strong>1: Title:</strong> <ul>...</ul>
+                        // We will extract the title part for the input element, and put the full narrative in the .stories div.
+                        
+                        // Extract the title part only from the narrative for the input's value attribute.
+                        // Since the AI output is HTML, this is complex. A simple fallback:
+                        // Use the original title for the input value (so it remains editable)
+                        // and render the full narrative in the .stories div as before.
+
+                        // Insert the AI narrative into the new 'stories' div
+                        html += `
+                            <div class="stories">
+                                <p><strong>${index + 1}:</strong> ${story[index]}</p>
+                            </div>
+                        `;
+                    }
+                    index++; // Increment the index for the next narrative item
+
+                    const hasLinks = links.resources?.length > 0 && count < links.resources.length;
+                    const linkBlock = hasLinks
+                        ? `
+                                <div class="container">
+                                    <i class="bi bi-bookmark"></i>
+                                    <div class="centered">${links.resources[count].actions.length}</div>
+                                </div>
+                            `
+                        : `<div class="placeholder"></div>`;
+
+                    const resourceLinks = hasLinks
+                        ? links.resources[count].actions
+                                .map(eachLink => `
+                                    <div class="tooltip">
+                                        <a href="${eachLink.webpage}">${eachLink.webTitle}</a><br><br>
+                                    </div>
+                                `)
+                                .join("")
+                        : "";
+
+                    // Check if this subgoal should be skipped because we only summarized the top N
+                    // This logic relies on `relevantSubgoals` being the source of truth for all changes.
+                    // Since the `relevantSubgoals` array was sliced, we must only render the first N subgoals
+                    // that align with the sliced array.
+                    // The simplest way to achieve this is to only render the list item if a narrative was generated for it.
+                    
+                    if (!story[index - 1]) { // Check the story array at the current index (before increment)
+                         // If no story was generated for this specific subgoal (due to the slicing/limit), skip rendering this list item
+                        count++;
+                        continue; 
+                    }
+                    
+                    html += `
+                        <li data-eventid="${subgoalKey}">
+                            <div class="li-header">
+                                <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
+                                
+                                <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" 
+                                    value="${narrativeContent}" 
+                                    onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
+                                
+                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
+                                        <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
+                                        <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
+                                    </svg>
+                                </button>
+                                <b>in ${subgoal.file}</b>
+                                ${linkBlock}
+                            </div>
+                            <div class="content">
+                                <div class="${hasLinks ? "left-container" : "full-container"}">
+                                    ${diffHTML}
+                                </div>
+                                ${hasLinks ? `<div class="resources">${resourceLinks}</div>` : ""}
+                            </div>
+                        </li>
+                        <hr>
+                    `;
+                    count++;
+                }
+            }
+            html += `</div>`;
+
+            console.log(`THE ENTIRE HISTORY HTML GENERATING took ${performance.now() - startTime} ms`);
+            this.webviewPanel.webview.postMessage({ command: "updateChatResponse", response: html });
+            this.questionCache.set(question, html);
+
+            return html;
 
         } catch (err) {
             console.error("Error generating response:", err);
@@ -2558,6 +2132,10 @@ Rules:
         if (this.webviewPanel) {
             this.webviewPanel.dispose();
         }
+    }
+
+    async generateFullHistoryHTML() {
+        return await this.generateGroupedEventsHTMLTest() + await this.generateGroupedEventsHTML();
     }
 }
 
