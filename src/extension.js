@@ -42,7 +42,7 @@ var terminalList;
 var terminalInstance;
 var eventEntry = {};
 var usingHistoryView = true;
-var usingContentTimelineView = false;
+var usingContentTimelineView = true;
 var clusterManager = null;
 var contentTimelineManager = null;
 
@@ -386,7 +386,7 @@ async function activate(context) {
 					// console.log('currentTime: ', currentTime);
 				}
 
-				if(contentTimelineWebview && nonLocalWebEntries.length > 0){
+				if(usingContentTimelineView && nonLocalWebEntries.length > 0){
 					let webEntriesForHistory = processWebData(nonLocalWebEntries);
 					console.log('webEntriesForHistory: ', webEntriesForHistory);
 					await contentTimelineManager.processWebEvents(webEntriesForHistory);
