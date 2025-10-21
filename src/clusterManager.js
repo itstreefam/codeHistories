@@ -367,9 +367,34 @@ class ClusterManager {
         // Add the current save event to allSaves
         this.allSaves[filename].push({ file: filename, time: event.time, code_text: newContent });
 
-        // Set the initial save if not already set
+        // Set the initial save baseline if not already set
         if (!this.initialSaves[filename]) {
-            this.initialSaves[filename] = { file: filename, time: event.time, code_text: newContent };
+            // Check if this file has ever been committed (exists in allPastEvents)
+            const isNewFile = !this.allPastEvents[filename] || this.allPastEvents[filename].length === 0;
+            
+            if (isNewFile) {
+                // New file: baseline is empty (show all additions on first save)
+                this.initialSaves[filename] = { file: filename, time: event.time, code_text: '' };
+            } else {
+                // Existing file: baseline is the last committed state
+                const lastCommittedEvent = this.allPastEvents[filename][this.allPastEvents[filename].length - 1];
+                this.initialSaves[filename] = { 
+                    file: filename, 
+                    time: event.time, 
+                    code_text: lastCommittedEvent.code_text 
+                };
+            }
+        } else {
+            // For consecutive save comparison: update baseline to previous save content
+            // But only if this isn't the first save after setting the baseline
+            if (this.allSaves[filename].length > 1) {
+                const previousSave = this.allSaves[filename][this.allSaves[filename].length - 2];
+                this.initialSaves[filename] = {
+                    file: filename,
+                    time: previousSave.time,
+                    code_text: previousSave.code_text
+                };
+            }
         }
 
         if (!this.isInitialized) {
@@ -390,9 +415,9 @@ class ClusterManager {
 
     // event: code event of a file in the current commit
     // previousEventList: list of code events in the previous commit
-    // case 1: if the previousEventList is empty, the code event is new addition and should be treated as a stray event
+    // case 1: if the previousEventList is empty, the code event is new addition (check significance)
     // case 2: if the code event exists in the previousEventList, compare the code changes for that file
-    // case 3: if the code event does not exist in the previousEventList and it does not exist in this.allPastEvents, it is a new addition and should be treated as a stray event
+    // case 3: if the code event does not exist in the previousEventList and it does not exist in this.allPastEvents, it is a new addition (check significance)
     // case 4: if the code event does not exist in the previousEventList but exists in this.allPastEvents, we asssume file switching and compare the code changes for that file
     async handleCodeEvent(event, previousEventList) {
         const filename = this.getFilename(event.notes); // event is always guaranteed to exist
@@ -404,9 +429,12 @@ class ClusterManager {
 
         // console.log('In handleCodeEvent', filename, event);
 
-        // case 1: no events in the previous commit, treat as new addition
-        // no files -> commit 1: file 1
+        // case 1: no events in the previous commit
         if (previousEventList.length === 0) {
+            // Check if this initial file has significant changes
+            const codeLines = this.get_code_lines(event.code_text);
+            const isSignificantFile = codeLines.length > this.MAX_NEW_LINES;
+
             this.strayEvents.push(this.currentCodeEvent);
 
             // Initialize the cluster for this file
@@ -421,9 +449,20 @@ class ClusterManager {
                 this.allPastEvents[filename].push(event);
             }
 
-            if (this.debug) {
-                console.log('No previous events, treating as new addition');
+            // If significant, immediately finalize as a subgoal
+            if (isSignificantFile) {
+                await this.finalizeGroup(filename);
+                this.inCluster[filename] = false;
+                
+                if (this.debug) {
+                    console.log('Initial file with significant changes, finalized as subgoal');
+                }
+            } else {
+                if (this.debug) {
+                    console.log('Initial file with minor changes, keeping as stray');
+                }
             }
+
             return;
         }
 
@@ -431,7 +470,6 @@ class ClusterManager {
         const eventIsInPrevCommit = previousEventList.some(event => this.getFilename(event.notes) === filename);
 
         // case 2: event exists in the previous commit, compare the code changes
-        // commit 1: file 1 -> commit 2: file 1
         if (eventIsInPrevCommit) {
             // get the past event from the previous commit
             const pastEvent = previousEventList.find(event => this.getFilename(event.notes) === filename);
@@ -450,10 +488,13 @@ class ClusterManager {
             }
         }
 
-        // case 3: event does not exist in the previous commit and does not exist in this.allPastEvents
-        // commit 1: file 1 -> commit 2: file 2
+        // case 3: NEW FILE with significant changes appearing for first time
         else if (!eventIsInPrevCommit && !this.allPastEvents[filename]) {
-            // should finalize the cluster for file 1 (and any other file) and treat the current event (file 2) as a stray
+            // Check if this is a significant new file (not just a few lines)
+            const codeLines = this.get_code_lines(event.code_text);
+            const isSignificantFile = codeLines.length > this.MAX_NEW_LINES;
+
+            // Finalize any open clusters from previous files
             for (const otherFile of previousEventList) {
                 const otherFilename = this.getFilename(otherFile.notes);
                 if (this.inCluster[otherFilename]) {
@@ -463,27 +504,31 @@ class ClusterManager {
             }
 
             this.strayEvents.push(this.currentCodeEvent);
+            
             if (!this.inCluster[filename]) {
                 this.inCluster[filename] = true;
                 this.clusterStartTime[filename] = event.time;
             }
 
-            if (this.debug) {
-                console.log('Event does not exist in previous commit and allPastEvents, treating as new addition');
-                console.log('Current event:', event);
-                console.log('Previous events:', previousEventList);
-                console.log('All past events:', this.allPastEvents);
+            // If significant, immediately finalize as a subgoal
+            if (isSignificantFile) {
+                await this.finalizeGroup(filename);
+                this.inCluster[filename] = false;
+                
+                if (this.debug) {
+                    console.log('New significant file detected, finalized as subgoal');
+                }
+            } else {
+                if (this.debug) {
+                    console.log('New minor file detected, keeping as stray');
+                }
             }
         }
-
-        // case 4: event does not exist in the previous commit but exists in this.allPastEvents
-        // commit 1: file 1, file 2 -> commit 2: file 1 -> commit 3: file 2
+        
+        // case 4: file doesn't exist in prev commit but exists in allPastEvents (file switching)
         else if (!eventIsInPrevCommit && this.allPastEvents[filename]) {
-            // get the past event from the allPastEvents
-            const pastEvent = this.allPastEvents[filename].slice(-1)[0]; // last known event for this file
-
+            const pastEvent = this.allPastEvents[filename].slice(-1)[0];  // last known event for this file
             await this.match_lines(filename, pastEvent, event);
-
             this.pastEvents[filename] = event;
 
             if (this.debug) {
@@ -494,7 +539,7 @@ class ClusterManager {
             }
         }
 
-        // update the allPastEvents with the current event
+        // Update allPastEvents
         if (this.allPastEvents[filename]) {
             this.allPastEvents[filename].push(event);
         } else {
@@ -673,7 +718,8 @@ class ClusterManager {
             console.log(`FinalizeGroup: No meaningful change for ${filename}, skipping subgoal.`);
             // clean up the events for this file as they don't form a valid diff
             this.strayEvents = this.strayEvents.filter(event => event.file !== filename);
-            delete this.initialSaves[filename];
+            // delete this.initialSaves[filename];
+            this.initialSaves[filename] = { file: filename, time: endCodeEvent.time, code_text: afterCodeText };
             return;
         }
 
@@ -775,7 +821,8 @@ class ClusterManager {
         this.currentGroup = null;
 
         // Clean up the initial save tracker now that this work has been grouped
-        delete this.initialSaves[filename];
+        // delete this.initialSaves[filename];
+        this.initialSaves[filename] = { file: filename, time: endCodeEvent.time, code_text: afterCodeText };
     }
 
     async generateSubGoalTitle(activity) {
@@ -1921,18 +1968,19 @@ Rules:
                 return '';
             }
 
-            let initialContent = ''; // Default to an empty string for the "before" state.
-
-            // If there is more than one save event, it means the file is not new.
-            // In this case, use the content from the very first save for comparison.
-            if (allSavesForFile.length > 1) {
-                const initialSave = this.initialSaves[filename];
-                initialContent = initialSave.code_text || '';
+            // Check if we have an initial save baseline for comparison
+            const initialSave = this.initialSaves[filename];
+            
+            // If no initial save exists, it means we haven't established a baseline yet
+            // This happens right after finalization before the next save
+            if (!initialSave) {
+                return ''; // No diff to show yet
             }
 
+            const initialContent = initialSave.code_text || '';
             const latestContent = latestSave.code_text || '';
 
-            // If the content hasn't changed (e.g., saving without changes), don't show a diff.
+            // If the content hasn't changed since the baseline, don't show a diff
             if (initialContent === latestContent) {
                 return '';
             }
