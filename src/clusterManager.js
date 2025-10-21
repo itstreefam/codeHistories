@@ -218,7 +218,19 @@ class ClusterManager {
                 console.log("ERROR IN INITIALIZEWEBVIEW, LINE 181!")
                 this.chatResponseHTML = null;
                 this.userQuestion = '';
-                await this.updateWebPanel('');
+                // await this.updateWebPanel('');
+
+                // Generate the default history HTML explicitly
+                const defaultHistoryHTML = await this.generateFullHistoryHTML();
+
+                // 1. Update the webview's internal HTML (in case of a full refresh)
+                await this.updateWebPanel(''); 
+
+                // 2. Explicitly send the default HTML via the message channel to update the inner content
+                this.webviewPanel.webview.postMessage({
+                    command: "updateChatResponse", // Reuse this command
+                    response: defaultHistoryHTML
+                });
             }
         });
     }
@@ -251,11 +263,9 @@ class ClusterManager {
 
                 await this.handleCodeEvent(entry, previousEventList); // this takes in raw event
 
-                await this.handleSaveEvent(entry);
+                // await this.handleSaveEvent(entry);
             }
         }
-
-        this.prevCommittedEvents = codeEventsList;
 
         if (!this.isInitialized) {
             return;
@@ -634,10 +644,28 @@ class ClusterManager {
         }
 
         // find the true "before" state by looking at the last event in the history
-        const lastHistoricalEvent = this.allPastEvents[filename] ? this.allPastEvents[filename].slice(-1)[0] : null;
+        // const lastHistoricalEvent = this.allPastEvents[filename] ? this.allPastEvents[filename].slice(-1)[0] : null;
 
-        // if there's a history, use its text; if not, this is a new file, so "before" is an empty string
-        const beforeCodeText = lastHistoricalEvent ? lastHistoricalEvent.code_text : '';
+        // // if there's a history, use its text; if not, this is a new file, so "before" is an empty string
+        // const beforeCodeText = lastHistoricalEvent ? lastHistoricalEvent.code_text : '';
+
+        // Determine the "before" state properly
+        let beforeCodeText = '';
+        const eventsForFile = this.allPastEvents[filename] || [];
+        const clusterStart = this.clusterStartTime[filename];
+
+        // Find events that occurred BEFORE the current cluster started
+        const eventsBeforeCluster = eventsForFile.filter(evt => evt.time < clusterStart);
+        if (eventsBeforeCluster.length > 0) {
+            // Use the last event before this cluster as the "before" state
+            beforeCodeText = eventsBeforeCluster[eventsBeforeCluster.length - 1].code_text;
+            console.log(`Using previous event as before state for ${filename}`);
+        } else {
+            // No events before this cluster, so this is initial work - compare against empty
+            beforeCodeText = '';
+            console.log(`First commit for ${filename} - comparing against empty file`);
+        }
+
         const afterCodeText = endCodeEvent.code_text;
 
         // only form a subgoal if there is an actual change
@@ -718,16 +746,22 @@ class ClusterManager {
             structureWebEvents.push(currentSearchEvent);
         }
 
+        // make sure that currentGroup is initialized
+        if (!this.currentGroup) {
+            this.startNewGroup();
+        }
+
         // Combine code and structured non-code events into the group
         this.currentGroup.actions = [codeActivity, ...sortedWebEvents];
 
         // Sort the currentGroup actions by time
         this.currentGroup.actions.sort((a, b) => a.time - b.time);
 
-        // console.log('Finalized group:', this.currentGroup);
+        console.log('Finalized group:', this.currentGroup);
 
         // Set the title and add the group to display
         // this.currentGroup.title = this.generateSubGoalTitle(this.currentGroup);
+        this.currentGroup.title = codeActivity.title;
         this.displayForGroupedEvents.push(this.currentGroup);
 
         // Clear the items that have been grouped in the currentGroup from strayEvents
@@ -1225,7 +1259,7 @@ Rules:
             // const endTime = performance.now();
             // console.log(`Call to generatePastAnswerStream() took ${endTime - startTime} milliseconds`);
 
-            this.chatGPTInvoked = true;
+            // this.chatGPTInvoked = true;
 
         } catch (error) {
             console.error("Error generating answer:", error.message);
@@ -1237,23 +1271,16 @@ Rules:
 
         const startTime = performance.now()
 
-        if (!this.webviewPanel) {
-            this.webviewPanel = vscode.window.createWebviewPanel(
-                'historyWebview',
-                'History Webview',
-                vscode.ViewColumn.Beside,
-                { enableScripts: true }
-            );
-        }
-
         let groupedEventsHTML;
 
         // If a chat response exists in our state, use it. Otherwise, generate the default view.
         if (this.chatResponseHTML) {
+            console.log("Using existing chat response HTML");
             groupedEventsHTML = this.chatResponseHTML;
         } else {
             // This is the default view when no chat is active.
-            groupedEventsHTML = await this.generateGroupedEventsHTMLTest() + await this.generateGroupedEventsHTML();
+            console.log("Generating default grouped events HTML");
+            groupedEventsHTML = await this.generateFullHistoryHTML();
         }
 
         const strayEventsHTML = await this.generateStrayEventsHTML();
@@ -1883,6 +1910,9 @@ Rules:
     // This happens after a "save" occurrence (comparing two versions of file save)
     async generateDiffHtmlSave(filename) {
         try {
+            // console.log(`Generating diff for file: ${filename}`);
+            // console.log(this.allSaves[filename]);
+
             const allSavesForFile = this.allSaves[filename] || [];
             const latestSave = allSavesForFile[allSavesForFile.length - 1];
 
@@ -1951,13 +1981,6 @@ Rules:
         let html = '';
         let idx = 0;
 
-        if (this.strayEvents.length === 0) {
-            return '<li>Your future changes go here.</li>';
-        }
-
-        // Track the most recent change for each file
-        const fileDiffs = {};
-
         // Track unique web visits and searches
         const uniqueVisits = new Set();
         const uniqueSearches = new Set();
@@ -1996,6 +2019,9 @@ Rules:
             idx += 1;  // Increment index for the next item
         }
 
+        // Object to store diffs for each file
+        const fileDiffs = {};
+
         // Iterate over all saves and generate diffs
         for (const [filename, saves] of Object.entries(this.allSaves)) {
             const diffHtml = await this.generateDiffHtmlSave(filename);
@@ -2022,6 +2048,10 @@ Rules:
         Object.values(fileDiffs).forEach(diff => {
             html += diff;
         });
+
+        if (html.trim() === '') {
+            html = '<li>Your future changes go here.</li>';
+        }
 
         return html;  // Return the generated HTML
     }
@@ -2555,6 +2585,16 @@ Rules:
     disposeWebview() {
         if (this.webviewPanel) {
             this.webviewPanel.dispose();
+        }
+    }
+    
+    async generateFullHistoryHTML() {
+        // if not using test,  just call generateGroupedEventsHTML
+        // if using test, call both generateGroupedEventsHTMLTest and generateGroupedEventsHTML
+        if (typeof this.codeResources !== 'undefined') {
+            return await this.generateGroupedEventsHTMLTest() + await this.generateGroupedEventsHTML();
+        } else {
+            return await this.generateGroupedEventsHTML();
         }
     }
 }

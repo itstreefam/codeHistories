@@ -99,6 +99,10 @@ const historyStyles = `
     ul {
         list-style-type: none;
         padding-left: 0;
+        // padding-top: 120px;
+    }
+
+    ul#grouped-events {
         padding-top: 120px;
     }
 
