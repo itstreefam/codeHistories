@@ -15,8 +15,6 @@ require('dotenv').config({ path: __dirname + '/../.env' });
 const { OpenAI } = require("openai");
 const app = express();
 
-// console.log(process.env.OPENAI_API_KEY);
-
 app.use(express.json())
 
 class ClusterManager {
@@ -54,23 +52,22 @@ class ClusterManager {
         this.hasRestoredFromLastSession = false; // Track if we restored from last session
         this.chatResponseHTML = null;
 
-        this.initializeOpenAI(context); // Initialize OpenAI API
-
         //map to document asked user questions and to store answers for faster regeneration when user asks a similar question again 
         this.questionCache = new Map();
     }
 
     async initializeOpenAI(context) {
-        const apiKey = await context.secrets.get('openaiApiKey') || process.env.OPENAI_API_KEY;
+        const apiKey = await context.secrets.get('openaiApiKey');
 
         if (!apiKey) {
             vscode.window.showErrorMessage('OpenAI API key is not set. Please set it in the extension settings.');
             return;
         }
-        
+        console.log('Retrieved OpenAI API key:', apiKey);
         this.openai = new OpenAI({
             apiKey: apiKey
         });
+        console.log('OpenAI initialized successfully');
     }
 
     initializeTemporaryTest() {
@@ -148,6 +145,7 @@ class ClusterManager {
     }
 
     async initializeClusterManager() {
+        await this.initializeOpenAI(this.context); // ensure OpenAI is initialized
         await this.restoreStateFromFile(); // if there is data to restore
         
         if(!this.hasRestoredFromLastSession) {

@@ -81,7 +81,7 @@ async function activate(context) {
 		);
 		
 		if (action === 'Setup Now') {
-			await promptForApiKey(context);
+			let success = await promptForApiKey(context);
 		}
 		
 		await context.globalState.update('isFirstRun', false);
@@ -143,10 +143,10 @@ async function activate(context) {
 	}
 
 	clusterManager = new ClusterManager(context, tracker, persist);
-	clusterManager.initializeClusterManager();
+	await clusterManager.initializeClusterManager();
 
 	contentTimelineManager = new ContentTimelineManager(context, tracker, persist);
-	contentTimelineManager.initializeContentTimelineManager();
+	await contentTimelineManager.initializeContentTimelineManager();
 
 	vscode.window.onDidStartTerminalShellExecution(async event => {
 		await onDidStartTerminalShellExecutionHelper(event, clusterManager, contentTimelineManager); // for grabbing command, cwd, time and cleaning up output
@@ -598,13 +598,21 @@ async function promptForApiKey(context) {
 	if (apiKey) {
 		try {
 			await context.secrets.store('openaiApiKey', apiKey);
+			console.log('Stored API key in secrets');
+
+			// Verify it was stored
+			const verify = await context.secrets.get('openaiApiKey');
+			console.log('Verification - key retrieved:', !!verify);
+
 			vscode.window.showInformationMessage('OpenAI API key saved successfully!');
 			return true;
 		} catch (error) {
+			console.error('Error storing API key:', error);
 			vscode.window.showErrorMessage('Failed to save API key: ' + error.message);
 			return false;
 		}
 	} else {
+		console.log('No API key entered');
 		vscode.window.showWarningMessage('API key setup skipped. You can set it up later using the "Set OpenAI API Key" command.');
 		return false;
 	}
@@ -622,7 +630,12 @@ function registerSetApiKeyCommand(context) {
 			) : 'Update Key';
 		
 		if (action === 'Update Key') {
-			await promptForApiKey(context);
+			let success = await promptForApiKey(context);
+			if(success && clusterManager){
+				// reintialize clusterManager to use new API key
+				await clusterManager.initializeOpenAI(context);
+				console.log('ClusterManager OpenAI initialized after key update');
+			}
 		}
 	});
 	
@@ -645,8 +658,10 @@ async function activateCodeHistoriesHelper(context) {
 		
 		if (action === 'Setup API Key') {
 			const success = await promptForApiKey(context);
-			if (!success) {
-				vscode.window.showInformationMessage('Continuing without API key. AI features will be disabled.');
+			if (success && clusterManager) {
+				// reinitialize clusterManager to use new API key
+				await clusterManager.initializeOpenAI(context);
+				console.log('ClusterManager OpenAI initialized after key setup');
 			}
 		}
 	}
