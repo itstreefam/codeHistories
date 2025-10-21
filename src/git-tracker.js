@@ -409,9 +409,15 @@ class gitTracker {
             const changedFiles = outputLines.slice(2);
 
             let filesToConsider = ['output.txt', '.py', '.js', '.html', '.css'];
+            let filesToExclude = ['settings.json', '.gitignore', 'package-lock.json', 'package.json', 'node_modules', '.vscode'];
             let entries = [];
 
             for(const file of changedFiles){
+                // Skip if file matches any exclusion pattern
+                if(filesToExclude.some(excluded => file.includes(excluded))){
+                    continue;
+                }
+
                 if(file === 'output.txt'){
                     let documentText = await fs.promises.readFile(`${this._currentDir}/output.txt`, 'utf8');
                     let entry = {
@@ -454,9 +460,20 @@ class gitTracker {
             const { stdout } = await exec(lsCmd, { cwd: workTree });
             const currentCommitTime = await this.getLastCommitTime();
             const files = stdout.trim().split('\n');
+            
             let filesToConsider = ['output.txt', '.py', '.js', '.html', '.css'];
+            let filesToExclude = ['settings.json', '.gitignore', 'package-lock.json', 'package.json', 'node_modules', '.vscode'];
             let entries = [];
+            
             for (const file of files) {
+                // Skip if file matches any exclusion pattern
+                if(filesToExclude.some(excluded => file.includes(excluded))){
+                    continue;
+                }
+
+                // Skip dist folder (already exists in original code)
+                if(file.includes("dist")) continue;
+
                 if(file === 'output.txt'){
                     let documentText = await fs.promises.readFile(`${this._currentDir}/output.txt`, 'utf8');
                     let entry = {
@@ -468,8 +485,6 @@ class gitTracker {
                     };
                     entries.push(entry);
                 } else if(filesToConsider.some(ext => file.endsWith(ext))){
-                    if(file.includes("dist")) continue;
-
                     let documentText = await fs.promises.readFile(`${this._currentDir}/${file}`, 'utf8');
                     let entry = {
                         type: 'code',
