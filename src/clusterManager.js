@@ -1506,7 +1506,9 @@ Rules:
             const strayEvents = document.getElementById("stray-events");
 
 
-            chatForm.addEventListener("submit", async function(event) {
+            // Only add chat form listener if the form exists
+            if (chatForm) {
+                chatForm.addEventListener("submit", async function(event) {
                     event.preventDefault();
                     console.log("Submit button clicked!");
 
@@ -1519,8 +1521,8 @@ Rules:
                         command: "askChatGPT",
                         question: userQuestion
                     });
-
-            });
+                });
+            }
 
             window.addEventListener("message", (event) => {
                 console.log("Received message:", event.data);
@@ -1617,12 +1619,15 @@ Rules:
                 vscode.postMessage({ command: 'changeViewMode', view: currentView });
             });
 
-            document.getElementById("reset-button").addEventListener("click", function () {
-                vscode.postMessage({
-                    command: "resetPanel"
+            const resetButton = document.getElementById("reset-button");
+            if (resetButton) {
+                resetButton.addEventListener("click", function () {
+                    vscode.postMessage({
+                        command: "resetPanel"
+                    });
                 });
-            });
-        
+            }
+                    
         })();
     </script>
             </body>
