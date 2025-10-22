@@ -62,12 +62,12 @@ function updateContextKeys() {
 async function activate(context) {
 	console.log('Congratulations, your extension "codeHistories" is now active!');
 
-	// Check if this is the first time the extension is running
-	// clear isFirstRun flag for testing purpose
-	context.globalState.update('isFirstRun', false);
+	// // Check if this is the first time the extension is running
+	// // clear isFirstRun flag for testing purpose
+	// context.globalState.update('isFirstRun', false);
 
-	//clear secrets for testing purpose
-	await context.secrets.delete('openaiApiKey');
+	// //clear secrets for testing purpose
+	// await context.secrets.delete('openaiApiKey');
 
 	const hasApiKey = await context.secrets.get('openaiApiKey');
 	const isFirstRun = context.globalState.get('isFirstRun', true);
