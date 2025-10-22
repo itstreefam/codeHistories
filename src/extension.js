@@ -982,6 +982,8 @@ function deactivate() {
 				currentCodeEvent: clusterManager.currentCodeEvent,
 				currentWebEvent: clusterManager.currentWebEvent,
 				idCounter: clusterManager.idCounter,
+				currentBatchId: clusterManager.currentBatchId,
+				batchColorMap: clusterManager.batchColorMap,
 				hasRestoredFromLastSession: clusterManager.hasRestoredFromLastSession
 			};
 

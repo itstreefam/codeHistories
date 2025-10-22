@@ -54,6 +54,9 @@ class ClusterManager {
 
         //map to document asked user questions and to store answers for faster regeneration when user asks a similar question again 
         this.questionCache = new Map();
+
+        this.currentBatchId = 0;
+        this.batchColorMap = {}; // Store colors by batch ID (for denoting related subgoal changes)
     }
 
     async initializeOpenAI(context) {
@@ -115,6 +118,8 @@ class ClusterManager {
                 this.currentCodeEvent = state.currentCodeEvent || null;
                 this.currentWebEvent = state.currentWebEvent || null;
                 this.idCounter = state.idCounter || 0;
+                this.currentBatchId = state.currentBatchId || 0;
+                this.batchColorMap = state.batchColorMap || {};
 
                 this.hasRestoredFromLastSession = true;
                 console.log(`Successfully restored state from last session`);
@@ -141,6 +146,8 @@ class ClusterManager {
             this.currentCodeEvent = null;
             this.currentWebEvent = null;
             this.idCounter = 0;
+            this.currentBatchId = 0;
+            this.batchColorMap = {};
         }
     }
 
@@ -244,6 +251,8 @@ class ClusterManager {
         console.log('In processCodeEvents', codeEventsList);
         let previousEventList = this.prevCommittedEvents || [];
 
+        this.currentBatchId += 1;
+
         for (const entry of codeEventsList) {
             const eventType = this.getEventType(entry);
 
@@ -340,6 +349,23 @@ class ClusterManager {
         return "unknown";
     }
 
+    getBatchColor(batchId) {
+        // If color already generated for this batch, return it
+        if (this.batchColorMap[batchId]) {
+            return this.batchColorMap[batchId];
+        }
+        
+        // Generate new color using golden angle for good distribution
+        const hue = (batchId * 137.508) % 360;
+        const saturation = 65;
+        const lightness = 55;
+        const color = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+        
+        // Store it for consistency
+        this.batchColorMap[batchId] = color;
+        return color;
+    }
+
     startNewGroup() {
         this.idCounter += 1;
         this.currentGroup = {
@@ -347,6 +373,7 @@ class ClusterManager {
             id: this.idCounter.toString(),
             title: "Title of the subgoal",
             actions: [],
+            // batchId: this.currentBatchId, // Add batch ID to track related subgoals
         };
     }
 
@@ -524,7 +551,7 @@ class ClusterManager {
                 }
             }
         }
-        
+
         // case 4: file doesn't exist in prev commit but exists in allPastEvents (file switching)
         else if (!eventIsInPrevCommit && this.allPastEvents[filename]) {
             const pastEvent = this.allPastEvents[filename].slice(-1)[0];  // last known event for this file
@@ -804,6 +831,9 @@ class ClusterManager {
         this.currentGroup.actions.sort((a, b) => a.time - b.time);
 
         console.log('Finalized group:', this.currentGroup);
+
+        // ASSIGN BATCH ID HERE, at finalization time
+        this.currentGroup.batchId = this.currentBatchId;
 
         // Set the title and add the group to display
         // this.currentGroup.title = this.generateSubGoalTitle(this.currentGroup);
@@ -1823,7 +1853,23 @@ Rules:
             return '';
         }
 
+        let previousBatchId = null;
+
         for (const [groupKey, group] of this.displayForGroupedEvents.entries()) {
+            // Check if this subgoal is from a different batch than the previous one
+            const isNewBatch = previousBatchId !== null && group.batchId !== previousBatchId;
+            
+            // Get color for this batch
+            const batchColor = this.getBatchColor(group.batchId);
+
+            // // Add a visual separator between different batches
+            // if (isNewBatch) {
+            //     html += `
+            //         <div class="batch-separator" style="margin: 20px 0;">
+            //             <hr style="border: 0; border-top: 2px dashed #ccc;">
+            //         </div>
+            //     `;
+            // }
 
             // Filter and extract web resources
             const webResources = group.actions.filter(
@@ -1864,23 +1910,25 @@ Rules:
 
                     // Start HTML generation for code event
                     const title = event.title || "Untitled";
+                    
                     html += `
-                        <li data-eventid="${index}">
+                        <li data-eventid="${index}" style="border-left: 4px solid ${batchColor}; padding-left: 8px;">
                             <div class="li-header">
                                 <button type="button" class="collapsible" id="plusbtn-${groupKey}-${index}">+</button>
                                 <input class="editable-title" id="code-title-${groupKey}-${index}" 
                                     value="${title}" 
                                     onchange="updateCodeTitle('${groupKey}', '${index}')" 
                                     size="50">
-                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${index}">
+                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${index}" style="margin-left: 8px;">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
                                         <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
                                         <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
                                     </svg>
                                 </button>
-                                <b>in ${event.file} </b>
+                                <b style="margin-left: 8px;">in ${event.file}</b>
+                                <div style="flex-grow: 1;"></div>
                                 ${resourcesExist ? `
-                                <div class="container">
+                                <div class="container" style="margin-left: 8px;">
                                     <i class="bi bi-bookmark"></i>
                                     <div class="centered">${visitResources.length}</div>
                                 </div>
@@ -1915,9 +1963,6 @@ Rules:
                                                         <a href="${resource.webpage}" target="_blank">
                                                             ${resource.webTitle}
                                                         </a>
-                                                        <!-- <span class="tooltiptext">
-                                                            <img class="thumbnail" src="${resource.img}" alt="Thumbnail">
-                                                        </span> -->
                                                     </div>
                                                 </li>
                                             `).join('')}
@@ -1945,6 +1990,8 @@ Rules:
                     `;
                 }
             }
+
+            previousBatchId = group.batchId;
         }
 
         return html;
