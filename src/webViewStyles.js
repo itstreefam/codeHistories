@@ -162,6 +162,15 @@ const historyStyles = `
         display: flex;
         justify-content: center;
         align-items: center;
+        /* Hide the text content to make way for the icon */
+        text-indent: -9999px; 
+        overflow: hidden;
+    }
+
+    /* Style for the Bootstrap icon inside the button */
+    .collapsible i {
+        text-indent: 0; /* Makes the icon visible */
+        position: absolute; /* Allows it to ignore the overflow: hidden */
     }
 
     .collapsible.active, .collapsible:hover {

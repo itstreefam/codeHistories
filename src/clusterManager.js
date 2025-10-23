@@ -1479,10 +1479,28 @@ Rules:
                     button.addEventListener('click', function () {
                         this.classList.toggle('active');
                         const content = this.parentElement.nextElementSibling;
-                        // console.log('clicked!!!!!!');
+                        // // console.log('clicked!!!!!!');
+                        // if (content) {
+                        //     content.style.display = content.style.display === 'flex' ? 'none' : 'flex';
+                        //     this.textContent = this.textContent === '+' ? '-' : '+';
+                        // }
+
+                        const icon = this.querySelector('i');
+                        
                         if (content) {
+                            // Toggles visibility of content panel
                             content.style.display = content.style.display === 'flex' ? 'none' : 'flex';
-                            this.textContent = this.textContent === '+' ? '-' : '+';
+                            
+                            // Toggles icon based on content visibility
+                            if (content.style.display === 'flex') {
+                                // Content is expanded, show the 'contract' icon
+                                icon.classList.remove('bi-arrows-expand');
+                                icon.classList.add('bi-arrows-collapse');
+                            } else {
+                                // Content is collapsed, show the 'expand' icon
+                                icon.classList.remove('bi-arrows-collapse');
+                                icon.classList.add('bi-arrows-expand');
+                            }
                         }
                     });
 
@@ -1764,7 +1782,10 @@ Rules:
                         <li data-eventid="${subgoalKey}">
                             <!-- Editable title for the code activity -->
                             <div class="li-header">
-                                <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
+                                <!-- <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button> -->
+                                <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">
+                                    <i class="bi bi-arrows-expand"></i>
+                                </button>
                                 
                                 <div class="title-edit-group">
                                     <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
@@ -1817,7 +1838,10 @@ Rules:
                         <li data-eventid="${subgoalKey}">
                             <!-- Editable title for the code activity -->
                             <div class="li-header">
-                                <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
+                                <!-- <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button> -->
+                                <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">
+                                    <i class="bi bi-arrows-expand"></i>
+                                </button>
                                 
                                 <div class="title-edit-group">
                                     <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
@@ -1917,7 +1941,11 @@ Rules:
                     html += `
                         <li data-eventid="${index}" style="border-left: 4px solid ${batchColor}; padding-left: 8px;">
                             <div class="li-header">
-                                <button type="button" class="collapsible" id="plusbtn-${groupKey}-${index}">+</button>
+                                <!-- <button type="button" class="collapsible" id="plusbtn-${groupKey}-${index}">+</button> -->
+                                <button type="button" class="collapsible" id="plusbtn-${groupKey}-${index}">
+                                    <i class="bi bi-arrows-expand"></i>
+                                </button>
+
                                 <div class="title-edit-group">
                                     <input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')" size="50">
                                     <button type="button" class="btn btn-secondary" id="button-${groupKey}-${index}">
@@ -2124,7 +2152,11 @@ Rules:
                 fileDiffs[filename] = `
                     <li class="stray-event" id="code-stray-${filename}">
                         <div class="li-header">
-                            <button type="button" class="collapsible active" id="plusbtn-code-stray-${filename}">-</button>
+                            <!-- <button type="button" class="collapsible active" id="plusbtn-code-stray-${filename}">-</button> -->
+                            <button type="button" class="collapsible active" id="plusbtn-code-stray-${filename}">
+                                <i class="bi bi-arrows-expand"></i>
+                            </button>
+                            
                             You made changes to <em>${filename}</em>
                             <div class="placeholder"></div>
                         </div>
@@ -2288,7 +2320,11 @@ Rules:
                             html += `
                                 <li data-eventid="${index}">
                                     <div class="li-header">
-                                        <button type="button" class="collapsible" id="plusbtn-${groupKey}-${index}">+</button>
+                                        <!-- <button type="button" class="collapsible" id="plusbtn-${groupKey}-${index}">+</button> -->
+                                        <button type="button" class="collapsible" id="plusbtn-${groupKey}-${index}">
+                                            <i class="bi bi-arrows-expand"></i>
+                                        </button>
+
                                         <div class="title-edit-group">
                                             <input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')" size="50">
                                             <button type="button" class="btn btn-secondary" id="button-${groupKey}-${index}">
@@ -2534,7 +2570,11 @@ Rules:
                         html += `
                     <li data-eventid="${subgoalKey}">
                         <div class="li-header">
-                            <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
+                            <!-- <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button> -->
+                            <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">
+                                <i class="bi bi-arrows-expand"></i>
+                            </button>
+
                             <div class="title-edit-group">
                                 <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
                                 <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
