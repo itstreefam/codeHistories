@@ -1765,10 +1765,13 @@ Rules:
                             <!-- Editable title for the code activity -->
                             <div class="li-header">
                                 <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
-                                <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
-                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
-                                    <i class="bi bi-pencil-square"></i>
-                                </button>
+                                
+                                <div class="title-edit-group">
+                                    <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
+                                    <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
+                                        <i class="bi bi-pencil-square"></i>
+                                    </button>
+                                </div>
                                 <b>in ${subgoal.file} </b> `
                     const link = links.resources[count];
                     // console.log(link.actions.length);
@@ -1815,10 +1818,13 @@ Rules:
                             <!-- Editable title for the code activity -->
                             <div class="li-header">
                                 <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
-                                <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
-                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
-                                    <i class="bi bi-pencil-square"></i>
-                                </button>
+                                
+                                <div class="title-edit-group">
+                                    <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
+                                    <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
+                                        <i class="bi bi-pencil-square"></i>
+                                    </button>
+                                </div>
                                 <b>in ${subgoal.file} </b>
                                 <div class="placeholder">
                                 </div>
@@ -1912,21 +1918,20 @@ Rules:
                         <li data-eventid="${index}" style="border-left: 4px solid ${batchColor}; padding-left: 8px;">
                             <div class="li-header">
                                 <button type="button" class="collapsible" id="plusbtn-${groupKey}-${index}">+</button>
-                                <input class="editable-title" id="code-title-${groupKey}-${index}" 
-                                    value="${title}" 
-                                    onchange="updateCodeTitle('${groupKey}', '${index}')" 
-                                    size="50">
-                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${index}" style="margin-left: 8px;">
-                                    <i class="bi bi-pencil-square"></i>
-                                </button>
-                                <b style="margin-left: 8px;">in ${event.file}</b>
-                                <div style="flex-grow: 1;"></div>
+                                <div class="title-edit-group">
+                                    <input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')" size="50">
+                                    <button type="button" class="btn btn-secondary" id="button-${groupKey}-${index}">
+                                        <i class="bi bi-pencil-square"></i>
+                                    </button>
+                                </div>
+                                <b>in ${event.file}</b>
                                 ${resourcesExist ? `
                                 <div class="container" style="margin-left: 8px;">
                                     <i class="bi bi-bookmark"></i>
                                     <div class="centered">${visitResources.length}</div>
                                 </div>
                                 ` : ''}
+                                <div style="flex-grow: 1;"></div>
                             </div>
 
                             <div class="content">
@@ -2284,13 +2289,12 @@ Rules:
                                 <li data-eventid="${index}">
                                     <div class="li-header">
                                         <button type="button" class="collapsible" id="plusbtn-${groupKey}-${index}">+</button>
-                                        <input class="editable-title" id="code-title-${groupKey}-${index}" 
-                                            value="${title}" 
-                                            onchange="updateCodeTitle('${groupKey}', '${index}')" 
-                                            size="50">
-                                        <button type="button" class="btn btn-secondary" id="button-${groupKey}-${index}">
-                                            <i class="bi bi-pencil-square"></i>
-                                        </button>
+                                        <div class="title-edit-group">
+                                            <input class="editable-title" id="code-title-${groupKey}-${index}" value="${title}" onchange="updateCodeTitle('${groupKey}', '${index}')" size="50">
+                                            <button type="button" class="btn btn-secondary" id="button-${groupKey}-${index}">
+                                                <i class="bi bi-pencil-square"></i>
+                                            </button>
+                                        </div>
                                         <b>in ${event.file} </b>
                                         ${resourcesExist ? `
                                         <div class="container">
@@ -2531,12 +2535,12 @@ Rules:
                     <li data-eventid="${subgoalKey}">
                         <div class="li-header">
                             <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button>
-                            <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" 
-                                   value="${subgoal.title}" 
-                                   onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
-                            <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
-                                <i class="bi bi-pencil-square"></i>
-                            </button>
+                            <div class="title-edit-group">
+                                <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
+                                <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
+                                    <i class="bi bi-pencil-square"></i>
+                                </button>
+                            </div>
                             <b>in ${subgoal.file}</b>
                             ${linkBlock}
                         </div>

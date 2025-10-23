@@ -89,6 +89,7 @@ const historyStyles = `
         align-items: center;
         flex-wrap: wrap;
         width: 100%;
+        position: relative;
     }
 
     h1 {
@@ -110,20 +111,42 @@ const historyStyles = `
         margin-bottom: 10px;
     }
 
+    .title-edit-group {
+        position: relative; /* Sets the anchor point for the absolute child */
+        display: flex;
+        flex-grow: 1; /* Allows it to participate in the flex layout */
+        max-width: 50vw; /* Adopts the fluid width constraint */
+    }
+
     .editable-title {
         background-color: transparent;
         color: #333333;
-        border: none;
+        border: 1px dashed #ccc;
         padding: 5px 10px;
         border-radius: 3px;
-        width: 50vw;
-        border-color: red;
+        width: 100%; /* Takes full width of the new parent */
+        height: 30px; 
+        align-self: center;
+        margin: 5px 0;
+        // padding-right: 30px; /* Pushes the title text away from the icon's area */
+        box-sizing: border-box; /* Includes border/padding in the width calculation */
     }
 
     .btn-secondary {
         background-color: transparent;
         border: none;
         cursor: pointer;
+        
+        position: absolute; /* Absolute relative to .title-edit-group */
+        top: 0px; 
+        right: 0px; 
+
+        /* Use small, fixed margins ONLY to adjust the icon over the border intersection */
+        margin-top: -2.5px; 
+        margin-right: -10px; 
+        
+        z-index: 10;
+        opacity: 0.8;
     }
 
     .collapsible {
@@ -181,9 +204,10 @@ const historyStyles = `
         color: #666;
         font-size: smaller;
         margin-right: 10px;
+        margin-left: 25px;
         flex-shrink: 0;
         /* Prevents the filename from shrinking */
-        width: 150px;
+        width: 100px;
         /* Keeps a consistent width */
         overflow: hidden;
         text-overflow: ellipsis;
