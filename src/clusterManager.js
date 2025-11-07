@@ -59,6 +59,7 @@ class ClusterManager {
         this.batchColorMap = {}; // Store colors by batch ID (for denoting related subgoal changes)
 
         this.filterAmount = null; // store how many most recent subgoals
+        this.sortOrder = 'oldest-to-newest'; // chronological
     }
 
     async initializeOpenAI(context) {
@@ -123,6 +124,7 @@ class ClusterManager {
                 this.currentBatchId = state.currentBatchId || 0;
                 this.batchColorMap = state.batchColorMap || {};
                 this.filterAmount = state.filterAmount || null;
+                this.sortOrder = state.sortOrder || 'oldest-to-newest';
 
                 this.hasRestoredFromLastSession = true;
                 console.log(`Successfully restored state from last session`);
@@ -152,6 +154,7 @@ class ClusterManager {
             this.currentBatchId = 0;
             this.batchColorMap = {};
             this.filterAmount = null;
+            this.sortOrder = 'oldest-to-newest';
         }
     }
 
@@ -221,6 +224,11 @@ class ClusterManager {
 
             if (message.command === 'updateFilterAmount') {
                 this.filterAmount = message.amount ? parseInt(message.amount, 10) : null;
+                await this.updateWebPanel();
+            }
+
+            if (message.command === 'updateSortOrder') {
+                this.sortOrder = message.order;
                 await this.updateWebPanel();
             }
 
@@ -1378,7 +1386,7 @@ Rules:
                 <meta charset="UTF-8">
                 <title>Code Clusters</title>
                 <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/diff2html/bundles/css/diff2html.min.css" />
-                 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+                <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
                 <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/diff2html/bundles/js/diff2html.min.js"></script>
                 <style>
                     ${this.styles}
@@ -1391,30 +1399,42 @@ Rules:
                     <div>
                         <h2>Recent Development Highlights </h2>
                     </div>
-                    <div class="forms">
-                        <h4><em>Ordered from least recent to most recent</em></h4>
+                    <div class="controls-row" id="controls-row-1">
+                        <div class="control-group">
+                            <label for="sort-order-select">Current order:</label>
+                            <select id="sort-order-select">
+                                <option value="oldest-to-newest" ${this.sortOrder === 'oldest-to-newest' ? 'selected' : ''}>oldest to newest</option>
+                                <option value="newest-to-oldest" ${this.sortOrder === 'newest-to-oldest' ? 'selected' : ''}>newest to oldest</option>
+                            </select>
+                        </div>
 
-                        <div class="filter-controls">
+                        <div class="control-group filter-controls">
                             <label for="filter-amount">Show recent:</label>
                             <input type="number" id="filter-amount" name="filter-amount" min="1" placeholder="All" value="${this.filterAmount || ''}">
                         </div>
 
-                        <!-- <form id="chat-form" class="form-container">
+                        <div class="control-group-stack">
+                            <div class="control-group">
+                                <label for="diff-view-select">Current diff view:</label>
+                                <select id="diff-view-select">
+                                    <option value="line-by-line" ${this.currentDiffView === 'line-by-line' ? 'selected' : ''}>line-by-line</option>
+                                    <option value="side-by-side" ${this.currentDiffView === 'side-by-side' ? 'selected' : ''}>side-by-side</option>
+                                </select>
+                            </div>
+                            <p class="description">Click line # to jump to code</p>
+                        </div>
+                    </div>
+
+                    <!-- <div class="controls-row" id="controls-row-2">
+                        <form id="chat-form" class="form-container">
                             <div class="question-area">
                                 <label style="font-weight: bold; margin: auto; margin-right: 5px;">Search within your history: </label>
                                 <input type="text" id="question" name="user_question" placeholder="Where did I..." value="${this.userQuestion || ''}">
                                 <button type="submit" class="btn">Submit</button>
                                 <button type="button" id="reset-button" class="btn">Reset</button>
                             </div>
-                            
-                        </form> -->
-                    </div>
-                    <div class="view-controls">
-                        <div class="view-buttons">
-                            <button id="toggle-view">Switch to ${this.currentDiffView === 'line-by-line' ? 'Side-by-Side' : 'Line-by-Line'} View</button>
-                        </div>
-                        <p class="description">Click line numbers to jump to code</p>
-                    </div>
+                        </form>
+                    </div> -->
                 </div>
                     <ul id="grouped-events">
                         ${groupedEventsHTML}
@@ -1439,8 +1459,12 @@ Rules:
                 function scrollToBottom() {
                     const upperBox = document.getElementById('upper');
                     if (upperBox) {
-                        // Scroll to the bottom of the element
-                        upperBox.scrollTop = upperBox.scrollHeight;
+                        // Scroll to the bottom only if sorting by oldest-to-newest
+                        if ('${this.sortOrder}' === 'oldest-to-newest') {
+                            upperBox.scrollTop = upperBox.scrollHeight;
+                        } else {
+                            upperBox.scrollTop = 0;
+                        }
                     }
                 }
 
@@ -1579,6 +1603,28 @@ Rules:
                     vscode.postMessage({
                         command: 'updateFilterAmount',
                         amount: amount
+                    });
+                });
+            }
+
+            // sort order listener
+            const sortOrderSelect = document.getElementById('sort-order-select');
+            if (sortOrderSelect) {
+                sortOrderSelect.addEventListener('change', function() {
+                    vscode.postMessage({
+                        command: 'updateSortOrder',
+                        order: this.value
+                    });
+                });
+            }
+
+            // diff view listener
+            const diffViewSelect = document.getElementById('diff-view-select');
+            if (diffViewSelect) {
+                diffViewSelect.addEventListener('change', function() {
+                    vscode.postMessage({ 
+                        command: 'changeViewMode', 
+                        view: this.value 
                     });
                 });
             }
@@ -1809,13 +1855,31 @@ Rules:
             return '<li>No resources for you :(.</li>';
         }
 
-        // Apply filtering logic
-        let startIndex = 0;
-        if (this.filterAmount && this.filterAmount > 0) {
-            startIndex = Math.max(0, this.codeActivities.length - this.filterAmount);
+        const events = this.codeActivities;
+        let loopIndices = [];
+
+        // 1. Create array of indices to loop over
+        if (this.sortOrder === 'newest-to-oldest') {
+            // "newest-to-oldest" -> Show most recent N items [in reverse chronological]
+            const startIndex = (this.filterAmount && this.filterAmount > 0)
+                ? Math.max(0, events.length - this.filterAmount)
+                : 0;
+            for (let i = events.length - 1; i >= startIndex; i--) {
+                loopIndices.push(i);
+            }
+        } else {
+            // "oldest-to-newest" -> Show oldest N items [in chronological]
+            const startIndex = (this.filterAmount && this.filterAmount > 0)
+                ? Math.max(0, events.length - this.filterAmount)
+                : 0;
+            
+            for (let i = startIndex; i < events.length; i++) {
+                loopIndices.push(i);
+            }
         }
 
-        for (let groupKey = startIndex; groupKey < this.codeActivities.length; groupKey++) {
+        // 2. Loop using the calculated indices
+        for (const groupKey of loopIndices) {
             const group = this.codeActivities[groupKey];
             console.log(group)
             const links = this.codeResources[groupKey];
@@ -1930,18 +1994,33 @@ Rules:
             return '';
         }
 
-        // Apply filtering logic
-        let startIndex = 0;
-        if (this.filterAmount && this.filterAmount > 0) {
-            // Calculate the starting index to get the last N items
-            startIndex = Math.max(0, this.displayForGroupedEvents.length - this.filterAmount);
+        const events = this.displayForGroupedEvents;
+        let loopIndices = [];
+
+        // 1. Create array of indices to loop over
+        if (this.sortOrder === 'newest-to-oldest') {
+            // "newest-to-oldest" -> Show most recent N items [reverse chronological]
+            const startIndex = (this.filterAmount && this.filterAmount > 0)
+                ? Math.max(0, events.length - this.filterAmount)
+                : 0;
+            for (let i = events.length - 1; i >= startIndex; i--) {
+                loopIndices.push(i);
+            }
+        } else {
+            // "oldest-to-newest" -> Show oldest N items [chronological]
+            const startIndex = (this.filterAmount && this.filterAmount > 0)
+                ? Math.max(0, events.length - this.filterAmount)
+                : 0;
+            
+            for (let i = startIndex; i < events.length; i++) {
+                loopIndices.push(i);
+            }
         }
 
         let previousBatchId = null;
 
-        // Update loop to start from the calculated startIndex
-        // The 'groupKey' will be the correct original index, which is crucial for the 'updateCodeTitle' message handler.
-        for (let groupKey = startIndex; groupKey < this.displayForGroupedEvents.length; groupKey++) {
+        // 2. Loop using the calculated indices
+        for (const groupKey of loopIndices) {
             const group = this.displayForGroupedEvents[groupKey];
             // Check if this subgoal is from a different batch than the previous one
             const isNewBatch = previousBatchId !== null && group.batchId !== previousBatchId;

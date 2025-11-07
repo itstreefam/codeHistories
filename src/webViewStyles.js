@@ -115,7 +115,7 @@ const historyStyles = `
         position: relative; /* Sets the anchor point for the absolute child */
         display: flex;
         flex-grow: 1; /* Allows it to participate in the flex layout */
-        max-width: 50vw; /* Adopts the fluid width constraint */
+        // max-width: 50vw; /* Adopts the fluid width constraint */
     }
 
     .editable-title {
@@ -311,13 +311,6 @@ const historyStyles = `
         text-decoration: underline;
     }
 
-    .view-controls {
-        display: flex;
-        align-items: center;
-        margin-top: 5px;
-        margin-bottom: 15px;
-    }
-
     .view-buttons {
         display: flex;
         margin-right: 10px; /* Add space between buttons and description */
@@ -337,12 +330,6 @@ const historyStyles = `
 
     .view-buttons button:hover {
         background-color: #e0e0e0;
-    }
-
-    .description {
-        font-size: 10px;
-        color: #666;
-        margin: 0;
     }
 
     #open-button {
@@ -374,7 +361,6 @@ const historyStyles = `
     .form-container {
         width: 500px;
         border-radius: 10px 10px 0px 0px;
-        margin-left: 5vw;
     }
 
     #response_area {
@@ -408,23 +394,28 @@ const historyStyles = `
         width: 40%;
     }
 
-    .forms{
-        display: flex;
-        justify-content: space-between;
-        margin-right: 5vw;
-        text-align: center;
-    }
-
     .subgoal_summary {
         font-weight: normal;
     }
 
     .upper_header {
         position: fixed;
-        height: 120px;
+        height: auto;
         background-color: #ffffff;
         width: 100%; 
         z-index: 100;
+        padding-bottom: 5px;
+    }
+
+    .upper_header > div:first-child {
+        box-sizing: border-box; /* Include padding in width */
+        width: 100%;
+    }
+    .upper_header h2 {
+        margin-top: 10px; /* Add some top margin */
+        margin-bottom: 10px; /* Add some space below */
+        margin-left: 0; /* Override default h2 margin */
+        margin-right: 0; /* Override default h2 margin */
     }
 
     .tooltip-wrapper {
@@ -456,23 +447,82 @@ const historyStyles = `
     opacity: 1;
     }
 
-    .filter-controls {
+    .control-group {
         display: flex;
         align-items: center;
         gap: 5px;
     }
-    .filter-controls input[type="number"] {
-        width: 60px;
-        /* Style to match VS Code's UI */
+    .control-group label {
+        font-size: 14px;
+        font-weight: bold;
+        color: #333;
+    }
+    
+    .control-group select {
+        width: auto;
         background-color: var(--vscode-input-background);
         color: var(--vscode-input-foreground);
         border: 1px solid var(--vscode-input-border);
         border-radius: 3px;
         padding: 2px 4px;
+        font-size: 13px;
     }
-    .filter-controls input[type="number"]:focus {
+
+    .control-group input[type="number"] {
+        width: 35px; /* fixed width */
+        background-color: var(--vscode-input-background);
+        color: var(--vscode-input-foreground);
+        border: 1px solid var(--vscode-input-border);
+        border-radius: 3px;
+        padding: 2px 4px;
+        font-size: 13px;
+    }
+
+    .control-group select:focus,
+    .control-group input[type="number"]:focus {
         outline: 1px solid var(--vscode-focusBorder);
         border-color: var(--vscode-focusBorder);
+    }
+
+    .control-group-stack {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start; /* Aligns items to the left */
+        gap: 2px; /* Small space between select and text */
+        margin-left: 10px; /* Space from the previous control */
+    }
+
+    .controls-row {
+        display: flex;
+        flex-wrap: wrap; /* Allows controls to wrap */
+        align-items: center;
+        gap: 5px;
+        width: 100%;
+        padding-right: 5vw;
+        box-sizing: border-box; /* Include padding in width calculation */
+    }
+
+    /* Make description text align to the far right */
+    #controls-row-1 .description {
+        font-size: 10px;
+        color: #666;
+        white-space: nowrap;
+    }
+
+    /* Override old form-container margins to make it fill the row */
+    #controls-row-2 .form-container {
+        width: 100%;
+        margin-left: 0; 
+    }
+
+    #controls-row-2 .question-area {
+        width: 100%; /* Make inner content fill the form */
+    }
+
+    /* Make search input box flexible */
+    #controls-row-2 #question {
+        flex-grow: 1; /* Allows input to take up remaining space */
+        width: auto; /* Override old fixed width */
     }
 `;
 
