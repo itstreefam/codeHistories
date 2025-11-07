@@ -47,7 +47,7 @@ var clusterManager = null;
 var contentTimelineManager = null;
 
 // this controls whether one wants to always show webview (even if it is closed) or not
-var persist = true;
+var persist = false;
 
 var executionInfo = {}; // global variable to store info from both onDidStartTerminalShellExecution and onDidEndTerminalShellExecution
 

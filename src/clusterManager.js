@@ -57,6 +57,8 @@ class ClusterManager {
 
         this.currentBatchId = 0;
         this.batchColorMap = {}; // Store colors by batch ID (for denoting related subgoal changes)
+
+        this.filterAmount = null; // store how many most recent subgoals
     }
 
     async initializeOpenAI(context) {
@@ -120,6 +122,7 @@ class ClusterManager {
                 this.idCounter = state.idCounter || 0;
                 this.currentBatchId = state.currentBatchId || 0;
                 this.batchColorMap = state.batchColorMap || {};
+                this.filterAmount = state.filterAmount || null;
 
                 this.hasRestoredFromLastSession = true;
                 console.log(`Successfully restored state from last session`);
@@ -148,6 +151,7 @@ class ClusterManager {
             this.idCounter = 0;
             this.currentBatchId = 0;
             this.batchColorMap = {};
+            this.filterAmount = null;
         }
     }
 
@@ -213,6 +217,11 @@ class ClusterManager {
                 this.currentDiffView = message.view;
                 console.log("ERROR IN INITIALIZEWEBVIEW, LINE 170!")
                 await this.updateWebPanel('');
+            }
+
+            if (message.command === 'updateFilterAmount') {
+                this.filterAmount = message.amount ? parseInt(message.amount, 10) : null;
+                await this.updateWebPanel();
             }
 
             if (message.command === "askChatGPT") {
@@ -1384,7 +1393,13 @@ Rules:
                     </div>
                     <div class="forms">
                         <h4><em>Ordered from least recent to most recent</em></h4>
-                        <form id="chat-form" class="form-container">
+
+                        <div class="filter-controls">
+                            <label for="filter-amount">Show recent:</label>
+                            <input type="number" id="filter-amount" name="filter-amount" min="1" placeholder="All" value="${this.filterAmount || ''}">
+                        </div>
+
+                        <!-- <form id="chat-form" class="form-container">
                             <div class="question-area">
                                 <label style="font-weight: bold; margin: auto; margin-right: 5px;">Search within your history: </label>
                                 <input type="text" id="question" name="user_question" placeholder="Where did I..." value="${this.userQuestion || ''}">
@@ -1392,7 +1407,7 @@ Rules:
                                 <button type="button" id="reset-button" class="btn">Reset</button>
                             </div>
                             
-                        </form>
+                        </form> -->
                     </div>
                     <div class="view-controls">
                         <div class="view-buttons">
@@ -1419,6 +1434,15 @@ Rules:
         <script>
             (function() {
                 const vscode = acquireVsCodeApi();
+
+                // Add the auto-scroll function
+                function scrollToBottom() {
+                    const upperBox = document.getElementById('upper');
+                    if (upperBox) {
+                        // Scroll to the bottom of the element
+                        upperBox.scrollTop = upperBox.scrollHeight;
+                    }
+                }
 
                 window.updateTitle = function(groupKey) {
                     const titleInput = document.getElementById('title-' + groupKey).value;
@@ -1511,6 +1535,9 @@ Rules:
             // Initial listener attachment on page load
             attachCollapsibleListeners();
 
+            // Scroll to bottom on initial load
+            scrollToBottom();
+
             var handler = document.querySelector('.handler');
             var wrapper = handler.closest('.wrapper');
             var boxA = wrapper.querySelector('.box');
@@ -1542,12 +1569,29 @@ Rules:
                 });
             }
 
+            // Add listener for the filter input
+            const filterInput = document.getElementById('filter-amount');
+            if (filterInput) {
+                // Use 'change' event so it fires when user clicks away or presses Enter
+                filterInput.addEventListener('change', function() {
+                    // Send null if the input is empty (to show all)
+                    const amount = this.value === '' ? null : this.value;
+                    vscode.postMessage({
+                        command: 'updateFilterAmount',
+                        amount: amount
+                    });
+                });
+            }
+
             window.addEventListener("message", (event) => {
                 console.log("Received message:", event.data);
                 if (event.data.command === "updateChatResponse") {
                     const response = event.data.response;
                     responseArea.innerHTML = response; // Update the response
                     attachCollapsibleListeners(); // Reattach listeners to new content
+
+                    // Scroll to bottom after content update
+                    scrollToBottom();
 
                     // After updating the content, restore the collapsible state
                     const collapsibleState = getCollapsibleState();
@@ -1765,7 +1809,13 @@ Rules:
             return '<li>No resources for you :(.</li>';
         }
 
-        for (let groupKey = 0; groupKey < this.codeActivities.length; groupKey++) {
+        // Apply filtering logic
+        let startIndex = 0;
+        if (this.filterAmount && this.filterAmount > 0) {
+            startIndex = Math.max(0, this.codeActivities.length - this.filterAmount);
+        }
+
+        for (let groupKey = startIndex; groupKey < this.codeActivities.length; groupKey++) {
             const group = this.codeActivities[groupKey];
             console.log(group)
             const links = this.codeResources[groupKey];
@@ -1880,9 +1930,19 @@ Rules:
             return '';
         }
 
+        // Apply filtering logic
+        let startIndex = 0;
+        if (this.filterAmount && this.filterAmount > 0) {
+            // Calculate the starting index to get the last N items
+            startIndex = Math.max(0, this.displayForGroupedEvents.length - this.filterAmount);
+        }
+
         let previousBatchId = null;
 
-        for (const [groupKey, group] of this.displayForGroupedEvents.entries()) {
+        // Update loop to start from the calculated startIndex
+        // The 'groupKey' will be the correct original index, which is crucial for the 'updateCodeTitle' message handler.
+        for (let groupKey = startIndex; groupKey < this.displayForGroupedEvents.length; groupKey++) {
+            const group = this.displayForGroupedEvents[groupKey];
             // Check if this subgoal is from a different batch than the previous one
             const isNewBatch = previousBatchId !== null && group.batchId !== previousBatchId;
             

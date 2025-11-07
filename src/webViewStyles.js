@@ -455,6 +455,25 @@ const historyStyles = `
     visibility: visible;
     opacity: 1;
     }
+
+    .filter-controls {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+    .filter-controls input[type="number"] {
+        width: 60px;
+        /* Style to match VS Code's UI */
+        background-color: var(--vscode-input-background);
+        color: var(--vscode-input-foreground);
+        border: 1px solid var(--vscode-input-border);
+        border-radius: 3px;
+        padding: 2px 4px;
+    }
+    .filter-controls input[type="number"]:focus {
+        outline: 1px solid var(--vscode-focusBorder);
+        border-color: var(--vscode-focusBorder);
+    }
 `;
 
 // Light theme styles for content timeline
