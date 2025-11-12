@@ -1997,6 +1997,14 @@ Rules:
         const events = this.displayForGroupedEvents;
         let loopIndices = [];
 
+        // first count the occurrences of all batchIds
+        const batchIdCounts = {};
+        for (const group of this.displayForGroupedEvents) {
+            if (group.batchId) {
+                batchIdCounts[group.batchId] = (batchIdCounts[group.batchId] || 0) + 1;
+            }
+        }
+
         // 1. Create array of indices to loop over
         if (this.sortOrder === 'newest-to-oldest') {
             // "newest-to-oldest" -> Show most recent N items [reverse chronological]
@@ -2025,17 +2033,22 @@ Rules:
             // Check if this subgoal is from a different batch than the previous one
             const isNewBatch = previousBatchId !== null && group.batchId !== previousBatchId;
             
-            // Get color for this batch
-            const batchColor = this.getBatchColor(group.batchId);
+            // Only color for related subgoals in a commit
+            // No color otherwise
+            const batchId = group.batchId;
+            let borderStyle = ''; // Default: no border or padding
+            let extraPadding = 'padding-left: 0px;'; // Default to no extra padding if no border
 
-            // // Add a visual separator between different batches
-            // if (isNewBatch) {
-            //     html += `
-            //         <div class="batch-separator" style="margin: 20px 0;">
-            //             <hr style="border: 0; border-top: 2px dashed #ccc;">
-            //         </div>
-            //     `;
-            // }
+            // Check if batchId exists AND if its count is greater than 1
+            if (batchId && batchIdCounts[batchId] > 1) {
+                // Only apply color if this batch is part of a related set
+                const finalBorderColor = this.getBatchColor(batchId);
+                borderStyle = `border-left: 4px solid ${finalBorderColor}; padding-left: 8px;`;
+                extraPadding = ''; // Reset extra padding if border is applied
+            } else {
+                // If no color, simply apply padding to align with colored items
+                extraPadding = 'padding-left: 12px;'; // 4px (border width) + 8px (border padding) = 12px
+            }
 
             // Filter and extract web resources
             const webResources = group.actions.filter(
@@ -2078,7 +2091,7 @@ Rules:
                     const title = event.title || "Untitled";
                     
                     html += `
-                        <li data-eventid="${index}" style="border-left: 4px solid ${batchColor}; padding-left: 8px;">
+                        <li data-eventid="${index}" style="${borderStyle} ${extraPadding}">
                             <div class="li-header">
                                 <!-- <button type="button" class="collapsible" id="plusbtn-${groupKey}-${index}">+</button> -->
                                 <button type="button" class="collapsible" id="plusbtn-${groupKey}-${index}">
