@@ -293,6 +293,8 @@ class ClusterManager {
             }
         }
 
+        this.prevCommittedEvents = codeEventsList;
+
         if (!this.isInitialized) {
             return;
         }
@@ -605,7 +607,7 @@ class ClusterManager {
         let perfectMatches = [];
 
         for (const currentLine of currentLines) {
-            const trimmedLine = currentLine.trim();  // Remove whitespace
+            const trimmedLine = currentLine.trim();
             if (trimmedLine.length > 1) {
                 const bestMatch = this.best_match(trimmedLine, pastLines);
                 if (bestMatch.ratio >= 90 && bestMatch.ratio < 100) {
@@ -633,54 +635,109 @@ class ClusterManager {
         // Always add the current event to the strayEvents initially
         this.strayEvents.push(this.currentCodeEvent);
 
-        // Continue cluster based on match conditions
+        // Calculate significance metrics
+        const linesChanged = Math.abs(currentLines.length - pastLines.length);
+        const isSignificantChange = linesChanged > this.MAX_NEW_LINES || newLines.length > this.MAX_NEW_LINES;
+
+        // Case 1: No changes at all (only perfect matches, no new/partial)
         if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length === 0 && currentLines.length === pastLines.length) {
-            console.log("case 1");
+            console.log("case 1: no changes");
             if (this.debug) console.log("\tcontinue cluster for", filename);
             if (this.inCluster[filename]) {
                 this.inCluster[filename] = true;
             }
         }
-
-        // start or continue clusters.
-        // at least one line has been edited, but nothing has been added/deleted
+        
+        // Case 2: Line edits (same total length) - only start if NOT too many edits
         else if (partialMatches > 0 && currentLines.length === pastLines.length) {
-            console.log("case 2");
-            if (this.debug) console.log("\t>=1 line edited; start new cluster for", filename);
-            if (!this.inCluster[filename]) {
-                this.inCluster[filename] = true;
-                this.clusterStartTime[filename] = pastEvt.time;
+            console.log("case 2: line edits");
+            
+            if (partialMatches <= this.MAX_NEW_LINES) {
+                // Small number of edits - accumulate in cluster
+                if (this.debug) console.log(`\t${partialMatches} lines edited (<=threshold); start/continue cluster for`, filename);
+                if (!this.inCluster[filename]) {
+                    this.inCluster[filename] = true;
+                    this.clusterStartTime[filename] = pastEvt.time;
+                }
+            } else {
+                // Many edits - finalize immediately
+                if (this.debug) console.log(`\t${partialMatches} lines edited (>threshold); finalize immediately for`, filename);
+                if (!this.inCluster[filename]) {
+                    this.inCluster[filename] = true;
+                    this.clusterStartTime[filename] = pastEvt.time;
+                }
+                await this.finalizeGroup(filename);
+                this.inCluster[filename] = false;
             }
-            // at least one line has been added or deleted, but fewer than 4 new lines.
-        } else if (perfectMatches.length > 0 && currentLines.length !== pastLines.length && (Math.abs(currentLines.length - pastLines.length) <= this.MAX_NEW_LINES) && newLines.length <= this.MAX_NEW_LINES) {
-            console.log("case 3");
-            if (this.debug) console.log("\t1-3 lines added/deleted; start new cluster for", filename);
+        }
+        
+        // Case 3a: Small changes (<=3 lines added/deleted) - accumulate in cluster
+        else if (perfectMatches.length > 0 && 
+                currentLines.length !== pastLines.length && 
+                linesChanged <= this.MAX_NEW_LINES && 
+                newLines.length <= this.MAX_NEW_LINES) {
+            console.log("case 3a: small changes (<=3 lines)");
+            if (this.debug) console.log(`\t${newLines.length} lines added/deleted (<=threshold); start/continue cluster for`, filename);
             if (!this.inCluster[filename]) {
                 this.inCluster[filename] = true;
                 this.clusterStartTime[filename] = pastEvt.time;
             }
         }
-        // at least one line has been replaced, but code is the same length
+        
+        // Case 3b: SIGNIFICANT changes (>3 lines) - finalize immediately as subgoal
+        else if (perfectMatches.length > 0 && 
+                currentLines.length !== pastLines.length && 
+                (linesChanged > this.MAX_NEW_LINES || newLines.length > this.MAX_NEW_LINES)) {
+            console.log("case 3b: significant changes (>3 lines)");
+            if (this.debug) console.log(`\t${newLines.length} lines added/deleted (>threshold); finalize immediately for`, filename);
+            
+            // Start cluster if not already in one
+            if (!this.inCluster[filename]) {
+                this.inCluster[filename] = true;
+                this.clusterStartTime[filename] = pastEvt.time;
+            }
+            
+            // Immediately finalize as a subgoal
+            await this.finalizeGroup(filename);
+            this.inCluster[filename] = false;
+        }
+        
+        // Case 4: Line replacements (same total length)
         else if (partialMatches === 0 && perfectMatches.length > 0 && newLines.length > 0 && currentLines.length === pastLines.length) {
-            console.log("case 4");
-            if (this.debug) console.log("\t>= 1 line replaced; start new cluster for", filename);
-            if (!this.inCluster[filename]) {
-                this.inCluster[filename] = true;
-                this.clusterStartTime[filename] = pastEvt.time;
+            console.log("case 4: line replacements");
+            
+            if (newLines.length <= this.MAX_NEW_LINES) {
+                // Small number of replacements
+                if (this.debug) console.log(`\t${newLines.length} lines replaced (<=threshold); start/continue cluster for`, filename);
+                if (!this.inCluster[filename]) {
+                    this.inCluster[filename] = true;
+                    this.clusterStartTime[filename] = pastEvt.time;
+                }
+            } else {
+                // Many replacements - finalize immediately
+                if (this.debug) console.log(`\t${newLines.length} lines replaced (>threshold); finalize immediately for`, filename);
+                if (!this.inCluster[filename]) {
+                    this.inCluster[filename] = true;
+                    this.clusterStartTime[filename] = pastEvt.time;
+                }
+                await this.finalizeGroup(filename);
+                this.inCluster[filename] = false;
             }
         }
-        // only white space changes, no edits or additions/deletions
+        
+        // Case 5: Whitespace only - ignore (don't start cluster)
         else if (this.onlyWhitespaceChanges(pastLines, currentLines)) {
-            console.log("case 5");
-            if (this.debug) console.log("\twhitespace changes only; start new cluster");
-            if (!this.inCluster[filename]) {
-                this.inCluster[filename] = true;
-                this.clusterStartTime[filename] = pastEvt.time;
-            }
-        } else {
-            console.log("case 6");
+            console.log("case 5: whitespace only");
+            if (this.debug) console.log("\twhitespace changes only; ignoring");
+            // Do nothing - whitespace shouldn't create clusters
+        }
+        
+        // Case 6: Everything else / exiting a cluster
+        else {
+            console.log("case 6: other/cluster end");
             console.log(`this.inCluster[${filename}]`, this.inCluster[filename]);
-            // we've just come out of a cluster, so print it out
+            
+            // If we're in a cluster, finalize it
             if (this.inCluster[filename]) {
                 console.log(`${this.clusterStartTime[filename]},${pastEvt.time},'code',${filename}`);
                 await this.finalizeGroup(filename);
@@ -688,12 +745,21 @@ class ClusterManager {
                     console.log(`${currTime}: partialMatches=${partialMatches} perfectMatches=${perfectMatches.length} newLines=${newLines.length} currLineLength=${currentLines.length} pastLineLength=${pastLines.length}`);
                     console.log("\n");
                 }
-
-                // the file is now in allPastEvents, so we can continue starting the cluster from here
-                // this is equivalent to the big clump case below
-                this.inCluster[filename] = true;
-                this.clusterStartTime[filename] = pastEvt.time;
-                this.startNewGroup();
+                
+                // After finalizing, check if current change is significant
+                if (isSignificantChange) {
+                    // Start a new cluster and finalize immediately
+                    this.inCluster[filename] = true;
+                    this.clusterStartTime[filename] = pastEvt.time;
+                    this.startNewGroup();
+                    await this.finalizeGroup(filename);
+                    this.inCluster[filename] = false;
+                } else {
+                    // Start a new cluster for accumulation
+                    this.inCluster[filename] = true;
+                    this.clusterStartTime[filename] = pastEvt.time;
+                    this.startNewGroup();
+                }
             }
         }
     }
@@ -2045,9 +2111,11 @@ Rules:
                 const finalBorderColor = this.getBatchColor(batchId);
                 borderStyle = `border-left: 4px solid ${finalBorderColor}; padding-left: 8px;`;
                 extraPadding = ''; // Reset extra padding if border is applied
+                console.log(`Applying COLOR for batchId ${batchId}, count: ${batchIdCounts[batchId]}`);
             } else {
                 // If no color, simply apply padding to align with colored items
                 extraPadding = 'padding-left: 12px;'; // 4px (border width) + 8px (border padding) = 12px
+                console.log(`Applying NO COLOR for batchId ${batchId}, count: ${batchIdCounts[batchId]}`);
             }
 
             // Filter and extract web resources
