@@ -422,6 +422,9 @@ class ContentTimelineManager {
                             });
                         }
                     });
+
+                    // Automatically scroll to the bottom of the page
+                    window.scrollTo(0, document.body.scrollHeight);
                 })();
             </script>
             </html>
