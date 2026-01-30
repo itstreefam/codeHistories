@@ -35,8 +35,8 @@ class ClusterManager {
         this.currentWebEvent = null;
         this.idCounter = 0;
         this.styles = historyStyles;
-        // this.initializeTemporaryTest();
-        // this.initializeResourcesTemporaryTest();
+        this.initializeTemporaryTest();
+        this.initializeResourcesTemporaryTest();
         this.debugging = true;
         this.prevCommittedEvents = [];
         this.isInitialized = false;
@@ -77,7 +77,7 @@ class ClusterManager {
     }
 
     initializeTemporaryTest() {
-        const testData = new temporaryTest(String.raw`C:\Users\Tin Pham\Downloads\tileMakingPuzzle.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\Users\Tin Pham\Downloads\pilot\pilot\wordleStory.json`); // change path of test data here
         // codeActivities has id, title, and code changes
         // the focus atm would be code changes array which contains smaller codeActivity objects
         // for eg, to access before_code, we would do this.codeActivities[0].codeChanges[0].before_code
@@ -90,7 +90,7 @@ class ClusterManager {
     }
 
     initializeResourcesTemporaryTest() {
-        const testData = new temporaryTest(String.raw`C:\Users\Tin Pham\Downloads\tileMakingPuzzle.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\Users\Tin Pham\Downloads\pilot\pilot\wordleStory.json`); // change path of test data here
         this.codeResources = testData.processResources(testData.data);
         console.log("Resources", this.codeResources);
     }
@@ -160,7 +160,7 @@ class ClusterManager {
 
     async initializeClusterManager() {
         await this.initializeOpenAI(this.context); // ensure OpenAI is initialized
-        await this.restoreStateFromFile(); // if there is data to restore
+        // await this.restoreStateFromFile(); // if there is data to restore
         
         if(!this.hasRestoredFromLastSession) {
             const initialCodeEntries = await this.gitTracker.grabAllLatestCommitFiles();
@@ -187,7 +187,8 @@ class ClusterManager {
             vscode.ViewColumn.Beside,
             {
                 enableScripts: true,
-                enableFindWidget: true
+                enableFindWidget: true,
+                retainContextWhenHidden: true 
             }
         );
 
@@ -239,21 +240,15 @@ class ClusterManager {
             }
 
             if (message.command === "resetPanel") {
-                console.log("ERROR IN INITIALIZEWEBVIEW, LINE 181!")
+                // console.log("Clearing chat response results and resetting back to in-progress work");
                 this.chatResponseHTML = null;
                 this.userQuestion = '';
-                // await this.updateWebPanel('');
+                const strayEventsHTML = await this.generateStrayEventsHTML();
 
-                // Generate the default history HTML explicitly
-                const defaultHistoryHTML = await this.generateFullHistoryHTML();
-
-                // 1. Update the webview's internal HTML (in case of a full refresh)
-                await this.updateWebPanel(''); 
-
-                // 2. Explicitly send the default HTML via the message channel to update the inner content
+                // Important here, need to send it back to the webview so the UI updates
                 this.webviewPanel.webview.postMessage({
-                    command: "updateChatResponse", // Reuse this command
-                    response: defaultHistoryHTML
+                    command: 'resetToStrayEvents',
+                    response: strayEventsHTML
                 });
             }
         });
@@ -1431,19 +1426,23 @@ Rules:
 
         const startTime = performance.now()
 
-        let groupedEventsHTML;
+        // Always generate the full history HTML for the upper section
+        console.log("Generating default grouped events HTML");
+        const groupedEventsHTML = await this.generateFullHistoryHTML();
 
-        // If a chat response exists in our state, use it. Otherwise, generate the default view.
+        // For lower section, show chat response results if available, otherwise show in-progress work
+        let lowerSectionHTML;
+        let lowerSectionTitle;
+
         if (this.chatResponseHTML) {
-            console.log("Using existing chat response HTML");
-            groupedEventsHTML = this.chatResponseHTML;
+            console.log("Using chat response results for lower section");
+            lowerSectionHTML = this.chatResponseHTML;
+            lowerSectionTitle = "Chat Response Results";
         } else {
-            // This is the default view when no chat is active.
-            console.log("Generating default grouped events HTML");
-            groupedEventsHTML = await this.generateFullHistoryHTML();
+            console.log("Using in-progress work for lower section");
+            lowerSectionHTML = await this.generateStrayEventsHTML();
+            lowerSectionTitle = "In Progress Work";
         }
-
-        const strayEventsHTML = await this.generateStrayEventsHTML();
 
         this.webviewPanel.webview.html = `
             <!DOCTYPE html>
@@ -1465,7 +1464,7 @@ Rules:
                     <div>
                         <h2>Recent Development Highlights </h2>
                     </div>
-                    <div class="controls-row" id="controls-row-1">
+                    <!-- <div class="controls-row" id="controls-row-1">
                         <div class="control-group">
                             <label for="sort-order-select">Current order:</label>
                             <select id="sort-order-select">
@@ -1489,9 +1488,9 @@ Rules:
                             </div>
                             <p class="description">Click line # to jump to code</p>
                         </div>
-                    </div>
+                    </div> -->
 
-                    <!-- <div class="controls-row" id="controls-row-2">
+                    <div class="controls-row" id="controls-row-2">
                         <form id="chat-form" class="form-container">
                             <div class="question-area">
                                 <label style="font-weight: bold; margin: auto; margin-right: 5px;">Search within your history: </label>
@@ -1500,7 +1499,7 @@ Rules:
                                 <button type="button" id="reset-button" class="btn">Reset</button>
                             </div>
                         </form>
-                    </div> -->
+                    </div>
                 </div>
                     <ul id="grouped-events">
                         ${groupedEventsHTML}
@@ -1509,10 +1508,10 @@ Rules:
                 <div class="handler"></div>
                 <div class="box" id="lower"> 
                     <div>
-                        <h2>In Progress Work</h2>
+                        <h2 id="lower-section-title">${lowerSectionTitle}</h2>
                     </div>
                     <ul id="stray-events">
-                        ${strayEventsHTML}
+                        ${lowerSectionHTML}
                     </ul>
                 </div>
             </div>
@@ -1650,7 +1649,14 @@ Rules:
                     const userQuestion = questionInput.value.trim();
                     if (!userQuestion) return;
                     
-                    responseArea.innerHTML = "<p>Loading...</p>";
+                    // responseArea.innerHTML = "<p>Loading...</p>";
+
+                    // Show loading in the LOWER section (in-progress work)
+                    const lowerSectionTitle = document.getElementById('lower-section-title');
+                    if (lowerSectionTitle) {
+                        lowerSectionTitle.textContent = 'Chat Response Results';
+                    }
+                    strayEvents.innerHTML = "<p>Pondering...</p>";
                     
                     vscode.postMessage({
                         command: "askChatGPT",
@@ -1697,23 +1703,48 @@ Rules:
 
             window.addEventListener("message", (event) => {
                 console.log("Received message:", event.data);
-                if (event.data.command === "updateChatResponse") {
-                    const response = event.data.response;
-                    responseArea.innerHTML = response; // Update the response
-                    attachCollapsibleListeners(); // Reattach listeners to new content
+                // if (event.data.command === "updateChatResponse") {
+                //     const response = event.data.response;
+                //     responseArea.innerHTML = response; // Update the response
+                //     attachCollapsibleListeners(); // Reattach listeners to new content
 
-                    // Scroll to bottom after content update
-                    scrollToBottom();
+                //     // Scroll to bottom after content update
+                //     scrollToBottom();
 
-                    // After updating the content, restore the collapsible state
-                    const collapsibleState = getCollapsibleState();
-                    restoreCollapsibleState(collapsibleState);
-                }
+                //     // After updating the content, restore the collapsible state
+                //     const collapsibleState = getCollapsibleState();
+                //     restoreCollapsibleState(collapsibleState);
+                // }
                 
                 if (event.data.command === 'updateStrayEvents') {
                     const response = event.data.response;
                     strayEvents.innerHTML = response;
-                }   
+                    attachCollapsibleListeners();
+                }
+
+                // Handle chat response results - update the lower section
+                if (event.data.command === 'updateChatResponse') {
+                    const response = event.data.response;
+                    const lowerSectionTitle = document.getElementById('lower-section-title');
+                    if (lowerSectionTitle) {
+                        lowerSectionTitle.textContent = 'Chat Response Results';
+                    }
+
+                    strayEvents.innerHTML = response;
+                    attachCollapsibleListeners();
+                }
+
+                // Handle reset to show stray events again
+                if (event.data.command === 'resetToStrayEvents') {
+                    const response = event.data.response;
+                    const lowerSectionTitle = document.getElementById('lower-section-title');
+                    if (lowerSectionTitle) {
+                        lowerSectionTitle.textContent = 'In Progress Work';
+                    }
+
+                    strayEvents.innerHTML = response;
+                    attachCollapsibleListeners();
+                }
             });
 
             function handleMouseMove(e) {
@@ -1784,18 +1815,27 @@ Rules:
             });
 
             let currentView = '${this.currentDiffView}';
-
-            document.getElementById('toggle-view').addEventListener('click', () => {
-                currentView = currentView === 'line-by-line' ? 'side-by-side' : 'line-by-line';
-                document.getElementById('toggle-view').innerText = currentView === 'line-by-line' 
-                    ? 'Switch to Side-by-Side View' 
-                    : 'Switch to Line-by-Line View';
-                vscode.postMessage({ command: 'changeViewMode', view: currentView });
-            });
+            const toggleViewBtn = document.getElementById('toggle-view');
+            if(toggleViewBtn){
+                toggleViewBtn.addEventListener('click', () => {
+                    currentView = currentView === 'line-by-line' ? 'side-by-side' : 'line-by-line';
+                    toggleViewBtn.innerText = currentView === 'line-by-line' 
+                        ? 'Switch to Side-by-Side View' 
+                        : 'Switch to Line-by-Line View';
+                    vscode.postMessage({ command: 'changeViewMode', view: currentView });
+                });
+            }
 
             const resetButton = document.getElementById("reset-button");
             if (resetButton) {
-                resetButton.addEventListener("click", function () {
+                resetButton.addEventListener('click', function () {
+                    // Immediately clear the input field and reset lower section visually
+                    questionInput.value = '';
+                    const lowerSectionTitle = document.getElementById('lower-section-title');
+                    if (lowerSectionTitle) {
+                        lowerSectionTitle.textContent = 'In Progress Work';
+                    }
+                    strayEvents.innerHTML = '<li>Resetting...</li>';
                     vscode.postMessage({
                         command: "resetPanel"
                     });
@@ -1833,10 +1873,10 @@ Rules:
 
             const newContentHTML= response + historyResponse;
 
-            // 1. Update the persistent state
+            // Store chat response results for the lower section (instead of overriding the upper section)
             this.chatResponseHTML = newContentHTML;
 
-            // 2. Once the HTML content is injected, update the webview
+            // Send the chat response to update the lower "In Progress Work" section
             this.webviewPanel.webview.postMessage({
                 command: "updateChatResponse",
                 response: newContentHTML
