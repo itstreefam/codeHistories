@@ -489,12 +489,6 @@ class ClusterManager {
                 this.clusterStartTime[filename] = event.time;
             }
 
-            if (!this.allPastEvents[filename]) {
-                this.allPastEvents[filename] = [event];
-            } else {
-                this.allPastEvents[filename].push(event);
-            }
-
             // If significant, immediately finalize as a subgoal
             if (isSignificantFile) {
                 await this.finalizeGroup(filename);
@@ -507,6 +501,13 @@ class ClusterManager {
                 if (this.debug) {
                     console.log('Initial file with minor changes, keeping as stray');
                 }
+            }
+
+            // Populate allPastEvents AFTER finalization so new files correctly get empty before_code
+            if (!this.allPastEvents[filename]) {
+                this.allPastEvents[filename] = [event];
+            } else {
+                this.allPastEvents[filename].push(event);
             }
 
             return;
@@ -804,7 +805,7 @@ class ClusterManager {
         const clusterStart = this.clusterStartTime[filename];
 
         // Find events that occurred BEFORE the current cluster started
-        const eventsBeforeCluster = eventsForFile.filter(evt => evt.time < clusterStart);
+        const eventsBeforeCluster = eventsForFile.filter(evt => evt.time <= clusterStart);
         if (eventsBeforeCluster.length > 0) {
             // Use the last event before this cluster as the "before" state
             beforeCodeText = eventsBeforeCluster[eventsBeforeCluster.length - 1].code_text;
