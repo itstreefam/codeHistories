@@ -434,7 +434,7 @@ const historyStyles = `
     color: white;
     padding: 6px 10px;
     border-radius: 4px;
-    font-size: larger;
+    // font-size: larger;
     white-space: pre-line;
     max-width: 600px;
     z-index: 100;

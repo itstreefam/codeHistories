@@ -77,7 +77,7 @@ class ClusterManager {
     }
 
     initializeTemporaryTest() {
-        const testData = new temporaryTest(String.raw`C:\Users\Tin Pham\Downloads\pilot\pilot\wordleStory.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\Users\thien\Desktop\LLM-support\pilot\wordleStory.json`); // change path of test data here
         // codeActivities has id, title, and code changes
         // the focus atm would be code changes array which contains smaller codeActivity objects
         // for eg, to access before_code, we would do this.codeActivities[0].codeChanges[0].before_code
@@ -90,7 +90,7 @@ class ClusterManager {
     }
 
     initializeResourcesTemporaryTest() {
-        const testData = new temporaryTest(String.raw`C:\Users\Tin Pham\Downloads\pilot\pilot\wordleStory.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\Users\thien\Desktop\LLM-support\pilot\wordleStory.json`); // change path of test data here
         this.codeResources = testData.processResources(testData.data);
         console.log("Resources", this.codeResources);
     }
@@ -162,10 +162,11 @@ class ClusterManager {
         await this.initializeOpenAI(this.context); // ensure OpenAI is initialized
         // await this.restoreStateFromFile(); // if there is data to restore
         
-        if(!this.hasRestoredFromLastSession) {
-            const initialCodeEntries = await this.gitTracker.grabAllLatestCommitFiles();
-            await this.processCodeEvents(initialCodeEntries);
-        }
+        // rn this does work well if initializeTemporaryTest() and initializeResourcesTemporaryTest() are used
+        // if(!this.hasRestoredFromLastSession) {
+        //     const initialCodeEntries = await this.gitTracker.grabAllLatestCommitFiles();
+        //     await this.processCodeEvents(initialCodeEntries);
+        // }
 
         this.isInitialized = true;
     }
@@ -1040,26 +1041,44 @@ Your job is to summarize what is happening — what the user is asking, what the
                 return "no question";
             }
 
-let prompt = `You are a technical summarization assistant. Given a chronological array of coding events:"${JSON.stringify(parallelled_array)}", answering the question: "${question}", rewrite each event as a concise, HTML-formatted summary.
+// let prompt = `You are a technical summarization assistant. Given a chronological array of coding events:"${JSON.stringify(parallelled_array)}", answering the question: "${question}", rewrite each event as a concise, HTML-formatted summary.
 
-Requirements:
-- Don't repeat what the user is asking or inquiring about.
-- The number of output items must exactly match the input array length. For each input entry, generate one corresponding summary.
-- Keep the array length and order exactly the same.
-- Start each entry with a short bolded label in HTML, like "<strong>a small phrase that describes the edits:</strong>".
-- Then include a <ul style="padding-top: 0px;list-style: circle;margin-left: 40px;"> with each key point wrapped in an <li> tag.
-- Focus on what was implemented, changed, or fixed. Mention key functions or elements.
-- Instead of putting quotation around objects from the code, put <code> tag.
-- Avoid filler language, compliments, or repetition.
-- Combine minor or low-value steps into one line when needed.
-- Use clear, direct language.
-- Output only the revised array as valid array ready to parse (do not wrap in extra text).`;
+// Requirements:
+// - Don't repeat what the user is asking or inquiring about.
+// - The number of output items must exactly match the input array length. For each input entry, generate one corresponding summary.
+// - Keep the array length and order exactly the same.
+// - Start each entry with a short bolded label in HTML, like "<strong>a small phrase that describes the edits:</strong>".
+// - Then include a <ul style="padding-top: 0px;list-style: circle;margin-left: 40px;"> with each key point wrapped in an <li> tag.
+// - Focus on what was implemented, changed, or fixed. Mention key functions or elements.
+// - Instead of putting quotation around objects from the code, put <code> tag.
+// - Avoid filler language, compliments, or repetition.
+// - Combine minor or low-value steps into one line when needed.
+// - Use clear, direct language.
+// - Output only the revised array as valid array ready to parse (do not wrap in extra text).`;
 
+let prompt = `You are given a chronological array of coding events and a guiding question. 
+Rewrite each event as a structured summary.
+
+Return ONLY a valid JSON array with this exact shape per entry, no markdown, no extra text:
+[{"label": "short bolded phrase", "points": ["point 1", "point 2"]}, ...]
+
+Rules:
+- The output array length must exactly match the input array length.
+- label: 3-6 words describing what happened. No HTML.
+- points: 1-3 concise technical points per entry.
+- In the points strings only, wrap code elements in <code> tags. No quotation marks around code.
+- No filler, no praise, no repetition.
+
+Question: ${question}
+
+Events:
+${JSON.stringify(parallelled_array)}`;
 
             const completions = await this.openai.chat.completions.create({
                 model: "gpt-4o-mini",
-                max_completion_tokens: null,
-                max_tokens: null,
+                // max_completion_tokens: null,
+                // max_tokens: null,
+                max_tokens: 1500,
                 messages: [
                     {
                         role: "system",
@@ -1107,19 +1126,36 @@ Requirements:
 
 // Chronological coding steps:
 // ${JSON.stringify(parallelled_array)}`;
-let prompt = `You are given a user question and a chronological sequence of summarized coding events. These events represent the user's step-by-step progress toward a specific coding goal.
 
-Your task is to answer the question based solely on these coding events.
+// let prompt = `You are given a user question and a chronological sequence of summarized coding events. These events represent the user's step-by-step progress toward a specific coding goal.
 
-FORMAT REQUIREMENTS (STRICTLY FOLLOW):
-1. Start with a single-sentence direct answer wrapped in <strong> tags.
-2. Then include a <ul style="padding-top: 0px;list-style: circle;margin-left: 40px;">.
-3. Each key point must be in an <li> tag.
-4. Use <code> tags ONLY for **all references to code elements** — this includes variable names, functions, file names, keywords, code snippets, and anything the user wrote in code.
-5. DO NOT use quotation marks around code references — use ONLY <code>.
-6. Be specific and technical; do NOT include any general praise or restate the question.
+// Your task is to answer the question based solely on these coding events.
 
-FAILURE TO FOLLOW THE FORMAT IS AN ERROR.
+// FORMAT REQUIREMENTS (STRICTLY FOLLOW):
+// 1. Start with a single-sentence direct answer wrapped in <strong> tags.
+// 2. Then include a <ul style="padding-top: 0px;list-style: circle;margin-left: 40px;">.
+// 3. Each key point must be in an <li> tag.
+// 4. Use <code> tags ONLY for **all references to code elements** — this includes variable names, functions, file names, keywords, code snippets, and anything the user wrote in code.
+// 5. DO NOT use quotation marks around code references — use ONLY <code>.
+// 6. Be specific and technical; do NOT include any general praise or restate the question.
+
+// FAILURE TO FOLLOW THE FORMAT IS AN ERROR.
+
+// Question: ${question}
+
+// Chronological coding steps:
+// ${JSON.stringify(parallelled_array)}`;
+
+let prompt = `You are given a user question and a chronological sequence of summarized coding events.
+
+Return ONLY a JSON object with this exact shape, no markdown fences, no extra text:
+{"headline": "one sentence direct answer", "points": ["point 1", "point 2", "point 3"]}
+
+Rules:
+- headline: single sentence, direct answer to the question.
+- points: array of strings, each a key technical detail. 2-5 points is ideal.
+- In the points strings only, wrap any code element (variable names, function names, file names, keywords) in <code> tags. Do not use quotation marks around code.
+- Do not restate the question. No praise. No filler.
 
 Question: ${question}
 
@@ -1144,8 +1180,21 @@ ${JSON.stringify(parallelled_array)}`;
 
             // summary = summary.trim().replace(/^```json/, "").replace(/^```/, "").replace(/```$/, "").trim();
 
-            return `${summary}`;
+            // return `${summary}`; // prev
 
+            let parsed;
+            try {
+                parsed = JSON.parse(summary.trim());
+            } catch (e) {
+                return summary; // fallback if the model misbehaves
+            }
+
+            return `
+                <strong>${parsed.headline}</strong>
+                <ul style="padding-top: 0px;list-style: circle;margin-left: 40px;">
+                    ${parsed.points.map(p => `<li>${p}</li>`).join('')}
+                </ul>
+            `;
 
         } catch (error) {
             console.error("Error generating answer:", error.message);
@@ -1247,52 +1296,63 @@ ${JSON.stringify(parallelled_array)}`;
 
     }
 
-    async checkQuestionRepeat(question) {
-        try {
-
-            if (!question.trim()) {
-                return "no question";
+    checkQuestionRepeat(question) {
+        const threshold = 95; // tune as needed
+        for (const [cachedQ] of this.questionCache) {
+            const score = fuzzball.ratio(question.toLowerCase(), cachedQ.toLowerCase());
+            if (score >= threshold) {
+                return [true, cachedQ];
             }
-
-            let prompt = `New question: "${question}".
-Cached questions: ${Array.from(this.questionCache.keys()).join(", ")}`
-
-            const completions = await this.openai.chat.completions.create({
-                model: "gpt-4o-mini",
-                max_tokens: 500,
-                messages: [
-                    {
-                        role: "system",
-                        content: `You are a duplicate question detector. 
-Always respond with a strict JSON array and nothing else.
-
-Rules:
-- Compare the new question against the cached questions.
-- If the new question is a duplicate (even if rephrased, synonyms, or word order changes), return [true, "exact_cached_question_string"]. 
-  IMPORTANT: The second element must be copied exactly from the cached questions list, never the new question.
-- If no duplicate is found, or the cache is empty, return [false].`
-                    },
-                    { role: "user", content: prompt }
-                ]
-            });
-
-            let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
-            console.log("checkQuestionRepeat: ", summary)
-
-            // this.chatGPTInvoked = true;
-            // return summary;
-            try {
-                return JSON.parse(summary);
-            } catch {
-                return [false]; // fallback if parsing fails
-            }
-
-
-        } catch (error) {
-            console.error("Error generating answer:", error.message);
-            return "response generation failed";
         }
+        return [false];
     }
+
+//     async checkQuestionRepeat(question) {
+//         try {
+
+//             if (!question.trim()) {
+//                 return "no question";
+//             }
+
+//             let prompt = `New question: "${question}".
+// Cached questions: ${Array.from(this.questionCache.keys()).join(", ")}`
+
+//             const completions = await this.openai.chat.completions.create({
+//                 model: "gpt-4o-mini",
+//                 max_tokens: 500,
+//                 messages: [
+//                     {
+//                         role: "system",
+//                         content: `You are a duplicate question detector. 
+// Always respond with a strict JSON array and nothing else.
+
+// Rules:
+// - Compare the new question against the cached questions.
+// - If the new question is a duplicate (even if rephrased, synonyms, or word order changes), return [true, "exact_cached_question_string"]. 
+//   IMPORTANT: The second element must be copied exactly from the cached questions list, never the new question.
+// - If no duplicate is found, or the cache is empty, return [false].`
+//                     },
+//                     { role: "user", content: prompt }
+//                 ]
+//             });
+
+//             let summary = completions?.choices?.[0]?.message?.content || "Summary not available";
+//             console.log("checkQuestionRepeat: ", summary)
+
+//             // this.chatGPTInvoked = true;
+//             // return summary;
+//             try {
+//                 return JSON.parse(summary);
+//             } catch {
+//                 return [false]; // fallback if parsing fails
+//             }
+
+
+//         } catch (error) {
+//             console.error("Error generating answer:", error.message);
+//             return "response generation failed";
+//         }
+//     }
 
 
     async *generateAnswerStream(question, whichOne, codeEvents, uniqueVisits) {
@@ -1485,11 +1545,35 @@ Rules:
                         </div>
                     </div> -->
 
-                    <div class="controls-row" id="controls-row-2">
+                    <!-- <div class="controls-row" id="controls-row-2">
                         <form id="chat-form" class="form-container">
                             <div class="question-area">
                                 <label style="font-weight: bold; margin: auto; margin-right: 5px;">Search within your history: </label>
                                 <input type="text" id="question" name="user_question" placeholder="Where did I..." value="${this.userQuestion || ''}">
+                                <button type="submit" class="btn">Submit</button>
+                                <button type="button" id="reset-button" class="btn">Reset</button>
+                            </div>
+                        </form>
+                    </div> -->
+
+                    <div class="controls-row" id="controls-row-2">
+                        <form id="chat-form" class="form-container">
+                            <div class="question-area">
+                                <label style="font-weight: bold; align-self: center; margin-right: 5px;">
+                                    Ask about your history:
+                                </label>
+                                <div class="tooltip-wrapper" style="flex-grow: 1;">
+                                    <input type="text" id="question" name="user_question" 
+                                        placeholder="e.g. How did the user...?" 
+                                        value="${this.userQuestion || ''}"
+                                        style="width: 100%;">
+                                    <span class="custom-tooltip" style="top: 100%; bottom: auto; left: 0; background-color: darkgray; color: black">
+                                        Try asking things like:&#10;
+                                        • How has ... changed over time?&#10;
+                                        • Why was ... done this way?&#10;
+                                        • What are the implications of this change for ...?
+                                    </span>
+                                </div>
                                 <button type="submit" class="btn">Submit</button>
                                 <button type="button" id="reset-button" class="btn">Reset</button>
                             </div>
@@ -1863,8 +1947,14 @@ Rules:
         }
 
         try {
-            const response = await this.generateChatGPTResponseHTML(question);
-            const historyResponse = await this.generateHistoryChatGPTResponseHTML(question);
+            // const response = await this.generateChatGPTResponseHTML(question);
+            // const historyResponse = await this.generateHistoryChatGPTResponseHTML(question);
+            const reduceLoad = await this.isHistoryOrResource(question);
+
+            const [response, historyResponse] = await Promise.all([
+                this.generateChatGPTResponseHTML(question, reduceLoad),
+                this.generateHistoryChatGPTResponseHTML(question, reduceLoad)
+            ]);
 
             const newContentHTML= response + historyResponse;
 
@@ -2437,7 +2527,7 @@ Rules:
         return html;  // Return the generated HTML
     }
 
-    async generateChatGPTResponseHTML(question) {
+    async generateChatGPTResponseHTML(question, reduceLoad) {
 
         const startTime = performance.now();
 
@@ -2485,7 +2575,7 @@ Rules:
             // console.log("filtered array code events: ", filteredArray);
             // console.log("filtered array resources", filteredArrayResources);
 
-            const reduceLoad = await this.isHistoryOrResource(question);
+            // const reduceLoad = await this.isHistoryOrResource(question); // Call it once upstream and pass the result in
             // console.log("history or resources? ", reduceLoad);
 
             // const natural_language_indicator = await this.generateNLResponse(question);
@@ -2668,7 +2758,7 @@ Rules:
         }
     }
 
-    async generateHistoryChatGPTResponseHTML(question) {
+    async generateHistoryChatGPTResponseHTML(question, reduceLoad) {
         if (!question || question === "undefined") return "";
 
         //check if the question has been asked before: 
@@ -2679,7 +2769,7 @@ Rules:
 
         try {
             const startTime = performance.now();
-            const reduceLoad = await this.isHistoryOrResource(question);
+            // const reduceLoad = await this.isHistoryOrResource(question); // Call it once upstream and pass the result in
             const generator = this.generatePastAnswerStream(question, reduceLoad);
             const checkRepeat = await this.checkQuestionRepeat(question);
             console.log("checkRepeat: ", checkRepeat);
@@ -2764,12 +2854,20 @@ Rules:
                     this.generateSummary(question, results)
                 ]);
 
+                // let story;
+                // try {
+                //     console.log("STORY RESULT BEFORE PARSING:", storyResult);
+                //     story = JSON.parse(storyResult);
+                // } catch (error) {
+                //     console.error("Error parsing story JSON:", error);
+                // }
+
                 let story;
                 try {
-                    console.log("STORY RESULT BEFORE PARSING:", storyResult);
-                    story = JSON.parse(storyResult);
+                    story = JSON.parse(storyResult.trim());
                 } catch (error) {
                     console.error("Error parsing story JSON:", error);
+                    story = []; 
                 }
 
                 // const story = JSON.parse(storyResult);
@@ -2793,11 +2891,23 @@ Rules:
                         const subgoal = group.codeChanges[subgoalKey];
                         const diffHTML = this.generateDiffHTMLGroup(subgoal);
 
-                        html += `
-                    <div class="stories">
-                        <p><strong>${index}:</strong> ${story[index - 1]}</p>
-                    </div>
-                `;
+                //         html += `
+                //     <div class="stories">
+                //         <p><strong>${index}:</strong> ${story[index - 1]}</p>
+                //     </div>
+                // `;
+                        const storyEntry = story[index - 1];
+                        if (storyEntry) {
+                            html += `
+                                <div class="stories">
+                                    <p><strong>${index}:</strong> <strong>${storyEntry.label}:</strong></p>
+                                    <ul style="padding-top: 0px;list-style: circle;margin-left: 40px;">
+                                        ${storyEntry.points.map(p => `<li>${p}</li>`).join('')}
+                                    </ul>
+                                </div>
+                            `;
+                        }
+
                         index++;
 
                         const hasLinks = links.resources?.length > 0 && count < links.resources.length;
