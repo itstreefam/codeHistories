@@ -484,12 +484,6 @@ class ClusterManager {
                 this.clusterStartTime[filename] = event.time;
             }
 
-            if (!this.allPastEvents[filename]) {
-                this.allPastEvents[filename] = [event];
-            } else {
-                this.allPastEvents[filename].push(event);
-            }
-
             // If significant, immediately finalize as a subgoal
             if (isSignificantFile) {
                 await this.finalizeGroup(filename);
@@ -502,6 +496,13 @@ class ClusterManager {
                 if (this.debug) {
                     console.log('Initial file with minor changes, keeping as stray');
                 }
+            }
+
+            // Populate allPastEvents AFTER finalization so new files correctly get empty before_code
+            if (!this.allPastEvents[filename]) {
+                this.allPastEvents[filename] = [event];
+            } else {
+                this.allPastEvents[filename].push(event);
             }
 
             return;
@@ -729,32 +730,26 @@ class ClusterManager {
         
         // Case 6: Everything else / exiting a cluster
         else {
-            console.log("case 6: other/cluster end");
-            console.log(`this.inCluster[${filename}]`, this.inCluster[filename]);
-            
-            // If we're in a cluster, finalize it
+            console.log("case 6");
+            // Logic change: If we are in a cluster, finalize it. 
+            // If we AREN'T in a cluster but the change is significant, we should still finalize.
             if (this.inCluster[filename]) {
-                console.log(`${this.clusterStartTime[filename]},${pastEvt.time},'code',${filename}`);
                 await this.finalizeGroup(filename);
-                if (this.debug) {
-                    console.log(`${currTime}: partialMatches=${partialMatches} perfectMatches=${perfectMatches.length} newLines=${newLines.length} currLineLength=${currentLines.length} pastLineLength=${pastLines.length}`);
-                    console.log("\n");
-                }
+                this.inCluster[filename] = false;
+            }
+
+            // check if the current change itself is significant enough to be its own subgoal
+            // even if it wasn't part of a cluster yet
+            if (newLines.length > this.MAX_NEW_LINES || Math.abs(currentLines.length - pastLines.length) > this.MAX_NEW_LINES) {
+                if (this.debug) console.log("\tSignificant change detected in Case 6, forcing finalization.");
                 
-                // After finalizing, check if current change is significant
-                if (isSignificantChange) {
-                    // Start a new cluster and finalize immediately
-                    this.inCluster[filename] = true;
-                    this.clusterStartTime[filename] = pastEvt.time;
-                    this.startNewGroup();
-                    await this.finalizeGroup(filename);
-                    this.inCluster[filename] = false;
-                } else {
-                    // Start a new cluster for accumulation
-                    this.inCluster[filename] = true;
-                    this.clusterStartTime[filename] = pastEvt.time;
-                    this.startNewGroup();
-                }
+                // Set the start time to the previous event so the diff has a baseline
+                this.clusterStartTime[filename] = pastEvt.time; 
+                await this.finalizeGroup(filename);
+                this.inCluster[filename] = false;
+            } else {
+                // If it's not a cluster and not a huge change, it stays as a stray event
+                this.inCluster[filename] = false;
             }
         }
     }
@@ -805,7 +800,7 @@ class ClusterManager {
         const clusterStart = this.clusterStartTime[filename];
 
         // Find events that occurred BEFORE the current cluster started
-        const eventsBeforeCluster = eventsForFile.filter(evt => evt.time < clusterStart);
+        const eventsBeforeCluster = eventsForFile.filter(evt => evt.time <= clusterStart);
         if (eventsBeforeCluster.length > 0) {
             // Use the last event before this cluster as the "before" state
             beforeCodeText = eventsBeforeCluster[eventsBeforeCluster.length - 1].code_text;
