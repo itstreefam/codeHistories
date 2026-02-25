@@ -8,18 +8,19 @@ const historyStyles = `
         font-family: Arial, sans-serif;
         background-color: #ffffff;
         color: #333333;
-        height: auto;
+        height: 100vh;
         margin: 0px;
     }
 
     body, html {
         margin: 0;
+        height: 100%;
     }
 
     .wrapper {
         display: flex;
         flex-direction: column;
-        // height: 100vh;
+        height: 100vh;
         width: 100%;
     }
 
@@ -61,8 +62,10 @@ const historyStyles = `
     #lower{
         z-index: 999;
         position: relative;
-        top: 50%;          / Starts at 50% height of the viewport /
-        left: 0;           / Starts at the left side of the screen /
+        // top: 50%;          /* Starts at 50% height of the viewport */
+        // left: 0;           /* Starts at the left side of the screen */
+        flex: 1;           /* Grow to fill remaining height */
+        min-height: 0;     /* Allow flex shrink below content size */
     }
 
     .handler {
@@ -104,7 +107,7 @@ const historyStyles = `
     }
 
     ul#grouped-events {
-        padding-top: 120px;
+        padding-top: 50px;
     }
 
     li {
@@ -422,6 +425,7 @@ const historyStyles = `
     position: relative;
     display: inline-block;
     cursor: help;
+    z-index: 10000;
     }
 
     .custom-tooltip {
@@ -437,7 +441,7 @@ const historyStyles = `
     // font-size: larger;
     white-space: pre-line;
     max-width: 600px;
-    z-index: 100;
+    z-index: 10000;
     transition: opacity 0.15s ease-in-out;
     pointer-events: none;
     }

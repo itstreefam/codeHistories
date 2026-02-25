@@ -77,7 +77,7 @@ class ClusterManager {
     }
 
     initializeTemporaryTest() {
-        const testData = new temporaryTest(String.raw`C:\Users\thien\Desktop\LLM-support\pilot\wordleStory.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw``); // change path of test data here
         // codeActivities has id, title, and code changes
         // the focus atm would be code changes array which contains smaller codeActivity objects
         // for eg, to access before_code, we would do this.codeActivities[0].codeChanges[0].before_code
@@ -90,7 +90,7 @@ class ClusterManager {
     }
 
     initializeResourcesTemporaryTest() {
-        const testData = new temporaryTest(String.raw`C:\Users\thien\Desktop\LLM-support\pilot\wordleStory.json`); // change path of test data here
+        const testData = new temporaryTest(String.raw``); // change path of test data here
         this.codeResources = testData.processResources(testData.data);
         console.log("Resources", this.codeResources);
     }
@@ -1492,11 +1492,14 @@ ${JSON.stringify(parallelled_array)}`;
         if (this.chatResponseHTML) {
             console.log("Using chat response results for lower section");
             lowerSectionHTML = this.chatResponseHTML;
-            lowerSectionTitle = "Chat Response Results";
+            lowerSectionTitle = "Ask about your history:";
         } else {
-            console.log("Using in-progress work for lower section");
-            lowerSectionHTML = await this.generateStrayEventsHTML();
-            lowerSectionTitle = "In Progress Work";
+            // In Progress Work is currently disabled
+            // console.log("Using in-progress work for lower section");
+            // lowerSectionHTML = await this.generateStrayEventsHTML();
+            // lowerSectionTitle = "In Progress Work";
+            lowerSectionHTML = "";
+            lowerSectionTitle = "Ask about your history:";
         }
 
         this.webviewPanel.webview.html = `
@@ -1556,12 +1559,22 @@ ${JSON.stringify(parallelled_array)}`;
                         </form>
                     </div> -->
 
+                </div>
+                    <ul id="grouped-events">
+                        ${groupedEventsHTML}
+                    </ul>
+                </div>
+                <div class="handler"></div>
+                <div class="box" id="lower"> 
+                    <div>
+                        <h2 id="lower-section-title">${lowerSectionTitle}</h2>
+                    </div>
                     <div class="controls-row" id="controls-row-2">
                         <form id="chat-form" class="form-container">
                             <div class="question-area">
-                                <label style="font-weight: bold; align-self: center; margin-right: 5px;">
+                                <!-- <label style="font-weight: bold; align-self: center; margin-right: 5px;">
                                     Ask about your history:
-                                </label>
+                                </label> -->
                                 <div class="tooltip-wrapper" style="flex-grow: 1;">
                                     <input type="text" id="question" name="user_question" 
                                         placeholder="e.g. How did the user...?" 
@@ -1578,16 +1591,6 @@ ${JSON.stringify(parallelled_array)}`;
                                 <button type="button" id="reset-button" class="btn">Reset</button>
                             </div>
                         </form>
-                    </div>
-                </div>
-                    <ul id="grouped-events">
-                        ${groupedEventsHTML}
-                    </ul>
-                </div>
-                <div class="handler"></div>
-                <div class="box" id="lower"> 
-                    <div>
-                        <h2 id="lower-section-title">${lowerSectionTitle}</h2>
                     </div>
                     <ul id="stray-events">
                         ${lowerSectionHTML}
@@ -1733,7 +1736,7 @@ ${JSON.stringify(parallelled_array)}`;
                     // Show loading in the LOWER section (in-progress work)
                     const lowerSectionTitle = document.getElementById('lower-section-title');
                     if (lowerSectionTitle) {
-                        lowerSectionTitle.textContent = 'Chat Response Results';
+                        lowerSectionTitle.textContent = 'Ask about your history:';
                     }
                     strayEvents.innerHTML = "<p>Pondering...</p>";
                     
@@ -1806,7 +1809,7 @@ ${JSON.stringify(parallelled_array)}`;
                     const response = event.data.response;
                     const lowerSectionTitle = document.getElementById('lower-section-title');
                     if (lowerSectionTitle) {
-                        lowerSectionTitle.textContent = 'Chat Response Results';
+                        lowerSectionTitle.textContent = 'Ask about your history:';
                     }
 
                     strayEvents.innerHTML = response;
@@ -1816,10 +1819,11 @@ ${JSON.stringify(parallelled_array)}`;
                 // Handle reset to show stray events again
                 if (event.data.command === 'resetToStrayEvents') {
                     const response = event.data.response;
-                    const lowerSectionTitle = document.getElementById('lower-section-title');
-                    if (lowerSectionTitle) {
-                        lowerSectionTitle.textContent = 'In Progress Work';
-                    }
+                    // In Progress Work is currently disabled
+                    // const lowerSectionTitle = document.getElementById('lower-section-title');
+                    // if (lowerSectionTitle) {
+                    //     lowerSectionTitle.textContent = 'In Progress Work';
+                    // }
 
                     strayEvents.innerHTML = response;
                     attachCollapsibleListeners();
@@ -1910,10 +1914,11 @@ ${JSON.stringify(parallelled_array)}`;
                 resetButton.addEventListener('click', function () {
                     // Immediately clear the input field and reset lower section visually
                     questionInput.value = '';
-                    const lowerSectionTitle = document.getElementById('lower-section-title');
-                    if (lowerSectionTitle) {
-                        lowerSectionTitle.textContent = 'In Progress Work';
-                    }
+                    // In Progress Work is currently disabled
+                    // const lowerSectionTitle = document.getElementById('lower-section-title');
+                    // if (lowerSectionTitle) {
+                    //     lowerSectionTitle.textContent = 'In Progress Work';
+                    // }
                     strayEvents.innerHTML = '<li>Resetting...</li>';
                     vscode.postMessage({
                         command: "resetPanel"
@@ -2877,7 +2882,7 @@ ${JSON.stringify(parallelled_array)}`;
             <h2>Summary: </h2>
             <p>${summary}</p>
             <hr>
-            <h2>Your process: </h2>
+            <h2>Developer's process: </h2>
         `;
 
                 let index = 1;
