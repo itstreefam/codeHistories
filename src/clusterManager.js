@@ -60,11 +60,15 @@ class ClusterManager {
 
         this.filterAmount = null; // store how many most recent subgoals
         this.sortOrder = 'oldest-to-newest'; // chronological
+
+        // Keyword index for fast subgoal filtering (bypasses LLM for general questions)
+        this.subgoalKeywordMap = new Map(); // keyword -> Set of subgoal IDs
+        this.subgoalIdIndex = new Map();    // subgoal ID -> activity object
     }
 
     async initializeOpenAI(context) {
         const apiKey = await context.secrets.get('openaiApiKey');
-
+        
         if (!apiKey) {
             vscode.window.showErrorMessage('OpenAI API key is not set. Please set it in the extension settings.');
             return;
@@ -77,7 +81,7 @@ class ClusterManager {
     }
 
     initializeTemporaryTest() {
-        const testData = new temporaryTest(String.raw``); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\Users\thien\Downloads\wordleStory-with-displayId.json`); // change path of test data here
         // codeActivities has id, title, and code changes
         // the focus atm would be code changes array which contains smaller codeActivity objects
         // for eg, to access before_code, we would do this.codeActivities[0].codeChanges[0].before_code
@@ -87,13 +91,134 @@ class ClusterManager {
         console.log("initialization test");
         console.log(this.codeActivities);
         // console.log("why doesn't it work im so confused: " + this.documentedHistory);
+
+        // Build the keyword index immediately after loading activities
+        this.buildSubgoalKeywordMap();
     }
 
     initializeResourcesTemporaryTest() {
-        const testData = new temporaryTest(String.raw``); // change path of test data here
+        const testData = new temporaryTest(String.raw`C:\Users\thien\Downloads\wordleStory-with-displayId.json`); // change path of test data here
         this.codeResources = testData.processResources(testData.data);
         console.log("Resources", this.codeResources);
     }
+
+    // ─── Keyword Index ────────────────────────────────────────────────────────
+    // Builds a fast lookup map so general questions can bypass the LLM filter
+    // step in generatePastAnswerStream entirely.
+    //
+    // Map shape:
+    //   subgoalKeywordMap : Map<string(keyword), Set<string(subgoal id)>>
+    //   subgoalIdIndex    : Map<string(id), activityObject>
+    buildSubgoalKeywordMap() {
+        this.subgoalKeywordMap = new Map();
+        this.subgoalIdIndex    = new Map();
+
+        const STOP_WORDS = new Set([
+            'a','an','the','and','or','but','in','on','at','to','for','of','with',
+            'by','is','are','was','were','be','been','have','has','had','do','does',
+            'did','will','would','could','should','may','might','it','this','that',
+            'these','those','i','you','he','she','we','they','what','when','where',
+            'how','why','which','who','if','then','so','not','no','yes','my','your',
+            'his','her','our','their','its','me','him','us','them','from','into',
+            'about','as','up','out','also','can','just','some','use','used','using',
+            'make','add','get','set','let','new','all','one','two','now','here'
+        ]);
+
+        const tokenize = (text) =>
+            text.toLowerCase()
+                .replace(/[^a-z0-9\s]/g, ' ')
+                .split(/\s+/)
+                .filter(w => w.length > 2 && !STOP_WORDS.has(w));
+
+        const addToMap = (keyword, id) => {
+            if (!this.subgoalKeywordMap.has(keyword)) {
+                this.subgoalKeywordMap.set(keyword, new Set());
+            }
+            this.subgoalKeywordMap.get(keyword).add(id);
+        };
+
+        for (const activity of (this.codeActivities || [])) {
+            const id = String(activity.id);
+            this.subgoalIdIndex.set(id, activity);
+
+            // Index the top-level subgoal title
+            for (const kw of tokenize(activity.title || '')) addToMap(kw, id);
+
+            // Index each code change title and file name
+            for (const change of (activity.codeChanges || [])) {
+                for (const kw of tokenize(change.title || '')) addToMap(kw, id);
+                for (const kw of tokenize(change.file  || '')) addToMap(kw, id);
+            }
+        }
+
+        // console.log(`[KeywordMap] Built with ${this.subgoalKeywordMap.size} keywords across ${this.subgoalIdIndex.size} subgoals`);
+
+        // For debugging: print the keyword map`
+        if (this.debug) {
+            console.log('[KeywordMap] Contents:');
+            for (const [kw, ids] of this.subgoalKeywordMap) {
+                console.log(`  "${kw}": ${[...ids].join(', ')}`);
+            }
+        }
+    }
+
+    // Tries to resolve relevant subgoal IDs purely from the keyword map.
+    // Returns an array like [{id: <number>}, ...] (same shape as the LLM output)
+    // or null when confidence is too low (caller should fall back to LLM).
+    fastFilterSubgoals(question) {
+        if (!this.subgoalKeywordMap || this.subgoalKeywordMap.size === 0) return null;
+
+        const STOP_WORDS = new Set([
+            'a','an','the','and','or','but','in','on','at','to','for','of','with',
+            'by','is','are','was','were','be','been','have','has','had','do','does',
+            'did','will','would','could','should','may','might','it','this','that',
+            'these','those','i','you','he','she','we','they','what','when','where',
+            'how','why','which','who','if','then','so','not','no','yes','my','your',
+            'his','her','our','their','its','me','him','us','them','from','into',
+            'about','as','up','out','also','can','just','some','use','used','using',
+            'make','add','get','set','let','new','all','one','two','now','here'
+        ]);
+
+        const tokenize = (text) =>
+            text.toLowerCase()
+                .replace(/[^a-z0-9\s]/g, ' ')
+                .split(/\s+/)
+                .filter(w => w.length > 2 && !STOP_WORDS.has(w));
+
+        const queryTokens = tokenize(question);
+        if (queryTokens.length === 0) return null;
+
+        const scores = new Map(); // id -> score
+
+        for (const token of queryTokens) {
+            // Exact keyword match — strongest signal
+            const exactHits = this.subgoalKeywordMap.get(token);
+            if (exactHits) {
+                for (const id of exactHits) scores.set(id, (scores.get(id) || 0) + 3);
+            }
+
+            // Substring match (e.g. "regex" hits "regular", "listener" hits "keylistener")
+            for (const [kw, ids] of this.subgoalKeywordMap) {
+                if (kw !== token && (kw.includes(token) || token.includes(kw))) {
+                    for (const id of ids) scores.set(id, (scores.get(id) || 0) + 1);
+                }
+            }
+        }
+
+        if (scores.size === 0) return null;
+
+        const sorted = [...scores.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5);
+
+        // Only proceed when the best match has a meaningful score
+        const MIN_CONFIDENCE = 2;
+        if (sorted[0][1] < MIN_CONFIDENCE) return null;
+
+        console.log(`[KeywordMap] Fast filter resolved ${sorted.length} subgoal(s) — scores:`, sorted.map(([id, s]) => `${id}:${s}`).join(', '));
+        return sorted.map(([id]) => ({ id: parseInt(id, 10) }));
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     async restoreStateFromFile() {
         if (this.hasRestoredFromLastSession) return; // Prevent re-loading
@@ -1146,20 +1271,42 @@ ${JSON.stringify(parallelled_array)}`;
 // Chronological coding steps:
 // ${JSON.stringify(parallelled_array)}`;
 
-let prompt = `You are given a user question and a chronological sequence of summarized coding events.
+// let prompt = `You are given a user question and a chronological sequence of summarized coding events.
+
+// Return ONLY a JSON object with this exact shape, no markdown fences, no extra text:
+// {"headline": "one sentence direct answer", "points": ["point 1", "point 2", "point 3"]}
+
+// Rules:
+// - headline: single sentence, direct answer to the question.
+// - points: array of strings, each a key technical detail. 2-5 points is ideal.
+// - In the points strings only, wrap any code element (variable names, function names, file names, keywords) in <code> tags. Do not use quotation marks around code.
+// - Do not restate the question. No praise. No filler.
+
+// Question: ${question}
+
+// Chronological coding steps:
+// ${JSON.stringify(parallelled_array)}`;
+
+
+let prompt = `You are given a user question and a list of coding changes. Each entry has:
+- subgoalTitle: the high-level goal this change belongs to
+- changeTitle: the specific thing that was done
+- file: which file was changed
 
 Return ONLY a JSON object with this exact shape, no markdown fences, no extra text:
 {"headline": "one sentence direct answer", "points": ["point 1", "point 2", "point 3"]}
 
 Rules:
 - headline: single sentence, direct answer to the question.
-- points: array of strings, each a key technical detail. 2-5 points is ideal.
+- points: at most 3 strings, each a specific technical detail drawn from the data.
 - In the points strings only, wrap any code element (variable names, function names, file names, keywords) in <code> tags. Do not use quotation marks around code.
 - Do not restate the question. No praise. No filler.
+- Do not explicitly mention the subgoalTitles, but you can use them to inform your answer. Focus on the technical details and how they relate to the question.
 
 Question: ${question}
 
-Chronological coding steps:
+Coding changes:
+
 ${JSON.stringify(parallelled_array)}`;
 
 
@@ -1408,7 +1555,7 @@ ${JSON.stringify(parallelled_array)}`;
 
     async *generatePastAnswerStream(question, whichOne) {
         // const startTime = performance.now();
-
+console.log("OPENAI CLIENT:", this.openai);
         try {
             // console.log("User Question:", question);
 
@@ -1417,12 +1564,17 @@ ${JSON.stringify(parallelled_array)}`;
                 return;
             }
 
+            if (!this.openai) {
+    console.log("OpenAI not initialized, initializing now...");
+    await this.initializeOpenAI(this.context);
+}
+
             const filteredArray = this.codeActivities.map(({ id, title, codeChanges }) => ({
                 id,
                 title,
                 codeChanges: codeChanges.map(({ title }) => ({ title }))
             }));
-            // console.log("FILTERED ARRAY: ", filteredArray);
+            console.log("FILTERED ARRAY: ", filteredArray);
 
             const filteredArrayResources = this.codeResources.map(({ id, title, resources }) => ({
                 id,
@@ -1433,38 +1585,52 @@ ${JSON.stringify(parallelled_array)}`;
                         .map(action => action.webTitle)
                 )
             }));
+            console.log("FILTERED RESOURCE: ", filteredArrayResources);
 
             let prompt = whichOne === "history"
                 ? `The user will ask you to filter the database based on the context of this code history I provided: "${JSON.stringify(filteredArray)}", and here is the question: "${question}". If the user question is just "", simply say no question.`
                 : `The user will ask you to filter the database based on the history the user has accessed: "${JSON.stringify(filteredArrayResources)}", and here is the question: "${question}". If the user question is just "", simply say no question.`;
 
             // console.log("in generatePastAnswerStream, prompt: ", prompt);
-            const stream = await this.openai.chat.completions.create({
+            const response = await this.openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 max_tokens: 1000,
-                stream: true, // Enable streaming
+                stream: false,
                 messages: [
                     {
                         role: "system",
-                        content: `You are a code history reviewer. The user will provide JSON-like info and expects you to find information based on it.
-                        A JSON object entry should either have keys: 'id', 'title', and 'codeChanges' or 'id', 'title', and 'webTitles. 
-                        Under 'codeChanges', there should be 'id' and 'title'.
-                        Under 'webTitles', there should be a list of webTitles.
-                        Return me an array of at most 5 most relevant {id: entry.id} based on the question asked by the user. if you cannot find 5, just return however many you found. 
-                        The array you have returned to me should not have extra formatting and should be ready to parse. `
+                        content: `You are a code history analyst. You will be given a list of coding subgoals (each with an id, a title, and a list of code change titles), and a user question.
+
+Your job is to reason about which subgoals are relevant to the question — this may require analytical thinking, not just keyword matching.
+
+Examples of analytical questions you must handle:
+- "what methods were introduced and never changed?" → look for subgoals that introduce something (add, create, introduce, outline) in their title, where no later subgoal modifies the same element.
+- "what took the most iterations?" → look for subgoals with many codeChanges, or sequences of similar titles.
+- "what was hardest to implement?" → infer from number of changes or revisits.
+
+Rules:
+- Return ONLY a valid JSON array, no markdown, no extra text.
+- Format: [{"id": "entry.id"}, ...]
+- Return at most 5 entries. If fewer are relevant, return only those.
+- If none are relevant, return [].
+- IDs must be taken exactly from the input data.`
                     },
                     { role: "user", content: prompt }
                 ]
             });
 
-            let responseText = "";
+            // let responseText = "";
 
-            for await (const chunk of stream) {
-                const content = chunk.choices[0]?.delta?.content || "";
-                responseText += content;
-                // console.log("response text here: ", responseText);
-                yield content;
-            }
+            // for await (const chunk of stream) {
+            //     const content = chunk.choices[0]?.delta?.content || "";
+            //     responseText += content;
+            //     console.log("response text here: ", responseText);
+            //     yield content;
+            // }
+            const responseText = response.choices[0].message.content;
+
+console.log("response text here:", responseText);
+yield responseText;
 
             // const endTime = performance.now();
             // console.log(`Call to generatePastAnswerStream() took ${endTime - startTime} milliseconds`);
@@ -2083,7 +2249,7 @@ ${JSON.stringify(parallelled_array)}`;
             let count = 0;
             for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
                 const subgoal = group.codeChanges[subgoalKey];
-                console.log("here is the subgoal for debug purpose: ", subgoal);
+                // console.log("here is the subgoal for debug purpose: ", subgoal);
 
                 const diffHTML = this.generateDiffHTMLGroup(subgoal);
 
@@ -2096,7 +2262,7 @@ ${JSON.stringify(parallelled_array)}`;
                                 <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">
                                     <i class="bi bi-arrows-expand"></i>
                                 </button>
-                                
+                                <p> <strong>${subgoal.id}.</strong></p>
                                 <div class="title-edit-group">
                                     <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
                                     <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
@@ -2152,7 +2318,7 @@ ${JSON.stringify(parallelled_array)}`;
                                 <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">
                                     <i class="bi bi-arrows-expand"></i>
                                 </button>
-                                
+                                <p> <strong>${subgoal.id}. </strong></p>
                                 <div class="title-edit-group">
                                     <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
                                     <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
@@ -2375,7 +2541,7 @@ ${JSON.stringify(parallelled_array)}`;
     }
 
     async generateStrayEventsHTMLTest() {
-        return '<li>Your future changes goes here.</li>';
+        return '<li>Your future searches go here.</li>';
     }
 
     // This happens after a "save" occurrence (comparing two versions of file save)
@@ -2766,25 +2932,33 @@ ${JSON.stringify(parallelled_array)}`;
     async generateHistoryChatGPTResponseHTML(question, reduceLoad) {
         if (!question || question === "undefined") return "";
 
-        //check if the question has been asked before: 
-        //if true (repeated), return the answer from cache, otherwise proceed to the next step
-        // if (checkRepeat[0]) {
-        //     console.log("CHECK REPEATS: ", this.questionCache.get(checkRepeat[1]));
-        // }
-
         try {
             const startTime = performance.now();
-            // const reduceLoad = await this.isHistoryOrResource(question); // Call it once upstream and pass the result in
-            const generator = this.generatePastAnswerStream(question, reduceLoad);
-            const checkRepeat = await this.checkQuestionRepeat(question);
-            console.log("checkRepeat: ", checkRepeat);
-            if (checkRepeat[0]) {
-                // console.log("CHECK REPEATS: ", this.questionCache.get(checkRepeat[1]));
-                let html = this.questionCache.get(checkRepeat[1]);
-                this.webviewPanel.webview.postMessage({ command: "updateChatResponse", response: html });
-                return html;
-            }
-            else {
+
+            // ── Step 1: Resolve relevant subgoal IDs ─────────────────────────
+            // Fast path: keyword index resolves IDs in <1 ms for general questions,
+            // skipping the ~4-8 s LLM roundtrip entirely.
+            // LLM fallback is used when keyword confidence is too low.
+            let parsed;
+            const fastResult = this.fastFilterSubgoals(question);
+
+            if (fastResult) {
+                console.log("[KeywordMap] Fast filter hit — skipping generatePastAnswerStream LLM call");
+                parsed = fastResult;
+            } else {
+                // ── LLM fallback: keyword map had insufficient confidence ─────
+                console.log("[KeywordMap] Fast filter miss — falling back to generatePastAnswerStream LLM call");
+
+                // Check cache before firing an LLM call
+                const checkRepeat = await this.checkQuestionRepeat(question);
+                console.log("checkRepeat: ", checkRepeat);
+                if (checkRepeat[0]) {
+                    const html = this.questionCache.get(checkRepeat[1]);
+                    this.webviewPanel.webview.postMessage({ command: "updateChatResponse", response: html });
+                    return html;
+                }
+
+                const generator = this.generatePastAnswerStream(question, reduceLoad);
                 let streamedResponse = "";
                 for await (const chunk of generator) {
                     streamedResponse += typeof chunk === "string" ? chunk : JSON.stringify(chunk);
@@ -2794,13 +2968,9 @@ ${JSON.stringify(parallelled_array)}`;
                     return `<p>No question detected.</p>`;
                 }
 
-                let rawJson = streamedResponse.trim();
-            
-                // Remove markdown code fences (e.g., ```json or ```)
-                rawJson = rawJson.replace(/^```json\s*/i, '').replace(/\s*```$/, '');
-                
-                // Safely parse the JSON with a try-catch block
-                let parsed;
+                let rawJson = streamedResponse.trim().replace(/^```json\s*/i, '').replace(/\s*```$/, '');
+                console.log("RAW JSON CHECK FOR PARSING ERROR: ", rawJson);
+
                 try {
                     parsed = JSON.parse(rawJson);
                 } catch (error) {
@@ -2808,143 +2978,84 @@ ${JSON.stringify(parallelled_array)}`;
                     return `<p style="color:red;">Error: AI returned invalid JSON format for filtering. Please try rephrasing your question.</p>`;
                 }
 
-                parsed = parsed.map(entry => ({
-                    ...entry,
-                    id: +entry.id
-                }));
+                parsed = parsed.map(entry => ({ ...entry, id: +entry.id }));
+            }
+            // ─────────────────────────────────────────────────────────────────
 
-                // let parsed = JSON.parse(streamedResponse).map(entry => ({
-                //     ...entry,
-                //     id: +entry.id
-                // }));
+            // ── Step 2: Render — same layout as generateGroupedEventsHTMLTest ─
+            // Pure filter: only show subgoals whose group ID is in `parsed`.
+            // No extra story descriptions, summaries, or NL responses.
+            //
+            // Previously this section called:
+            //   generateRelevantInfo(), generateNLResponse(), generateStoryResponse(), generateSummary()
+            // Those are now commented out below in favour of the direct render.
+            //
+            // const extraFilter = await this.generateRelevantInfo(question, this.findActivities(this.codeActivities, parsed));
+            // const arrayForParallel = ...flatMap(codeChanges)...
+            // const results = await Promise.all(arrayForParallel.map(...generateNLResponse...));
+            // const [storyResult, summary] = await Promise.all([generateStoryResponse, generateSummary]);
 
-                const extraFilter = await this.generateRelevantInfo(
-                    question,
-                    this.findActivities(this.codeActivities, parsed)
-                );
-                
-                let parsedExtra;
-                try {
-                    parsedExtra = JSON.parse(extraFilter); // Ensure extraFilter is clean JSON
-                } catch (error) {
-                    console.error("Error parsing JSON from generateRelevantInfo:", error, extraFilter.substring(0, 200) + '...');
-                    // Handle the error (e.g., skip filtering or use a default)
-                    parsedExtra = []; 
-                }
-                // const parsedExtra = JSON.parse(extraFilter);
+            if (!this.codeResources || this.codeResources.length === 0) {
+                console.error("codeResources is undefined or empty");
+                return '<li>No resources for you :(.</li>';
+            }
 
-                const targetIDs = new Set(parsedExtra.map(t => String(t.id)));
-
-                // Build subgoal jobs
-                const arrayForParallel = this.codeActivities.flatMap((group, groupKey) =>
-                    parsed.some(entry => entry.id == group.id)
-                        ? group.codeChanges.map(subgoal =>
-                            JSON.stringify({ ...subgoal, groupTitle: group.title })
-                        )
-                        : []
-                );
-
-                const results = await Promise.all(
-                    arrayForParallel.map(async jsonStr => {
-                        const parsed = JSON.parse(jsonStr);
-                        return this.generateNLResponse(question, parsed.title, parsed);
-                    })
+            // ── Summary: build a lightweight flat list of matched changes for generateSummary.
+            // We pass {subgoalTitle, changeTitle, file} per code change so the LLM has enough
+            // context without the full before/after code blobs.
+            const matchedForSummary = this.codeActivities
+                .filter(group => parsed.some(entry => entry.id == group.id))
+                .flatMap(group =>
+                    group.codeChanges.map(change => ({
+                        subgoalTitle: group.title,
+                        changeTitle: change.title,
+                        file: change.file
+                    }))
                 );
 
-                const responses = results.map(r => r[0]);
-                console.log("HERE IS THE PARALLELISM RESULT FOR RESPONSE:", responses);
+            // Fire summary in parallel with the diff HTML rendering loop below
+            const summaryPromise = this.generateSummary(question, matchedForSummary);
 
-                const [storyResult, summary] = await Promise.all([
-                    this.generateStoryResponse(question, results),
-                    this.generateSummary(question, results)
-                ]);
+            let listHTML = '';
 
-                // let story;
-                // try {
-                //     console.log("STORY RESULT BEFORE PARSING:", storyResult);
-                //     story = JSON.parse(storyResult);
-                // } catch (error) {
-                //     console.error("Error parsing story JSON:", error);
-                // }
+            for (let groupKey = 0; groupKey < this.codeActivities.length; groupKey++) {
+                const group = this.codeActivities[groupKey];
+                const links = this.codeResources[groupKey];
 
-                let story;
-                try {
-                    story = JSON.parse(storyResult.trim());
-                } catch (error) {
-                    console.error("Error parsing story JSON:", error);
-                    story = []; 
-                }
+                // Skip groups that weren't matched by the filter
+                if (!parsed.some(entry => entry.id == group.id)) continue;
 
-                // const story = JSON.parse(storyResult);
-                console.log("HERE IS THE STORY:", story);
+                let count = 0;
+                for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
+                    const subgoal = group.codeChanges[subgoalKey];
+                    const diffHTML = this.generateDiffHTMLGroup(subgoal);
 
-                let html = `
-            <h2>Summary: </h2>
-            <p>${summary}</p>
-            <hr>
-            <h2>Developer's process: </h2>
-        `;
-
-                let index = 1;
-                for (let groupKey = 0; groupKey < this.codeActivities.length; groupKey++) {
-                    const group = this.codeActivities[groupKey];
-                    const links = this.codeResources[groupKey];
-                    if (!parsed.some(entry => entry.id == group.id)) continue;
-
-                    let count = 0;
-                    for (let subgoalKey = 0; subgoalKey < group.codeChanges.length; subgoalKey++) {
-                        const subgoal = group.codeChanges[subgoalKey];
-                        const diffHTML = this.generateDiffHTMLGroup(subgoal);
-
-                //         html += `
-                //     <div class="stories">
-                //         <p><strong>${index}:</strong> ${story[index - 1]}</p>
-                //     </div>
-                // `;
-                        const storyEntry = story[index - 1];
-                        if (storyEntry) {
-                            html += `
-                                <div class="stories">
-                                    <p><strong>${index}:</strong> <strong>${storyEntry.label}:</strong></p>
-                                    <ul style="padding-top: 0px;list-style: circle;margin-left: 40px;">
-                                        ${storyEntry.points.map(p => `<li>${p}</li>`).join('')}
-                                    </ul>
-                                </div>
-                            `;
-                        }
-
-                        index++;
-
-                        const hasLinks = links.resources?.length > 0 && count < links.resources.length;
-                        const linkBlock = hasLinks
-                            ? `
+                    const hasLinks = links.resources?.length > 0 && count < links.resources.length;
+                    const linkBlock = hasLinks
+                        ? `
                         <div class="container">
                             <i class="bi bi-bookmark"></i>
                             <div class="centered">${links.resources[count].actions.length}</div>
-                        </div>
-                    `
-                            : `<div class="placeholder"></div>`;
+                        </div>`
+                        : `<div class="placeholder"></div>`;
 
-                        const resourceLinks = hasLinks
-                            ? links.resources[count].actions
-                                .map(
-                                    eachLink => `
+                    const resourceLinks = hasLinks
+                        ? links.resources[count].actions
+                            .map(eachLink => `
                                 <div class="tooltip">
                                     <a href="${eachLink.webpage}">${eachLink.webTitle}</a><br><br>
-                                </div>
-                              `
-                                )
-                                .join("")
-                            : "";
+                                </div>`)
+                            .join("")
+                        : "";
 
-                        html += `
+                    listHTML += `
                     <li data-eventid="${subgoalKey}">
                         <div class="li-header">
                             <!-- <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">+</button> -->
                             <button type="button" class="collapsible" id="plusbtn-${groupKey}-${subgoalKey}">
                                 <i class="bi bi-arrows-expand"></i>
                             </button>
-
+                            <p> <strong>${subgoal.id}. </strong></p>
                             <div class="title-edit-group">
                                 <input class="editable-title" id="code-title-${groupKey}-${subgoalKey}" value="${subgoal.title}" onchange="updateCodeTitle('${groupKey}', '${subgoalKey}')" size="50">
                                 <button type="button" class="btn btn-secondary" id="button-${groupKey}-${subgoalKey}">
@@ -2963,19 +3074,27 @@ ${JSON.stringify(parallelled_array)}`;
                     </li>
                     <hr>
                 `;
-                        count++;
-                    }
+                    count++;
                 }
-
-                console.log(`THE ENTIRE HISTORY HTML GENERATING took ${performance.now() - startTime} ms`);
-                this.webviewPanel.webview.postMessage({ command: "updateChatResponse", response: html });
-
-                //store it in the cache map: 
-                this.questionCache.set(question, html);
-
-                return html;
-
             }
+
+            // Await summary (was fired in parallel with the loop above)
+            const summaryHTML = await summaryPromise;
+
+            const html = `
+                <h2>Summary:</h2>
+                <p>${summaryHTML}</p>
+                <hr>
+                ${listHTML}
+            `;
+
+            console.log(`generateHistoryChatGPTResponseHTML took ${performance.now() - startTime} ms`);
+            this.webviewPanel.webview.postMessage({ command: "updateChatResponse", response: html });
+
+            // Store in cache for repeated questions
+            this.questionCache.set(question, html);
+
+            return html;
 
         } catch (err) {
             console.error("Error generating response:", err);
