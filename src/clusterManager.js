@@ -1292,6 +1292,7 @@ let prompt = `You are given a user question and a list of coding changes. Each e
 - subgoalTitle: the high-level goal this change belongs to
 - changeTitle: the specific thing that was done
 - file: which file was changed
+- resourcesConsulted: web pages and searches the developer looked at while making this change (may be empty)
 
 Return ONLY a JSON object with this exact shape, no markdown fences, no extra text:
 {"headline": "one sentence direct answer", "points": ["point 1", "point 2", "point 3"]}
@@ -1300,6 +1301,7 @@ Rules:
 - headline: single sentence, direct answer to the question.
 - points: at most 3 strings, each a specific technical detail drawn from the data.
 - In the points strings only, wrap any code element (variable names, function names, file names, keywords) in <code> tags. Do not use quotation marks around code.
+- If resourcesConsulted is non-empty for a relevant change, incorporate it naturally (e.g. mention what the developer searched for or which pages they consulted to inform that change).
 - Do not restate the question. No praise. No filler.
 - Do not explicitly mention the subgoalTitles, but you can use them to inform your answer. Focus on the technical details and how they relate to the question.
 
@@ -3001,17 +3003,29 @@ yield responseText;
             }
 
             // ── Summary: build a lightweight flat list of matched changes for generateSummary.
-            // We pass {subgoalTitle, changeTitle, file} per code change so the LLM has enough
-            // context without the full before/after code blobs.
+            // We pass {subgoalTitle, changeTitle, file, resourcesConsulted} per code change so
+            // the LLM has both code context and the info foraging path (searches + visited pages).
             const matchedForSummary = this.codeActivities
-                .filter(group => parsed.some(entry => entry.id == group.id))
-                .flatMap(group =>
-                    group.codeChanges.map(change => ({
-                        subgoalTitle: group.title,
-                        changeTitle: change.title,
-                        file: change.file
-                    }))
-                );
+                .map((group, groupKey) => ({ group, groupKey }))
+                .filter(({ group }) => parsed.some(entry => entry.id == group.id))
+                .flatMap(({ group, groupKey }) => {
+                    const links = this.codeResources[groupKey];
+                    return group.codeChanges.map((change, changeIdx) => {
+                        const hasLinks = links?.resources?.length > 0 && changeIdx < links.resources.length;
+                        const resourcesConsulted = hasLinks
+                            ? links.resources[changeIdx].actions.map(a => ({
+                                webTitle: a.webTitle,
+                                webpage: a.webpage
+                              }))
+                            : [];
+                        return {
+                            subgoalTitle: group.title,
+                            changeTitle: change.title,
+                            file: change.file,
+                            resourcesConsulted
+                        };
+                    });
+                });
 
             // Fire summary in parallel with the diff HTML rendering loop below
             const summaryPromise = this.generateSummary(question, matchedForSummary);
